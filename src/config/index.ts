@@ -59,8 +59,8 @@ const isProduction = environment === "production";
 const isDevelopment = environment === "development";
 
 const DEFAULT_PORT = 3001;
-const DEFAULT_DEV_ORIGIN = "http://localhost:5173"; // Vite dev server default
-
+// const DEFAULT_DEV_ORIGIN = "http://localhost:5173"; // Vite dev server default
+const DEFAULT_DEV_ORIGIN = "https://elementals-c1937bd8ae33.herokuapp.com"
 /**
  * Allowed CORS origins. In development this defaults to the Vite dev server.
  * In production an explicit CLIENT_ORIGIN is required — we do not fall back to a
