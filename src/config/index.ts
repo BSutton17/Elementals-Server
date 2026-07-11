@@ -59,12 +59,12 @@ const isProduction = environment === "production";
 const isDevelopment = environment === "development";
 
 const DEFAULT_PORT = 3001;
-// const DEFAULT_DEV_ORIGIN = "http://localhost:5173"; // Vite dev server default
-const DEFAULT_DEV_ORIGIN = "https://elementals-game.netlify.app"
+const DEFAULT_DEV_ORIGIN = "https://elementals-game.netlify.app";
+const DEFAULT_PROD_ORIGIN = "https://elementals-game.netlify.app";
 /**
- * Allowed CORS origins. In development this defaults to the Vite dev server.
- * In production an explicit CLIENT_ORIGIN is required — we do not fall back to a
- * permissive default; an unset value blocks cross-origin clients (fail closed).
+ * Allowed CORS origins. In development this defaults to the deployed client.
+ * In production we also allow the deployed client by default so the published
+ * frontend can connect without requiring extra environment configuration.
  */
 const resolveCorsOrigins = (raw: string | undefined): string[] => {
   const configured = (raw ?? "")
@@ -73,7 +73,7 @@ const resolveCorsOrigins = (raw: string | undefined): string[] => {
     .filter(Boolean);
 
   if (configured.length > 0) return configured;
-  if (isDevelopment) return [DEFAULT_DEV_ORIGIN];
+  if (isDevelopment || isProduction) return [DEFAULT_PROD_ORIGIN];
 
   logger.warn(
     "No CLIENT_ORIGIN configured outside development; cross-origin clients will be blocked",

@@ -37,7 +37,7 @@ test("reconnection grace is configurable via RECONNECT_GRACE_MS", async () => {
   assert.equal(cfg.reconnect.graceMs, 5000);
 });
 
-test("production fails closed on CORS and warns when CLIENT_ORIGIN is unset", async () => {
+test("production allows the deployed client origin by default when CLIENT_ORIGIN is unset", async () => {
   const { code, stdout, stderr } = await runFixture(FIXTURE, {
     NODE_ENV: "production",
     PORT: "8080",
@@ -50,9 +50,9 @@ test("production fails closed on CORS and warns when CLIENT_ORIGIN is unset", as
   assert.equal(cfg.environment, "production");
   assert.equal(cfg.isProduction, true);
   assert.equal(cfg.server.port, 8080);
-  assert.deepEqual(cfg.cors.origins, []); // fail closed — no permissive default
+  assert.deepEqual(cfg.cors.origins, ["https://elementals-game.netlify.app"]);
   assert.equal(cfg.logging.level, "info");
-  assert.match(stdout + stderr, /No CLIENT_ORIGIN configured/);
+  assert.doesNotMatch(stdout + stderr, /No CLIENT_ORIGIN configured/);
 });
 
 test("honors explicit environment variables (port, origins, log level)", async () => {
