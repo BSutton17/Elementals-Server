@@ -1,0 +1,90 @@
+import { computeStat } from "./modifiers.js";
+import type { GameState } from "../match/GameState.js";
+import type { PlayerState } from "../match/playerState.js";
+
+/**
+ * Reusable cooldown engine (ticket #46). Each ability's cooldown is tracked
+ * independently in a player's `cooldowns` map (remaining ticks). Any ability can
+ * be put on cooldown, queried, and every cooldown is advanced together each
+ * tick — with each ability decremented independently.
+ */
+
+/** Puts an ability on cooldown for `ticks`. A value ≤ 0 clears it (ready). */
+export function setCooldown(
+  player: PlayerState,
+  abilityId: string,
+  ticks: number,
+): void {
+  if (ticks <= 0) {
+    delete player.cooldowns[abilityId];
+    return;
+  }
+
+  // Apply cooldown modifiers via computeStat (ticket #107): the global
+  // "cooldown" stat, then the per-ability "cooldown:<id>" stat (Epic 10,
+  // e.g. Thundering Fate zeroing Zap's cooldown for a window).
+  let effectiveTicks = Math.round(
+    computeStat(player, `cooldown:${abilityId}`, computeStat(player, "cooldown", ticks)),
+  );
+
+  // Cooldown reduction immunity (ticket #107)
+  if (effectiveTicks < ticks) {
+    const isImmune = computeStat(player, "cooldownReductionImmune", 0) > 0;
+    if (isImmune) {
+      effectiveTicks = ticks;
+    }
+  }
+
+  if (effectiveTicks <= 0) {
+    delete player.cooldowns[abilityId];
+  } else {
+    player.cooldowns[abilityId] = effectiveTicks;
+  }
+}
+
+/** Remaining cooldown ticks for an ability (0 if ready). */
+export function getCooldown(player: PlayerState, abilityId: string): number {
+  return player.cooldowns[abilityId] ?? 0;
+}
+
+/** Whether an ability is off cooldown and usable. */
+export function isReady(player: PlayerState, abilityId: string): boolean {
+  return getCooldown(player, abilityId) <= 0;
+}
+
+/**
+ * Advances every player's ability cooldowns by one tick, decrementing each
+ * independently and clearing any that reach zero.
+ */
+export function tickCooldowns(state: GameState): void {
+  for (const player of state.getPlayers()) {
+    for (const abilityId of Object.keys(player.cooldowns)) {
+      const remaining = player.cooldowns[abilityId] - 1;
+      if (remaining <= 0) {
+        delete player.cooldowns[abilityId];
+      } else {
+        player.cooldowns[abilityId] = remaining;
+      }
+    }
+  }
+}
+
+/**
+ * Advances charge regeneration (Lightning Barrage, Epic 10). Each spent
+ * charge is an independent countdown in `player.recharges[abilityId]`; when
+ * a timer reaches zero that charge is available again.
+ */
+export function tickRecharges(state: GameState): void {
+  for (const player of state.getPlayers()) {
+    for (const abilityId of Object.keys(player.recharges)) {
+      const remaining = player.recharges[abilityId]!
+        .map((t) => t - 1)
+        .filter((t) => t > 0);
+      if (remaining.length === 0) {
+        delete player.recharges[abilityId];
+      } else {
+        player.recharges[abilityId] = remaining;
+      }
+    }
+  }
+}

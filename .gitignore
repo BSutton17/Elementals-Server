@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+
+# Internal balance-simulation tool (not part of the deployed game)
+simulation/
