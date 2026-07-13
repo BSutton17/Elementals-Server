@@ -49,9 +49,9 @@ test("income equals citizens × rate and accrues over many ticks", () => {
   const state = createGameState([player("a")], config);
   const a = state.getPlayer("a")!;
   for (let i = 0; i < 50; i++) applyPassiveIncome(state);
-  // 10 citizens × $0.0275 × 50 ticks = $13.75.
-  assert.equal(getBalance(a), 13.75);
-  assert.equal(a.economy.incomePerTick, 0.275);
+  // 10 citizens × $0.04 × 50 ticks = $20.
+  assert.equal(getBalance(a), 20);
+  assert.equal(a.economy.incomePerTick, 0.4);
 });
 
 test("a player with no citizens earns nothing", () => {
@@ -70,8 +70,8 @@ test("economies are independent across players", () => {
   const b = state.getPlayer("b")!;
   b.economy.citizens = 20;
   applyPassiveIncome(state);
-  assert.equal(a.economy.incomePerTick, 0.275); // 10 citizens
-  assert.equal(b.economy.incomePerTick, 0.55); // 20 citizens
+  assert.equal(a.economy.incomePerTick, 0.4); // 10 citizens
+  assert.equal(b.economy.incomePerTick, 0.8); // 20 citizens
 });
 
 // --- citizen purchasing + scaling ------------------------------------------
@@ -84,8 +84,8 @@ test("citizen cost follows the exact scaling sequence", () => {
     costs.push(citizenCost(a));
     buyCitizen(match, a);
   }
-  // base 10 × 1.15^n, rounded to whole dollars.
-  assert.deepEqual(costs, [10, 12, 13, 15, 17, 20]);
+  // base 10 × 1.10^n, rounded to whole dollars.
+  assert.deepEqual(costs, [10, 11, 12, 13, 15, 16]);
   assert.equal(a.economy.citizens, config.startingCitizens + 6);
 });
 
@@ -108,8 +108,8 @@ test("repair cost follows the exact scaling sequence", () => {
     costs.push(repairCost(a));
     repairCastle(match, a);
   }
-  // flat base $1000, × 1.25^n, rounded to whole dollars.
-  assert.deepEqual(costs, [1000, 1250, 1563]);
+  // flat base $500, × 1.25^n, rounded to whole dollars.
+  assert.deepEqual(costs, [500, 625, 781]);
 });
 
 test("repair only restores missing HP; the flat cost applies regardless", () => {
@@ -147,7 +147,7 @@ test("earn → spend → income all reconcile", () => {
   const afterBuy = getBalance(a);
   assert.equal(afterBuy, 100 - citizenPrice);
 
-  // Now 11 citizens → income is $0.3025/tick, exact at 4 decimals.
+  // Now 11 citizens → income is $0.44/tick, exact at 4 decimals.
   applyPassiveIncome(match.gameState!);
-  assert.equal(getBalance(a), afterBuy + 0.3025);
+  assert.equal(getBalance(a), afterBuy + 0.44);
 });

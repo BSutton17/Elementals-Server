@@ -41,6 +41,14 @@ export function tickMatch(match: Match, tick: number): boolean {
   const outcome = resolveWinner(state);
   if (outcome.ended) {
     match.end(outcome.winnerId);
+    // Gameplay event (#204): the match is over.
+    if (state.events.enabled) {
+      state.events.emit({
+        type: "matchEnded",
+        tick,
+        winnerId: outcome.winnerId,
+      });
+    }
     return true;
   }
   return false;

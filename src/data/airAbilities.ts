@@ -79,8 +79,8 @@ export const A_LIGHT_BREEZE: AbilityDefinition = {
   id: "aLightBreeze",
   name: "A Light Breeze",
   kind: "attack",
-  cost: 100,
-  cooldownTicks: 3 * TICK.RATE, // 3 s
+  cost: 125,
+  cooldownTicks: 5 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
@@ -121,14 +121,14 @@ export const HURRICANE: AbilityDefinition = {
   id: "hurricane",
   name: "Hurricane",
   kind: "attack",
-  cost: 250,
+  cost: 350,
   cooldownTicks: 10 * TICK.RATE, // 10 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
       type: "damage",
       target: "target",
-      params: { amount: 450, element: "air" },
+      params: { amount: 400, element: "air" },
     },
     {
       type: "status",
@@ -141,7 +141,7 @@ export const HURRICANE: AbilityDefinition = {
       level: 1,
       cost: 200,
       changes: {
-        effectParams: [{ amount: 550 }],
+        effectParams: [{ amount: 450 }],
       },
     },
     {
@@ -177,7 +177,7 @@ export const THICK_FOG: AbilityDefinition = {
   id: "thickFog",
   name: "Thick Fog",
   kind: "attack",
-  cost: 300,
+  cost: 400,
   cooldownTicks: 15 * TICK.RATE, // 15 s
   targeting: { mode: "singleEnemy" },
   maxConcurrentAffected: { statusId: "vision:fog", limit: 3 },
@@ -185,7 +185,7 @@ export const THICK_FOG: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 350, element: "air" },
+      params: { amount: 550, element: "air" },
     },
     {
       type: "vision",
@@ -198,7 +198,7 @@ export const THICK_FOG: AbilityDefinition = {
       level: 1,
       cost: 250,
       changes: {
-        effectParams: [{ amount: 450 }],
+        effectParams: [{ amount: 650 }],
       },
     },
     {

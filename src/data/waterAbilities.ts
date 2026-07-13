@@ -39,7 +39,7 @@ export const FLOODED_STATUS: StatusEffectDefinition = {
 };
 
 /** Healing per point of damage dealt to a Current-marked target (#85). */
-const CURRENT_LIFESTEAL = { ratio: 0.25, requiresTargetStatus: "current" };
+const CURRENT_LIFESTEAL = { ratio: 0.75, requiresTargetStatus: "current" };
 
 /** Water Ball (#82): basic Water attack. */
 export const WATER_BALL: AbilityDefinition = {
@@ -53,7 +53,7 @@ export const WATER_BALL: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 250, element: "water", lifesteal: CURRENT_LIFESTEAL },
+      params: { amount: 300, element: "water", lifesteal: CURRENT_LIFESTEAL },
     },
   ],
   upgradePath: [
@@ -61,7 +61,7 @@ export const WATER_BALL: AbilityDefinition = {
       level: 1,
       cost: 150,
       changes: {
-        effectParams: [{ amount: 300 }],
+        effectParams: [{ amount: 350 }],
       },
     },
     {
@@ -76,7 +76,7 @@ export const WATER_BALL: AbilityDefinition = {
       level: 3,
       cost: 400,
       changes: {
-        effectParams: [{ amount: 350 }],
+        effectParams: [{ amount: 400 }],
       },
     },
   ],
@@ -119,7 +119,7 @@ export const WATERFALL: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 450,
+      cost: 350,
       changes: {
         cooldownTicks: Math.round(10 * TICK.RATE * 0.9), // 9 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -127,7 +127,7 @@ export const WATERFALL: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 600,
+      cost: 400,
       changes: {
         effectParams: [
           { lifesteal: { ratio: 0.40, requiresTargetStatus: "current" } },
@@ -145,7 +145,7 @@ export const FLOOD: AbilityDefinition = {
   id: "flood",
   name: "Flood",
   kind: "attack",
-  cost: 400,
+  cost: 325,
   cooldownTicks: 20 * TICK.RATE, // 20 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -177,14 +177,14 @@ export const FLOOD: AbilityDefinition = {
     },
     {
       level: 2,
-      cost: 400,
+      cost: 300,
       changes: {
         effectParams: [null, { durationTicks: 7 * TICK.RATE }], // flooded duration 5s -> 7s
       },
     },
     {
       level: 3,
-      cost: 600,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(20 * TICK.RATE * 0.9), // 18 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -192,39 +192,60 @@ export const FLOOD: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 800,
+      cost: 500,
       changes: {
         // Lv5: increased healing from Flood — lifesteal ratio 25% -> 40%.
         effectParams: [
-          { lifesteal: { ratio: 0.40, requiresTargetStatus: "current" } },
+          { lifesteal: { ratio: 1.25, requiresTargetStatus: "current" } },
         ],
       },
     },
   ],
 };
 
-/** Fluid Assimilation (#89): utility — instantly restore 15% Castle HP. */
+/**
+ * Assimilated (#89 rework): the mark Fluid Assimilation puts on every other
+ * kingdom. Like Flooded, it bars the bearer from targeting the Water player
+ * who applied it (`blocksTargetingSource`) and severs an existing lock-on.
+ */
+export const ASSIMILATED_STATUS: StatusEffectDefinition = {
+  id: "assimilated",
+  name: "Assimilated",
+  category: "debuff",
+  stacking: "refresh",
+  blocksTargetingSource: true,
+};
+
+/**
+ * Fluid Assimilation (#89, reworked): utility — no enemy can attack Water for
+ * 10 seconds. Applies Assimilated to every living enemy; existing lock-ons
+ * onto Water are severed (same mechanism as Flood, ticket #88).
+ */
 export const FLUID_ASSIMILATION: AbilityDefinition = {
   id: "fluidAssimilation",
   name: "Fluid Assimilation",
   kind: "utility",
-  cost: 300,
+  cost: 250,
   cooldownTicks: 15 * TICK.RATE, // 15 s
-  targeting: { mode: "self" },
+  targeting: { mode: "allEnemies" },
   effects: [
-    { type: "heal", target: "self", params: { percentMaxHp: 0.15 } },
+    {
+      type: "status",
+      target: "target",
+      params: { status: ASSIMILATED_STATUS, durationTicks: 10 * TICK.RATE },
+    },
   ],
   upgradePath: [
     {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ percentMaxHp: 0.25 }],
+        effectParams: [{ durationTicks: 12 * TICK.RATE }], // protection 10s -> 12s
       },
     },
     {
       level: 2,
-      cost: 500,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(15 * TICK.RATE * 0.85), // 255 ticks (12.75 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -239,11 +260,11 @@ export const RIPTIDE: AbilityDefinition = {
   name: "Riptide",
   kind: "ultimate",
   cost: 1000,
-  cooldownTicks: 90 * TICK.RATE, // 90 s
+  cooldownTicks: 210 * TICK.RATE, // 210 s
   targeting: { mode: "self" },
   effects: [
     { type: "heal", target: "self", params: { percentMaxHp: 0.5 } },
-    { type: "economyModifier", target: "self", params: { citizensPercent: 0.2 } },
+    { type: "economyModifier", target: "self", params: { citizensPercent: 0.05 } },
   ],
   upgradePath: [
     {
@@ -252,7 +273,7 @@ export const RIPTIDE: AbilityDefinition = {
       changes: {
         effectParams: [
           { percentMaxHp: 0.70 },
-          { citizensPercent: 0.30 },
+          { citizensPercent: 0.1 },
         ],
       },
     },

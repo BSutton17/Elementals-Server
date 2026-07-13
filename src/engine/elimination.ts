@@ -61,6 +61,16 @@ export function processDeaths(match: Match): PlayerState[] {
   const state = match.gameState;
   if (!state) return [];
   const dead = detectDeaths(state);
-  for (const player of dead) eliminatePlayer(state, player, match.tick);
+  for (const player of dead) {
+    eliminatePlayer(state, player, match.tick);
+    // Gameplay event (#204): a kingdom has fallen.
+    if (state.events.enabled) {
+      state.events.emit({
+        type: "eliminated",
+        tick: match.tick,
+        playerId: player.id,
+      });
+    }
+  }
   return dead;
 }

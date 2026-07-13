@@ -104,7 +104,7 @@ test("extended match: greedy citizen buying keeps exact cost scaling and reconci
   const b = state.getPlayer("b")!;
 
   // Seed both equally so 'a' can start buying immediately; 'b' is the control —
-  // it never buys, so its income stays a flat $0.275/tick and its balance is exactly
+  // it never buys, so its income stays a flat $0.4/tick and its balance is exactly
   // predictable, catching any cross-player leakage in the economy.
   const ledgerA = makeLedger();
   const ledgerB = makeLedger();
@@ -151,14 +151,14 @@ test("extended match: greedy citizen buying keeps exact cost scaling and reconci
   // Purchases: citizen count and income reflect exactly what was bought.
   assert.equal(a.economy.citizens, 10 + citizenCostHistory.length);
   assert.equal(a.economy.citizensPurchased, citizenCostHistory.length);
-  assert.equal(a.economy.incomePerTick, roundMoney(a.economy.citizens * 0.0275));
+  assert.equal(a.economy.incomePerTick, roundMoney(a.economy.citizens * 0.04));
   assert.ok(a.economy.incomePerTick > b.economy.incomePerTick);
 
   // Reconciliation: engine balances match the independent ledgers to the penny.
   assert.equal(a.economy.currency, ledgerA.balance);
   assert.equal(b.economy.currency, ledgerB.balance);
-  // The control player: seed $4000 + $0.275/tick × 300 ticks, nothing spent.
-  assert.equal(b.economy.currency, 4000 + 82.5);
+  // The control player: seed $4000 + $0.4/tick × 300 ticks, nothing spent.
+  assert.equal(b.economy.currency, 4000 + 120);
 
   // Synchronization: the broadcast a client receives mirrors server truth.
   const sync = captureSync(match);
@@ -196,7 +196,7 @@ test("extended match: repairs scale geometrically and stop at the per-match cap"
     }
   }
 
-  // Scaling: flat $1000 base × growth^repairs, strictly rising, whole dollars.
+  // Scaling: flat $500 base × growth^repairs, strictly rising, whole dollars.
   repairCostHistory.forEach((cost, i) => {
     const expected = Math.round(
       CASTLE.REPAIR_COST * CASTLE.REPAIR_COST_GROWTH ** i,
@@ -204,7 +204,7 @@ test("extended match: repairs scale geometrically and stop at the per-match cap"
     assert.equal(cost, expected, `repair #${i} cost ${cost} ≠ ${expected}`);
     if (i > 0) assert.ok(cost > repairCostHistory[i - 1]);
   });
-  assert.deepEqual(repairCostHistory, [1000, 1250, 1563]);
+  assert.deepEqual(repairCostHistory, [500, 625, 781]);
   assert.equal(a.castle.repairs, CASTLE.MAX_REPAIRS);
 
   // The cap: a fourth repair is refused and the quoted next cost drops to 0.

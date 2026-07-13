@@ -46,6 +46,20 @@ export function buyCitizen(match: Match, player: PlayerState): TransactionResult
   player.economy.citizensPurchased += 1;
   // Citizen count changed — refresh income immediately (ticket #55).
   recalcIncome(player);
+
+  // Gameplay events (#204).
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "citizen", cost });
+    bus.emit({
+      type: "citizensChanged",
+      tick: match.tick,
+      playerId: player.id,
+      delta: 1,
+      total: player.economy.citizens,
+      cause: "purchase",
+    });
+  }
   return { ok: true };
 }
 
@@ -90,6 +104,13 @@ export function repairCastle(match: Match, player: PlayerState): TransactionResu
   spend(player, cost);
   player.castle.hp += repaired;
   player.castle.repairs += 1;
+
+  // Gameplay events (#204).
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "repair", cost });
+    bus.emit({ type: "heal", tick: match.tick, targetId: player.id, amount: repaired, overheal: param("castle.repairAmount", CASTLE.REPAIR_AMOUNT) - repaired, cause: "repair" });
+  }
   return { ok: true };
 }
 
@@ -111,7 +132,22 @@ export function buyShield(match: Match, player: PlayerState): TransactionResult 
   if (!validation.ok) return validation;
 
   spend(player, shieldCost);
-  player.castle.shield += param("shield.standardHp", SHIELD.STANDARD_HP);
+  const granted = param("shield.standardHp", SHIELD.STANDARD_HP);
+  player.castle.shield += granted;
+
+  // Gameplay events (#204).
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "shield", cost: shieldCost });
+    bus.emit({
+      type: "shieldGained",
+      tick: match.tick,
+      playerId: player.id,
+      amount: granted,
+      total: player.castle.shield,
+      cause: "purchase",
+    });
+  }
   return { ok: true };
 }
 
@@ -145,6 +181,19 @@ export function unlockOrUpgradeAbility(
 
     spend(player, unlockCost);
     player.unlocked[abilityId] = true;
+
+    // Gameplay event (#204).
+    const bus = match.gameState!.events;
+    if (bus.enabled) {
+      bus.emit({
+        type: "purchase",
+        tick: match.tick,
+        playerId: player.id,
+        kind: "unlock",
+        itemId: abilityId,
+        cost: unlockCost,
+      });
+    }
     return { ok: true, level: 1 };
   }
 

@@ -9,6 +9,7 @@ import { type EffectCondition } from "./conditions.js";
 import { addModifier, removeModifiersFromSource, computeStat } from "./modifiers.js";
 import { applyDamage } from "./combat.js";
 import { statusDurationMultiplier } from "./passives.js";
+import { param } from "./parameters.js";
 
 /**
  * Reusable status-effect framework (tickets #47, #76–#80): apply, update, and
@@ -284,6 +285,7 @@ export function hasStatus(player: PlayerState, statusId: string): boolean {
  * Returns the removed statuses so callers can run onExpire effects / emit events.
  */
 export function tickStatuses(state: GameState): RemovedStatus[] {
+  const bus = state.events;
   const removed: RemovedStatus[] = [];
   for (const player of state.getPlayers()) {
     pruneExhaustedStatuses(player);
@@ -298,6 +300,15 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
         removed.push({ playerId: player.id, status });
         expired.push(status);
         removeModifiersFromSource(player, statusModifierSource(status.id));
+        // Gameplay event (#204): the status ran out naturally.
+        if (bus.enabled) {
+          bus.emit({
+            type: "statusExpired",
+            tick: state.tick,
+            playerId: player.id,
+            statusId: status.id,
+          });
+        }
       }
     }
     player.statuses = kept;
@@ -307,10 +318,21 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
     // the follow-up isn't wiped with the expiring batch.
     for (const status of expired) {
       if (status.onExpireStatus) {
-        applyStatus(player, status.onExpireStatus.status, {
+        const inst = applyStatus(player, status.onExpireStatus.status, {
           sourceId: status.sourceId,
           durationTicks: status.onExpireStatus.durationTicks,
         });
+        if (bus.enabled) {
+          bus.emit({
+            type: "statusApplied",
+            tick: state.tick,
+            targetId: player.id,
+            sourceId: status.sourceId,
+            statusId: inst.id,
+            durationTicks: inst.remainingTicks,
+            stacks: inst.stacks,
+          });
+        }
       }
     }
   }
@@ -327,6 +349,7 @@ export function processStatusTicks(
   state: GameState,
   rng: () => number = Math.random,
 ): void {
+  const bus = state.events;
   for (const player of state.getPlayers()) {
     if (player.eliminated) continue;
     for (const status of player.statuses) {
@@ -334,9 +357,17 @@ export function processStatusTicks(
         if (effect.chance !== undefined && rng() >= effect.chance) {
           continue;
         }
-        const base = effect.perStack
+        const stacked = effect.perStack
           ? effect.amount * status.stacks
           : effect.amount;
+        // Balance knob (ticket #202): a DoT's per-tick DAMAGE is tunable through
+        // `status.<id>.tickDamage` (a multiplier, so all severity variants —
+        // e.g. weak/strong Poison — scale together and keep their ratio). Reads
+        // through on the null-set fast path, so the live game pays nothing.
+        const base =
+          effect.type === "damage"
+            ? stacked * param(`status.${status.id}.tickDamage`, 1)
+            : stacked;
         // DoT amplification (Epic 12): statuses on the bearer may amplify a
         // named DoT via "dotDamage:<statusId>" modifiers — e.g. Corroded
         // increasing Poison damage.
@@ -344,12 +375,50 @@ export function processStatusTicks(
           computeStat(player, `dotDamage:${status.id}`, base),
         );
         if (effect.type === "damage") {
-          applyDamage(player, amount, { ignoreShields: effect.ignoreShields });
+          const applied = applyDamage(player, amount, {
+            ignoreShields: effect.ignoreShields,
+          });
+          // Gameplay event (#204): DoT damage, attributed to its status.
+          if (bus.enabled) {
+            bus.emit({
+              type: "damage",
+              tick: state.tick,
+              sourceId: status.sourceId,
+              targetId: player.id,
+              amount: applied.absorbedByShield + applied.dealtToHp,
+              absorbedByShield: applied.absorbedByShield,
+              dealtToHp: applied.dealtToHp,
+              overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
+              crit: false,
+              cause: `status:${status.id}`,
+            });
+            if (applied.absorbedByShield > 0 && player.castle.shield <= 0) {
+              bus.emit({
+                type: "shieldDestroyed",
+                tick: state.tick,
+                playerId: player.id,
+                cause: `status:${status.id}`,
+              });
+            }
+          }
         } else {
+          const before = player.castle.hp;
+          const requested = Math.max(0, amount);
           player.castle.hp = Math.min(
             player.castle.maxHp,
-            player.castle.hp + Math.max(0, amount),
+            player.castle.hp + requested,
           );
+          const healed = player.castle.hp - before;
+          if (healed > 0 && bus.enabled) {
+            bus.emit({
+              type: "heal",
+              tick: state.tick,
+              targetId: player.id,
+              amount: healed,
+              overheal: requested - healed,
+              cause: `status:${status.id}`,
+            });
+          }
         }
       }
     }

@@ -20,11 +20,11 @@ export const BURN_STATUS: StatusEffectDefinition = {
   name: "Burn",
   category: "debuff",
   stacking: "stack",
-  maxStacks: 5,
+  maxStacks: 3,
   tickEffects: [
     {
       type: "damage",
-      amount: 20,
+      amount: 10,
       perStack: true,
     },
   ],
@@ -46,7 +46,7 @@ export const FIREBALL: AbilityDefinition = {
   id: "fireball",
   name: "Fireball",
   kind: "attack",
-  cost: 100,
+  cost: 125,
   cooldownTicks: 3 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   // A plain damage attack — Burn is applied only by Scorching Sun (guaranteed)
@@ -61,14 +61,14 @@ export const FIREBALL: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 150,
+      cost: 250,
       changes: {
-        effectParams: [{ amount: 350 }],
+        effectParams: [{ amount: 300 }],
       },
     },
     {
       level: 2,
-      cost: 250,
+      cost: 300,
       changes: {
         cooldownTicks: Math.round(3 * TICK.RATE * 0.9), // 54 ticks (2.7 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -76,9 +76,9 @@ export const FIREBALL: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 400,
+      cost: 350,
       changes: {
-        effectParams: [{ amount: 450 }],
+        effectParams: [{ amount: 350 }],
       },
     },
   ],
@@ -89,7 +89,7 @@ export const SCORCHING_SUN: AbilityDefinition = {
   id: "scorchingSun",
   name: "Scorching Sun",
   kind: "attack",
-  cost: 250,
+  cost: 300,
   cooldownTicks: 8 * TICK.RATE, // 8 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -97,9 +97,9 @@ export const SCORCHING_SUN: AbilityDefinition = {
       type: "damage",
       target: "target",
       params: {
-        amount: 450,
+        amount: 300,
         element: "fire",
-        bonusDamageIfTargetHasStatus: { statusId: "burn", extraAmount: 200 },
+        bonusDamageIfTargetHasStatus: { statusId: "burn", extraAmount: 100 },
       },
     },
     {
@@ -111,21 +111,21 @@ export const SCORCHING_SUN: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 200,
+      cost: 350,
       changes: {
-        effectParams: [{ amount: 550 }],
+        effectParams: [{ amount: 400 }],
       },
     },
     {
       level: 2,
-      cost: 300,
+      cost: 450,
       changes: {
         effectParams: [null, { durationTicks: 7 * TICK.RATE }], // burn duration 5s -> 7s (140 ticks)
       },
     },
     {
       level: 3,
-      cost: 450,
+      cost: 550,
       changes: {
         cooldownTicks: Math.round(8 * TICK.RATE * 0.9), // 144 ticks (7.2 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -148,14 +148,14 @@ export const FIRENADO: AbilityDefinition = {
   id: "firenado",
   name: "Firenado",
   kind: "attack",
-  cost: 400,
-  cooldownTicks: 12 * TICK.RATE, // 12 s
+  cost: 450,
+  cooldownTicks: 20 * TICK.RATE, // 12 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
       type: "damage",
       target: "target",
-      params: { amount: 800, element: "fire" },
+      params: { amount: 500, element: "fire" },
     },
     {
       type: "status",
@@ -169,19 +169,19 @@ export const FIRENADO: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ amount: 1000 }],
+        effectParams: [{ amount: 600 }],
       },
     },
     {
       level: 2,
-      cost: 450,
+      cost: 350,
       changes: {
         effectChances: [null, 0.75],
       },
     },
     {
       level: 3,
-      cost: 600,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(12 * TICK.RATE * 0.9), // 216 ticks (10.8 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -189,7 +189,7 @@ export const FIRENADO: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 800,
+      cost: 500,
       changes: {
         effectParams: [null, { durationTicks: 8 * TICK.RATE }], // burn duration 5s -> 8s (160 ticks)
       },
@@ -256,7 +256,7 @@ export const HEAT_WAVE: AbilityDefinition = {
   id: "heatWave",
   name: "Heat Wave",
   kind: "utility",
-  cost: 150,
+  cost: 100,
   cooldownTicks: 15 * TICK.RATE, // 15s
   targeting: { mode: "self" },
   effects: [
@@ -294,7 +294,7 @@ export const BLAZING_DETERMINATION_STATUS: StatusEffectDefinition = {
     {
       stat: "damage",
       op: "mult",
-      value: 2.50,
+      value: 2.25,
       usageLimit: 1,
     },
   ],
@@ -307,7 +307,7 @@ export const BLAZING_DETERMINATION_STATUS_LV2: StatusEffectDefinition = {
     {
       stat: "damage",
       op: "mult",
-      value: 2.75,
+      value: 2.5,
       usageLimit: 1,
     },
   ],
@@ -318,8 +318,8 @@ export const BLAZING_DETERMINATION: AbilityDefinition = {
   id: "blazingDetermination",
   name: "Blazing Determination",
   kind: "utility",
-  cost: 200,
-  cooldownTicks: 20 * TICK.RATE, // 20s
+  cost: 750,
+  cooldownTicks: 35 * TICK.RATE, // 30s
   targeting: { mode: "self" },
   effects: [
     {
@@ -331,14 +331,14 @@ export const BLAZING_DETERMINATION: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 250,
+      cost: 350,
       changes: {
         effectParams: [{ status: BLAZING_DETERMINATION_STATUS_LV2 }],
       },
     },
     {
       level: 2,
-      cost: 400,
+      cost: 450,
       changes: {
         cooldownTicks: 15 * TICK.RATE, // 15 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

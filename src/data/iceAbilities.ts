@@ -23,7 +23,7 @@ export const FROZEN_STATUS: StatusEffectDefinition = {
 };
 
 /** The standard Frozen duration (design: "cannot attack for 4 seconds"). */
-export const FROZEN_DURATION = 4 * TICK.RATE;
+export const FROZEN_DURATION = 5 * TICK.RATE;
 
 /** Frostbite: the bearer's production is slowed by 50% (Ice's retaliation). */
 export const FROSTBITE_STATUS: StatusEffectDefinition = {
@@ -63,14 +63,16 @@ export const FROZEN_STATUS_LV5: StatusEffectDefinition = {
   onExpireStatus: { status: FROSTBITE_STATUS, durationTicks: 3 * TICK.RATE }, // 3 s
 };
 
-/** Frozen Focus: the caster's next attacks (one per stack) have their
- *  chance-gated effects — Freeze, Chilling Retribution — guaranteed. */
-export const FROZEN_FOCUS_STATUS: StatusEffectDefinition = {
-  id: "frozenFocus",
-  name: "Frozen Focus",
+/** Snowman: while the temporary snowman stands, the player's income (gold per
+ *  second) is boosted by 50% (Ice's utility). */
+export const SNOWMAN_STATUS: StatusEffectDefinition = {
+  id: "snowman",
+  name: "Snowman",
   category: "buff",
-  stacking: "replace",
-  guaranteesChanceEffects: true,
+  stacking: "refresh",
+  modifiers: [
+    { stat: "income", op: "mult", value: 1.5 },
+  ],
 };
 
 /** Blizzard: the bearer cannot attack and produces nothing. */
@@ -97,7 +99,14 @@ export const ICICLE: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 250, element: "ice" },
+      // Ice attacks hit frozen targets harder — the reward for landing a freeze
+      // (a shattering blow on a frozen castle). Generic bonus-vs-status, same
+      // primitive as Fire's bonus to burning targets.
+      params: {
+        amount: 450,
+        element: "ice",
+        bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 350 },
+      },
     },
   ],
   upgradePath: [
@@ -105,7 +114,7 @@ export const ICICLE: AbilityDefinition = {
       level: 1,
       cost: 150,
       changes: {
-        effectParams: [{ amount: 300 }],
+        effectParams: [{ amount: 500 }],
       },
     },
     {
@@ -120,7 +129,7 @@ export const ICICLE: AbilityDefinition = {
       level: 3,
       cost: 400,
       changes: {
-        effectParams: [{ amount: 350 }],
+        effectParams: [{ amount: 550 }],
       },
     },
   ],
@@ -139,12 +148,16 @@ export const FLOOD_OF_FROST: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 450, element: "ice" },
+      params: {
+        amount: 650,
+        element: "ice",
+        bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 400 },
+      },
     },
     {
       type: "status",
       target: "target",
-      params: { status: CHILLING_RETRIBUTION_STATUS, durationTicks: 6 * TICK.RATE }, // 6 s
+      params: { status: CHILLING_RETRIBUTION_STATUS, durationTicks: 15 * TICK.RATE }, // 6 s
       chance: 0.35,
     },
   ],
@@ -153,14 +166,14 @@ export const FLOOD_OF_FROST: AbilityDefinition = {
       level: 1,
       cost: 200,
       changes: {
-        effectParams: [{ amount: 550 }],
+        effectParams: [{ amount: 750 }],
       },
     },
     {
       level: 2,
       cost: 300,
       changes: {
-        effectParams: [null, { durationTicks: 9 * TICK.RATE }], // 6 s -> 9 s
+        effectParams: [null, { durationTicks: 20 * TICK.RATE }], // 6 s -> 9 s
       },
     },
     {
@@ -193,7 +206,13 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 300, element: "ice" },
+      // Freeze to the Core applies Frozen itself (below), so this bonus only
+      // triggers when the target is ALREADY frozen (a re-freeze / follow-up).
+      params: {
+        amount: 750,
+        element: "ice",
+        bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 550 },
+      },
     },
     {
       type: "status",
@@ -206,14 +225,14 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ amount: 400 }],
+        effectParams: [{ amount: 850 }],
       },
     },
     {
       level: 2,
       cost: 450,
       changes: {
-        effectParams: [null, { durationTicks: 6 * TICK.RATE }], // freeze 4 s -> 6 s
+        effectParams: [null, { durationTicks: 10 * TICK.RATE }], // freeze 4 s -> 6 s
       },
     },
     {
@@ -226,7 +245,7 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 800,
+      cost: 700,
       changes: {
         // Thawing leaves production briefly reduced (Frostbite follows).
         effectParams: [null, { status: FROZEN_STATUS_LV5 }],
@@ -235,24 +254,20 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
   ],
 };
 
-/** Frozen Focus: Ice utility — your next two Ice attacks are guaranteed to
- *  Freeze or cause Chilling Retribution (their chance procs always land). */
-export const FROZEN_FOCUS: AbilityDefinition = {
-  id: "frozenFocus",
-  name: "Frozen Focus",
+/** Snowman: Ice utility — raise a temporary snowman that boosts the player's
+ *  income (gold per second) by 50% for 10 seconds. */
+export const SNOWMAN: AbilityDefinition = {
+  id: "snowman",
+  name: "Snowman",
   kind: "utility",
   cost: 200,
-  cooldownTicks: 25 * TICK.RATE, // 25 s
+  cooldownTicks: 60 * TICK.RATE, // 60 s
   targeting: { mode: "self" },
   effects: [
     {
       type: "status",
       target: "self",
-      params: {
-        status: FROZEN_FOCUS_STATUS,
-        durationTicks: 30 * TICK.RATE, // generous window; stacks gate usage
-        stacks: 2, // one per attack
-      },
+      params: { status: SNOWMAN_STATUS, durationTicks: 10 * TICK.RATE }, // 10 s
     },
   ],
   upgradePath: [
@@ -260,14 +275,14 @@ export const FROZEN_FOCUS: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ durationTicks: 45 * TICK.RATE }], // window 30 s -> 45 s
+        effectParams: [{ durationTicks: 13 * TICK.RATE }], // 10 s -> 13 s
       },
     },
     {
       level: 2,
       cost: 450,
       changes: {
-        cooldownTicks: Math.round(25 * TICK.RATE * 0.85), // 425 ticks (21.25 s)
+        cooldownTicks: Math.round(60 * TICK.RATE * 0.85), // 1020 ticks (51 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
       },
     },
@@ -280,7 +295,7 @@ export const BLIZZARD: AbilityDefinition = {
   id: "blizzard",
   name: "Blizzard",
   kind: "ultimate",
-  cost: 1000,
+  cost: 500,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [
@@ -293,14 +308,14 @@ export const BLIZZARD: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 800,
       changes: {
         effectParams: [{ durationTicks: 9 * TICK.RATE }], // 7 s -> 9 s
       },
     },
     {
       level: 2,
-      cost: 1500,
+      cost: 1000,
       changes: {
         cooldownTicks: Math.round(90 * TICK.RATE * 0.85), // 1530 ticks (76.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -314,6 +329,6 @@ export const ICE_ABILITIES: AbilityDefinition[] = [
   ICICLE,
   FLOOD_OF_FROST,
   FREEZE_TO_THE_CORE,
-  FROZEN_FOCUS,
+  SNOWMAN,
   BLIZZARD,
 ];

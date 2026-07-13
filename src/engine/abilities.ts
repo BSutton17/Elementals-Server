@@ -15,6 +15,7 @@ import {
 import { resolveDamage } from "./damage.js";
 import {
   canMultiTargetAttacks,
+  multiTargetLimit,
   attackRedirectChance,
   shieldOnDamageDealt,
   attackCooldownMultiplier,
@@ -414,8 +415,43 @@ export interface ActivateOptions {
  * Activates an ability through the shared pipeline (#72):
  *   validate ability → validate phase/actor → cooldown → funds → target →
  *   spend & start cooldown (#73) → apply effects → report.
+ *
+ * Thin wrapper over the pipeline that publishes a `castFailed` event (#204) on
+ * any rejection — telemetry consumers use it to measure wasted intents. The
+ * emission is fire-and-forget and guarded on `bus.enabled`, so it costs nothing
+ * for unmonitored matches and never affects gameplay.
  */
 export function activateAbility(
+  match: Match,
+  caster: PlayerState,
+  ability: AbilityDefinition,
+  options: ActivateOptions = {},
+): AbilityActivation {
+  const result = activateAbilityInner(match, caster, ability, options);
+  if (!result.ok) {
+    const bus = match.gameState?.events;
+    if (bus?.enabled) {
+      // Attribute a status-caused rejection to the responsible active status,
+      // generically: the only cast rejection a status produces is a crowd
+      // control that bars attacking, so report the caster's blocking status.
+      const statusId =
+        result.error === "ATTACKS_BLOCKED"
+          ? caster.statuses.find((s) => s.blocksAttacks)?.id
+          : undefined;
+      bus.emit({
+        type: "castFailed",
+        tick: match.tick,
+        casterId: caster.id,
+        abilityId: ability.id,
+        reason: result.error ?? "UNKNOWN",
+        statusId,
+      });
+    }
+  }
+  return result;
+}
+
+function activateAbilityInner(
   match: Match,
   caster: PlayerState,
   ability: AbilityDefinition,
@@ -524,7 +560,9 @@ export function activateAbility(
       const requestedIds =
         options.targetIds && options.targetIds.length > 0
           ? ability.kind === "attack" && canMultiTargetAttacks(caster)
-            ? [...new Set(options.targetIds)]
+            ? // Embrace of Winds cap: at most maxTargets kingdoms (3 base, 5
+              // upgraded) may be struck by one cast.
+              [...new Set(options.targetIds)].slice(0, multiTargetLimit(caster))
             : [options.targetIds[0]!]
           : [options.targetId ?? caster.target];
 
@@ -670,6 +708,14 @@ export function activateAbility(
   const duplicateCount = Math.max(1, Math.round(computeStat(caster, "duplicateAttackCount", 1)));
   const extraTargetsCount = Math.max(0, Math.round(computeStat(caster, "extraTargetsCount", 0)));
 
+  // Air's "Embrace of Winds" (Epic 8): a multi-target attack divides its
+  // damage evenly across the kingdoms it strikes — a re-cast on one kingdom is
+  // spread 1 (unchanged). Only the multi-target singleEnemy path can resolve
+  // more than one primary target, so every other attack keeps full damage.
+  // Non-damage effects (status, heal, …) still apply in full to each target.
+  const damageSpread =
+    effective.targeting.mode === "singleEnemy" ? Math.max(1, targets.length) : 1;
+
   for (let i = 0; i < duplicateCount; i++) {
     // Apply to each resolved target
     for (const target of targets) {
@@ -690,7 +736,7 @@ export function activateAbility(
           continue;
         }
         const recipient = effect.target === "self" ? caster : target;
-        applyEffect(match, effective.id, caster, target, recipient, effect, effectOptions, damage);
+        applyEffect(match, effective.id, caster, target, recipient, effect, effectOptions, damage, damageSpread);
       }
     }
 
@@ -724,7 +770,9 @@ export function activateAbility(
   return { ok: true, damage, targetId: targets[0]!.id };
 }
 
-/** Executes one effect primitive on its recipient. */
+/** Executes one effect primitive on its recipient. `damageSpread` divides a
+ *  damage effect's base amount across a multi-target attack's kingdoms (Air,
+ *  Epic 8); it defaults to 1 and only affects the `damage` effect type. */
 function applyEffect(
   match: Match,
   abilityId: string,
@@ -734,6 +782,7 @@ function applyEffect(
   effect: EffectDefinition,
   options: ActivateOptions,
   damage: DamageApplication[],
+  damageSpread = 1,
 ): void {
   // Check condition validations (ticket #101)
   if (effect.conditions) {
@@ -770,6 +819,7 @@ function applyEffect(
       amount: applied.absorbedByShield + applied.dealtToHp,
       absorbedByShield: applied.absorbedByShield,
       dealtToHp: applied.dealtToHp,
+      overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
       crit,
       element: p.element,
       cause,
@@ -797,7 +847,10 @@ function applyEffect(
   };
   switch (effect.type) {
     case "damage": {
-      let baseAmount = p.amount ?? 0;
+      // Multi-target attacks spread their listed damage evenly across the
+      // kingdoms struck (Air, Epic 8); a per-target conditional bonus applies
+      // in full to whoever qualifies. resolveDamage rounds the final figure.
+      let baseAmount = (p.amount ?? 0) / damageSpread;
       if (
         p.bonusDamageIfTargetHasStatus &&
         hasStatus(recipient, p.bonusDamageIfTargetHasStatus.statusId)
@@ -829,9 +882,10 @@ function applyEffect(
           hasStatus(recipient, steal.requiresTargetStatus))
       ) {
         const dealt = applied.absorbedByShield + applied.dealtToHp;
-        const healed = healCastle(caster, Math.round(dealt * steal.ratio));
+        const requested = Math.round(dealt * steal.ratio);
+        const healed = healCastle(caster, requested);
         if (healed > 0 && bus.enabled) {
-          bus.emit({ type: "heal", tick: match.tick, targetId: caster.id, amount: healed, cause: `lifesteal:${abilityId}` });
+          bus.emit({ type: "heal", tick: match.tick, targetId: caster.id, amount: healed, overheal: requested - healed, cause: `lifesteal:${abilityId}` });
         }
       }
 
@@ -918,9 +972,10 @@ function applyEffect(
       const pct = p.percentMaxHp
         ? recipient.castle.maxHp * p.percentMaxHp
         : 0;
-      const healed = healCastle(recipient, Math.round(flat + pct));
+      const requested = Math.round(flat + pct);
+      const healed = healCastle(recipient, requested);
       if (healed > 0 && bus.enabled) {
-        bus.emit({ type: "heal", tick: match.tick, targetId: recipient.id, amount: healed, cause: abilityId });
+        bus.emit({ type: "heal", tick: match.tick, targetId: recipient.id, amount: healed, overheal: requested - healed, cause: abilityId });
       }
       break;
     }

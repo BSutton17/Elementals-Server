@@ -48,14 +48,14 @@ function pond(): { match: Match; w: PlayerState; f: PlayerState; n: PlayerState 
 
 // --- #81: passives applied automatically by the engine -------------------------
 
-test("We're In This Together: water citizens produce $0.60/s vs the base $0.55/s", () => {
+test("We're In This Together: water citizens produce $0.90/s vs the base $0.80/s", () => {
   const { w, f } = pond();
-  // 10 citizens: water 10 × $0.03/tick = $0.3; Fire 10 × $0.0275 = $0.275.
-  assert.equal(computeIncome(w), 0.3);
-  assert.equal(computeIncome(f), 0.275);
+  // 10 citizens: water 10 × $0.045/tick = $0.45; Fire 10 × $0.04 = $0.4.
+  assert.equal(computeIncome(w), 0.45);
+  assert.equal(computeIncome(f), 0.4);
 
-  w.economy.citizens = 20; // flat per-citizen rate: 20 × 0.03
-  assert.equal(computeIncome(w), 0.6);
+  w.economy.citizens = 20; // flat per-citizen rate: 20 × 0.045
+  assert.equal(computeIncome(w), 0.9);
 });
 
 test("production passive flows through the real income phase", () => {
@@ -63,8 +63,8 @@ test("production passive flows through the real income phase", () => {
   const w0 = w.economy.currency;
   const f0 = f.economy.currency;
   applyPassiveIncome(match.gameState!);
-  assert.ok(Math.abs((w.economy.currency - w0) - 0.3) < 0.0001); // floating point tolerance
-  assert.ok(Math.abs((f.economy.currency - f0) - 0.275) < 0.0001); // floating point tolerance
+  assert.ok(Math.abs((w.economy.currency - w0) - 0.45) < 0.0001); // floating point tolerance
+  assert.ok(Math.abs((f.economy.currency - f0) - 0.4) < 0.0001); // floating point tolerance
 });
 
 test("Fountain of Youth: burn lasts 40% shorter on Water — and only on Water", () => {
@@ -215,34 +215,51 @@ test("the ban lifts when Flood expires", () => {
   assert.deepEqual(selectTarget(match, f, "w"), { ok: true });
 });
 
-// --- #89: Fluid Assimilation ---------------------------------------------------------
+// --- #89 (reworked): Fluid Assimilation -----------------------------------------------
 
-test("Fluid Assimilation restores exactly 15% of max HP", () => {
-  const { match, w } = pond();
-  w.castle.hp = 5000;
+test("Fluid Assimilation bars every enemy from targeting Water for 10 seconds", () => {
+  const { match, w, f, n } = pond();
+  match.tick = 1000; // clear of all switch cooldowns
   const r = activateAbility(match, w, FLUID_ASSIMILATION);
   assert.equal(r.ok, true);
-  assert.equal(w.castle.hp, 5000 + 1500); // 15% of 10,000
+  // Every living enemy is marked; Water itself is not.
+  assert.equal(hasStatus(f, "assimilated"), true);
+  assert.equal(hasStatus(n, "assimilated"), true);
+  assert.equal(hasStatus(w, "assimilated"), false);
+  // Neither enemy may target (and thus attack) Water; other targets stay valid.
+  assert.equal(selectTarget(match, f, "w").ok, false);
+  assert.equal(selectTarget(match, n, "w").ok, false);
+  assert.deepEqual(selectTarget(match, f, "n"), { ok: true });
 });
 
-test("Fluid Assimilation never heals above max HP", () => {
-  const { match, w } = pond();
-  w.castle.hp = 9500;
+test("Fluid Assimilation severs an existing lock-on onto Water", () => {
+  const { match, w, f } = pond();
+  match.tick = 1000;
+  assert.deepEqual(selectTarget(match, f, "w"), { ok: true });
+  assert.equal(f.target, "w");
   activateAbility(match, w, FLUID_ASSIMILATION);
-  assert.equal(w.castle.hp, 10_000); // capped, not 11,000
+  assert.equal(f.target, null); // lock broken the moment the mist rises
+});
+
+test("the Fluid Assimilation ban lifts after 10 seconds", () => {
+  const { match, w, f } = pond();
+  activateAbility(match, w, FLUID_ASSIMILATION);
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  assert.equal(hasStatus(f, "assimilated"), false);
+  assert.deepEqual(selectTarget(match, f, "w"), { ok: true });
 });
 
 // --- #90: Riptide ----------------------------------------------------------------------
 
-test("Riptide restores 50% max HP and grows citizens by 20%, refreshing income", () => {
+test("Riptide restores 50% max HP and grows citizens by 5%, refreshing income", () => {
   const { match, w } = pond();
   w.castle.hp = 2000;
   const r = activateAbility(match, w, RIPTIDE);
   assert.equal(r.ok, true);
   assert.equal(w.castle.hp, 2000 + 5000); // 50% of 10,000
-  assert.equal(w.economy.citizens, 12); // 10 × 1.2
-  // Income refreshed at once: 12 × $0.03 = $0.36.
-  assert.equal(w.economy.incomePerTick, 0.36);
+  assert.equal(w.economy.citizens, 11); // round(10 × 1.05)
+  // Income refreshed at once: 11 × $0.045 = $0.495.
+  assert.equal(w.economy.incomePerTick, 0.495);
 });
 
 test("Riptide healing is capped at max HP", () => {
@@ -354,15 +371,15 @@ test("Flood upgrades (Lv 1 -> 5) boost damage, lockout, cooldown, and increase h
   assert.equal(w.castle.hp, 8000 + 380); // 950 damage * 0.40 lifesteal
 });
 
-test("Fluid Assimilation upgrades (Lv 1 -> 3) increase healing and reduce cooldown", () => {
-  const { match, w } = pond();
-  
-  // Lv 2: Heal 15% -> 25% HP
+test("Fluid Assimilation upgrades (Lv 1 -> 3) extend the ban and reduce cooldown", () => {
+  const { match, w, f } = pond();
+
+  // Lv 2: protection 10 s -> 12 s.
   purchaseUpgrade(match, w, FLUID_ASSIMILATION);
-  w.castle.hp = 5000;
   let r = activateAbility(match, w, FLUID_ASSIMILATION);
   assert.equal(r.ok, true);
-  assert.equal(w.castle.hp, 5000 + 2500); // 25% of 10,000
+  const mark = f.statuses.find((s) => s.id === "assimilated")!;
+  assert.equal(mark.remainingTicks, 12 * TICK.RATE);
 
   // Lv 3: Reduce cooldown by 15% (15 s -> 12.75 s = 255 ticks)
   purchaseUpgrade(match, w, FLUID_ASSIMILATION);
@@ -375,14 +392,14 @@ test("Fluid Assimilation upgrades (Lv 1 -> 3) increase healing and reduce cooldo
 test("Riptide upgrades (Lv 1 -> 3) increase healing, citizen gain, and reduce cooldown", () => {
   const { match, w } = pond();
   
-  // Lv 2: Heal 50% -> 70% HP, citizen gain 20% -> 30%
+  // Lv 2: Heal 50% -> 70% HP, citizen gain 5% -> 10%
   purchaseUpgrade(match, w, RIPTIDE);
   w.castle.hp = 2000;
   w.economy.citizens = 10;
   let r = activateAbility(match, w, RIPTIDE);
   assert.equal(r.ok, true);
   assert.equal(w.castle.hp, 2000 + 7000); // 70%
-  assert.equal(w.economy.citizens, 13); // +30%
+  assert.equal(w.economy.citizens, 11); // round(10 × 1.1)
 
   // Lv 3: Reduce cooldown by 15% (90 s -> 76.5 s = 1530 ticks)
   purchaseUpgrade(match, w, RIPTIDE);

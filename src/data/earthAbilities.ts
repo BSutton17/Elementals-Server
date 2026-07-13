@@ -33,7 +33,7 @@ export const ROCK_THROW: AbilityDefinition = {
       level: 1,
       cost: 150,
       changes: {
-        effectParams: [{ amount: 300 }],
+        effectParams: [{ amount: 275 }],
       },
     },
     {
@@ -48,7 +48,7 @@ export const ROCK_THROW: AbilityDefinition = {
       level: 3,
       cost: 400,
       changes: {
-        effectParams: [{ amount: 350 }],
+        effectParams: [{ amount: 300 }],
       },
     },
   ],
@@ -58,7 +58,7 @@ export const ROCK_THROW: AbilityDefinition = {
 const meteorHit = (): EffectDefinition => ({
   type: "damage",
   target: "target",
-  params: { amount: 100, element: "earth", shieldDamageMultiplier: 1.5 },
+  params: { amount: 150, element: "earth", shieldDamageMultiplier: 1.5 },
 });
 
 /** Per-hit param override applied to all 5 meteors at once. */
@@ -72,7 +72,7 @@ export const METEOR_SHOWER: AbilityDefinition = {
   id: "meteorShower",
   name: "Meteor Shower",
   kind: "attack",
-  cost: 250,
+  cost: 225,
   cooldownTicks: 10 * TICK.RATE, // 10 s
   targeting: { mode: "singleEnemy" },
   effects: [meteorHit(), meteorHit(), meteorHit(), meteorHit(), meteorHit()],
@@ -81,19 +81,19 @@ export const METEOR_SHOWER: AbilityDefinition = {
       level: 1,
       cost: 200,
       changes: {
-        effectParams: allMeteors({ amount: 130 }), // 5 × 100 -> 5 × 130
+        effectParams: allMeteors({ amount: 200 }), // 5 × 150 -> 5 × 200
       },
     },
     {
       level: 2,
-      cost: 300,
+      cost: 250,
       changes: {
         effectParams: allMeteors({ shieldDamageMultiplier: 2.0 }), // 1.5 -> 2.0
       },
     },
     {
       level: 3,
-      cost: 450,
+      cost: 350,
       changes: {
         cooldownTicks: Math.round(10 * TICK.RATE * 0.9), // 9 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -101,7 +101,7 @@ export const METEOR_SHOWER: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 600,
+      cost: 500,
       changes: {
         // Excess shield damage carries over into Castle HP.
         effectParams: allMeteors({ shieldDamageOverflow: true }),
@@ -116,39 +116,39 @@ export const EARTHQUAKE: AbilityDefinition = {
   id: "earthquake",
   name: "Earthquake",
   kind: "attack",
-  cost: 400,
+  cost: 500,
   cooldownTicks: 20 * TICK.RATE, // 20 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
       type: "damage",
       target: "target",
-      params: { amount: 800, element: "earth" },
+      params: { amount: 750, element: "earth" },
     },
     {
       type: "damage",
       target: "otherEnemies", // aftershock splash
-      params: { amount: 200, element: "earth" },
+      params: { amount: 250, element: "earth" },
     },
   ],
   upgradePath: [
     {
       level: 1,
-      cost: 250,
+      cost: 500,
       changes: {
-        effectParams: [{ amount: 950 }],
+        effectParams: [{ amount: 800 }],
       },
     },
     {
       level: 2,
-      cost: 400,
+      cost: 600,
       changes: {
         effectParams: [null, { amount: 300 }], // aftershock 200 -> 300
       },
     },
     {
       level: 3,
-      cost: 600,
+      cost: 700,
       changes: {
         cooldownTicks: Math.round(20 * TICK.RATE * 0.9), // 18 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -175,7 +175,7 @@ export const NATURAL_TERRAIN_STATUS: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 0.5,
+      value: 0.25,
     },
   ],
 };

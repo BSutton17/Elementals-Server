@@ -57,11 +57,21 @@ export function isReady(player: PlayerState, abilityId: string): boolean {
  * independently and clearing any that reach zero.
  */
 export function tickCooldowns(state: GameState): void {
+  const bus = state.events;
   for (const player of state.getPlayers()) {
     for (const abilityId of Object.keys(player.cooldowns)) {
       const remaining = player.cooldowns[abilityId] - 1;
       if (remaining <= 0) {
         delete player.cooldowns[abilityId];
+        // Gameplay event (#204): the ability is ready again.
+        if (bus.enabled) {
+          bus.emit({
+            type: "cooldownReady",
+            tick: state.tick,
+            playerId: player.id,
+            abilityId,
+          });
+        }
       } else {
         player.cooldowns[abilityId] = remaining;
       }
@@ -75,15 +85,26 @@ export function tickCooldowns(state: GameState): void {
  * a timer reaches zero that charge is available again.
  */
 export function tickRecharges(state: GameState): void {
+  const bus = state.events;
   for (const player of state.getPlayers()) {
     for (const abilityId of Object.keys(player.recharges)) {
-      const remaining = player.recharges[abilityId]!
-        .map((t) => t - 1)
-        .filter((t) => t > 0);
+      const timers = player.recharges[abilityId]!;
+      const remaining = timers.map((t) => t - 1).filter((t) => t > 0);
+      const regenerated = timers.length - remaining.length;
       if (remaining.length === 0) {
         delete player.recharges[abilityId];
       } else {
         player.recharges[abilityId] = remaining;
+      }
+      // Gameplay event (#204): charges finished regenerating this tick.
+      if (regenerated > 0 && bus.enabled) {
+        bus.emit({
+          type: "chargeReady",
+          tick: state.tick,
+          playerId: player.id,
+          abilityId,
+          regenerated,
+        });
       }
     }
   }

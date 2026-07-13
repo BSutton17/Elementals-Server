@@ -16,7 +16,7 @@ import {
   ICICLE,
   FLOOD_OF_FROST,
   FREEZE_TO_THE_CORE,
-  FROZEN_FOCUS,
+  SNOWMAN,
   BLIZZARD,
 } from "../src/data/iceAbilities.js";
 
@@ -106,6 +106,26 @@ test("Frozen kingdoms cannot attack — utilities still work", () => {
   assert.equal(after.ok, true);
 });
 
+test("Ice attacks deal bonus damage to frozen targets", () => {
+  const { match, players } = tundra(["ice", "plains"]);
+  const [a, b] = players;
+
+  // Baseline: Icicle on an unfrozen target is plain Ice damage (no crit, no
+  // Cold Embrace proc at rng 0.99).
+  b.castle.hp = 10_000;
+  activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
+  assert.equal(b.castle.hp, 10_000 - 450);
+
+  // Freeze the target, then Icicle again — the frozen bonus (+150) is added.
+  a.cooldowns = {};
+  activateAbility(match, a, FREEZE_TO_THE_CORE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
+  assert.ok(getStatus(b, "frozen"));
+  b.castle.hp = 10_000;
+  a.cooldowns = {};
+  activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
+  assert.equal(b.castle.hp, 10_000 - 600); // 450 + 150 vs frozen
+});
+
 test("Frostbite: attackers risk having their production slowed by 50%", () => {
   const { match, players } = tundra(["ice", "plains"]);
   const [, b] = players;
@@ -119,7 +139,7 @@ test("Frostbite: attackers risk having their production slowed by 50%", () => {
   activateAbility(match, b, strike, { targetId: "p0", forceCrit: false, rng: () => 0.0 });
   assert.ok(getStatus(b, "frostbite"));
   recalcIncome(b);
-  assert.equal(b.economy.incomePerTick, 0.1375); // 10 citizens x $0.0275 = 0.275, halved
+  assert.equal(b.economy.incomePerTick, 0.2); // 10 citizens x $0.04 = 0.4, halved
 });
 
 // --- Flood of Frost -----------------------------------------------------------------
@@ -165,36 +185,34 @@ test("Freeze to the Core Lv5: thawing briefly slows the target's production", ()
   assert.ok(thaw);
   assert.equal(thaw.remainingTicks, 60); // 3 s
   recalcIncome(b);
-  assert.equal(b.economy.incomePerTick, 0.1375); // halved
+  assert.equal(b.economy.incomePerTick, 0.2); // halved
 });
 
-// --- Frozen Focus -------------------------------------------------------------------
+// --- Snowman ------------------------------------------------------------------------
 
-test("Frozen Focus guarantees the chance procs of the next two Ice attacks", () => {
+test("Snowman boosts income 50% for 10 s on a 60 s cooldown", () => {
   const { match, players } = tundra(["ice", "plains"]);
-  const [a, b] = players;
+  const [a] = players;
+  a.economy.citizens = 10;
+  recalcIncome(a);
+  assert.equal(a.economy.incomePerTick, 0.4); // 10 x $0.04/tick
 
-  activateAbility(match, a, FROZEN_FOCUS);
-  assert.equal(getStatus(a, "frozenFocus")!.stacks, 2);
+  earn(a, 1000);
+  const r = activateAbility(match, a, SNOWMAN);
+  assert.equal(r.ok, true);
+  const snowman = getStatus(a, "snowman");
+  assert.ok(snowman, "temporary snowman raised");
+  assert.equal(snowman!.remainingTicks, 200); // 10 s
+  assert.equal(a.cooldowns["snowman"], 1200); // 60 s
 
-  // Attack 1: the 10% Cold Embrace roll would fail at 0.99 — guaranteed anyway.
-  a.cooldowns = {};
-  activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.ok(getStatus(b, "frozen"));
-  assert.equal(getStatus(a, "frozenFocus")!.stacks, 1);
+  // Gold per second is multiplied by 1.5 while the snowman stands.
+  recalcIncome(a);
+  assert.equal(a.economy.incomePerTick, 0.6); // 0.4 x 1.5
 
-  // Attack 2: Flood of Frost's 35% retribution is guaranteed too; focus spent.
-  removeStatus(b, "frozen");
-  a.cooldowns = {};
-  activateAbility(match, a, FLOOD_OF_FROST, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.ok(getStatus(b, "chillingRetribution"));
-  assert.ok(!getStatus(a, "frozenFocus"));
-
-  // Attack 3: back to honest rolls — 0.99 procs nothing.
-  removeStatus(b, "frozen");
-  a.cooldowns = {};
-  activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.ok(!getStatus(b, "frozen"));
+  // When it melts, income returns to normal.
+  removeStatus(a, "snowman");
+  recalcIncome(a);
+  assert.equal(a.economy.incomePerTick, 0.4);
 });
 
 // --- Blizzard -----------------------------------------------------------------------
@@ -240,10 +258,10 @@ test("Ice upgrade tiers resolve their overrides", () => {
   assert.equal(fc.cooldownTicks, 360); // 18 s
   assert.ok(fc.effects[1].params.status?.onExpireStatus);
 
-  // Frozen Focus: Lv2 window duration, Lv3 CD.
-  const fo = resolveAbility(FROZEN_FOCUS, 2);
-  assert.equal(fo.effects[0].params.durationTicks, 900); // 45 s
-  assert.equal(fo.cooldownTicks, 425);
+  // Snowman: Lv2 income-buff duration (13 s), Lv3 CD reduction.
+  const sn = resolveAbility(SNOWMAN, 2);
+  assert.equal(sn.effects[0].params.durationTicks, 260); // 13 s
+  assert.equal(sn.cooldownTicks, 1020); // 60 s x 0.85 = 51 s
 
   // Blizzard: Lv2 duration, Lv3 CD.
   const bz = resolveAbility(BLIZZARD, 2);

@@ -31,7 +31,7 @@ export const POISON_STATUS: StatusEffectDefinition = {
   stackingWhileStatus: { statusId: "corroded", stacking: "stack" },
   maxStacks: 5,
   tickEffects: [
-    { type: "damage", amount: 10, perStack: true },
+    { type: "damage", amount: 3, perStack: true },
   ],
 };
 
@@ -39,7 +39,7 @@ export const POISON_STATUS: StatusEffectDefinition = {
 export const POISON_STATUS_STRONG: StatusEffectDefinition = {
   ...POISON_STATUS,
   tickEffects: [
-    { type: "damage", amount: 20, perStack: true },
+    { type: "damage", amount: 4, perStack: true },
   ],
 };
 
@@ -47,7 +47,7 @@ export const POISON_STATUS_STRONG: StatusEffectDefinition = {
 export const POISON_STATUS_TOXIC: StatusEffectDefinition = {
   ...POISON_STATUS,
   tickEffects: [
-    { type: "damage", amount: 20, perStack: true, ignoreShields: true },
+    { type: "damage", amount: 5, perStack: true, ignoreShields: true },
   ],
 };
 
@@ -111,7 +111,7 @@ export const SLUDGE: AbilityDefinition = {
   id: "sludge",
   name: "Sludge",
   kind: "attack",
-  cost: 100,
+  cost: 150,
   cooldownTicks: 3 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -129,7 +129,7 @@ export const SLUDGE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 150,
+      cost: 200,
       changes: {
         effectParams: [{ amount: 300 }],
       },
@@ -144,7 +144,7 @@ export const SLUDGE: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 400,
+      cost: 300,
       changes: {
         effectParams: [{ amount: 350 }],
       },
@@ -189,7 +189,7 @@ export const ACID_RAIN: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 450,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(10 * TICK.RATE * 0.9), // 9 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -197,7 +197,7 @@ export const ACID_RAIN: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 600,
+      cost: 500,
       changes: {
         effectParams: [null, { status: CORRODED_STATUS_LV5 }], // +25% -> +50%
       },
@@ -249,7 +249,7 @@ export const GASTRO_ACID: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 600,
+      cost: 500,
       changes: {
         cooldownTicks: Math.round(15 * TICK.RATE * 0.9), // 270 ticks (13.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -257,7 +257,7 @@ export const GASTRO_ACID: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 800,
+      cost: 700,
       changes: {
         effectParams: [null, { durationTicks: 7 * TICK.RATE }, null], // 5 s -> 7 s
       },
@@ -284,14 +284,14 @@ export const POISON_APPLE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 300,
+      cost: 250,
       changes: {
         effectParams: [{ status: POISON_APPLE_STATUS_LV2 }], // poison 5 s -> 7 s
       },
     },
     {
       level: 2,
-      cost: 450,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(25 * TICK.RATE * 0.85), // 425 ticks (21.25 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

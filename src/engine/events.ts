@@ -36,6 +36,9 @@ export type GameplayEvent =
       amount: number;
       absorbedByShield: number;
       dealtToHp: number;
+      /** Damage that could not land because the target was already at 0 HP
+       *  (or the hit exceeded remaining HP) — the "wasted" portion. */
+      overkill: number;
       crit: boolean;
       element?: string;
       cause: EventCause;
@@ -44,7 +47,10 @@ export type GameplayEvent =
       type: "heal";
       tick: number;
       targetId: string;
+      /** HP actually restored (effective healing). */
       amount: number;
+      /** Requested healing that was wasted because the castle was near full. */
+      overheal: number;
       cause: EventCause;
     }
   | {
@@ -92,14 +98,29 @@ export type GameplayEvent =
       amount: number;
       cause: EventCause;
     }
+  | {
+      type: "castFailed";
+      tick: number;
+      casterId: string;
+      abilityId: string;
+      /** The engine rejection reason (ON_COOLDOWN, INSUFFICIENT_FUNDS, …). */
+      reason: string;
+      /** When the rejection was caused by an active status on the caster (e.g.
+       *  a crowd-control status barring attacks), the id of that status —
+       *  populated generically from the caster's active statuses, never by
+       *  naming a specific one. Absent for non-status rejections. */
+      statusId?: string;
+    }
   | { type: "eliminated"; tick: number; playerId: string }
+  | { type: "targetChanged"; tick: number; playerId: string; targetId: string }
   | { type: "cooldownReady"; tick: number; playerId: string; abilityId: string }
   | {
       type: "chargeReady";
       tick: number;
       playerId: string;
       abilityId: string;
-      available: number;
+      /** How many charges finished regenerating on this tick. */
+      regenerated: number;
     }
   | { type: "matchEnded"; tick: number; winnerId: string | null }
   /** Reserved for the projectile system (GAME_TICK.md §5); no emitter yet. */

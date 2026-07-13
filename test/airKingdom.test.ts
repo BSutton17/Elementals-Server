@@ -63,10 +63,33 @@ test("Embrace of Winds: Air attacks may hit multiple explicit targets for one co
     forceCrit: false,
   });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
-  assert.equal(c.castle.hp, c.castle.maxHp - 250);
+  // Damage spreads evenly across the two kingdoms struck: 250 / 2 = 125 each.
+  assert.equal(b.castle.hp, b.castle.maxHp - 125);
+  assert.equal(c.castle.hp, c.castle.maxHp - 125);
   assert.equal(a.economy.currency, before - 100); // cost paid once
   assert.equal(a.cooldowns["aLightBreeze"], 60); // cooldown armed once
+});
+
+test("Embrace of Winds: a single target takes full damage (spread of 1)", () => {
+  const { match, players } = skies(["air", "plains"]);
+  const [a, b] = players;
+
+  activateAbility(match, a, A_LIGHT_BREEZE, { targetIds: ["p1"], forceCrit: false });
+  assert.equal(b.castle.hp, b.castle.maxHp - 250); // no spread with one target
+});
+
+test("Embrace of Winds: damage divides evenly and rounds across three targets", () => {
+  const { match, players } = skies(["air", "plains", "water", "nature"]);
+  const [a, b, c, d] = players;
+
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2", "p3"],
+    forceCrit: false,
+  });
+  // 250 / 3 = 83.33… → resolveDamage rounds each hit to 83.
+  assert.equal(b.castle.hp, b.castle.maxHp - 83);
+  assert.equal(c.castle.hp, c.castle.maxHp - 83);
+  assert.equal(d.castle.hp, d.castle.maxHp - 83);
 });
 
 test("Embrace of Winds: duplicate target ids collapse to one hit", () => {
@@ -78,6 +101,22 @@ test("Embrace of Winds: duplicate target ids collapse to one hit", () => {
     forceCrit: false,
   });
   assert.equal(b.castle.hp, b.castle.maxHp - 250);
+});
+
+test("Embrace of Winds: an attack strikes at most maxTargets kingdoms (cap 3)", () => {
+  const { match, players } = skies(["air", "plains", "water", "nature", "fire"]);
+  const [, b, c, d, e] = players;
+
+  // Five explicit ids, but the base cap is 3: only the first three resolve, and
+  // the spread divides by the capped count (3), not the requested 5.
+  activateAbility(match, players[0], A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2", "p3", "p4"],
+    forceCrit: false,
+  });
+  assert.equal(b.castle.hp, b.castle.maxHp - 83); // 250 / 3 -> 83
+  assert.equal(c.castle.hp, c.castle.maxHp - 83);
+  assert.equal(d.castle.hp, d.castle.maxHp - 83);
+  assert.equal(e.castle.hp, e.castle.maxHp); // 4th target beyond the cap — untouched
 });
 
 test("Non-Air kingdoms cannot multi-target: only the first id is used", () => {

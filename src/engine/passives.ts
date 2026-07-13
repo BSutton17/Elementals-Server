@@ -44,7 +44,7 @@ export function productionMultiplier(player: PlayerState): number {
 }
 
 /** Per-citizen income rate override (per tick), or null to use the base rate
- *  (Water's "We're In This Together": $0.60/s per citizen vs base $0.55/s). */
+ *  (Water's "We're In This Together": $0.90/s per citizen vs base $0.80/s). */
 export function incomeRatePerCitizen(player: PlayerState): number | null {
   for (const p of kingdomPassives(player)) {
     if (p.type === "incomePerCitizen") return p.amount;
@@ -127,6 +127,17 @@ export function shieldDamageMultiplier(
  *  (Air's "Embrace of Winds", Epic 8). */
 export function canMultiTargetAttacks(player: PlayerState): boolean {
   return kingdomPassives(player).some((p) => p.type === "multiTargetAttacks");
+}
+
+/** Maximum enemies one of this player's attacks may strike at once (Air's
+ *  "Embrace of Winds": 3 base, 5 upgraded). 1 for kingdoms without the passive.
+ *  Tunable through the passive's maxTargets field (kingdomPassives applies the
+ *  active parameter set). */
+export function multiTargetLimit(player: PlayerState): number {
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "multiTargetAttacks") return Math.max(1, Math.round(p.maxTargets));
+  }
+  return 1;
 }
 
 /** Chance (0–1) that an attack on this player is redirected to another

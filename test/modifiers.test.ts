@@ -80,8 +80,8 @@ test("removeModifiersFromSource clears everything from a source", () => {
 test("an income modifier boosts passive income", () => {
   const state = createGameState([player("a")], config);
   const a = state.getPlayer("a")!;
-  // Base income is 10 citizens * 0.0275 = 0.275; a +1.0 modifier makes it 1.275.
+  // Base income is 10 citizens * 0.04 = 0.4; a +1.0 modifier makes it 1.4.
   addModifier(a, mod({ id: "boon", stat: "income", op: "add", value: 1 }));
   applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 1.275);
+  assert.equal(a.economy.currency, 1.4);
 })

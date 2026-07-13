@@ -81,7 +81,8 @@ export function selectTarget(
 
   // Changing to a different target is gated by the anti-spam switch cooldown.
   // Re-selecting the current target is a no-op and never triggers it.
-  if (targetId !== player.target) {
+  const changed = targetId !== player.target;
+  if (changed) {
     if (match.tick < player.targetSwitchReadyTick) {
       return { ok: false, error: "TARGET_ON_COOLDOWN" };
     }
@@ -90,5 +91,16 @@ export function selectTarget(
   }
 
   player.target = targetId;
+
+  // Gameplay event (#204/#207): an accepted target change.
+  const bus = match.gameState?.events;
+  if (changed && bus?.enabled) {
+    bus.emit({
+      type: "targetChanged",
+      tick: match.tick,
+      playerId: player.id,
+      targetId,
+    });
+  }
   return { ok: true };
 }

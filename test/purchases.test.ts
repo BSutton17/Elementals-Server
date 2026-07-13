@@ -75,13 +75,13 @@ test("buying a citizen fails without enough money and changes nothing", () => {
 
 test("repairing the castle restores HP for money, capped at max", () => {
   const { match, a } = activeMatch();
-  a.castle.hp = a.castle.maxHp - 1000; // 1000 missing
+  a.castle.hp = a.castle.maxHp - 2000; // 2000 missing
   earn(a, 2000);
 
   const result = repairCastle(match, a);
   assert.equal(result.ok, true);
-  // Repairs REPAIR_AMOUNT (500) HP for the flat base cost ($1000).
-  assert.equal(a.castle.hp, a.castle.maxHp - 500);
+  // Repairs REPAIR_AMOUNT (1000) HP for the flat base cost ($500).
+  assert.equal(a.castle.hp, a.castle.maxHp - 1000);
   assert.equal(a.economy.currency, 2000 - CASTLE.REPAIR_COST);
 });
 
@@ -100,13 +100,13 @@ test("repairs are capped at MAX_REPAIRS per match; ability healing is not", () =
   a.castle.hp = a.castle.maxHp - 5000;
   earn(a, 100_000);
 
-  // Spend all 3 repairs: 1000, 1250, 1563.
+  // Spend all 3 repairs: 500, 625, 781.
   const costs: number[] = [];
   for (let i = 0; i < CASTLE.MAX_REPAIRS; i++) {
     costs.push(repairCost(a));
     assert.equal(repairCastle(match, a).ok, true);
   }
-  assert.deepEqual(costs, [1000, 1250, 1563]);
+  assert.deepEqual(costs, [500, 625, 781]);
   assert.equal(a.castle.repairs, 3);
 
   // The 4th is refused outright, and the quoted price drops to 0.

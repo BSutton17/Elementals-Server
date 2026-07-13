@@ -9,6 +9,7 @@ import {
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
 import { KINGDOM_PASSIVES } from "../data/kingdoms.js";
 import type { AbilityDefinition } from "./abilities.js";
+import type { StatusEffectDefinition } from "./status.js";
 
 /**
  * Parameter catalog (ticket #202): enumerates every tunable gameplay value —
@@ -108,5 +109,39 @@ export function listParameters(): ParameterDescriptor[] {
     });
   }
 
+  // Damage-over-time knobs: one tunable multiplier per status that ticks for
+  // damage (Burn, Poison, …). A multiplier (default 1) so severity variants
+  // that share a status id scale together. Reads through in status.ts.
+  for (const id of statusesWithDoT()) {
+    add(`status.${id}.tickDamage`, 1);
+  }
+
   return out;
+}
+
+/** Ids of every status reachable from the ability/passive data that ticks for
+ *  damage — the DoTs a designer can scale. Deduped by id (variants share it). */
+function statusesWithDoT(): string[] {
+  const seen = new Map<string, boolean>(); // id → has a damaging tickEffect
+  const visit = (s: StatusEffectDefinition | undefined): void => {
+    if (!s) return;
+    const damages = (s.tickEffects ?? []).some((t) => t.type === "damage");
+    // A variant with a DoT wins; never downgrade an already-flagged id.
+    seen.set(s.id, (seen.get(s.id) ?? false) || damages);
+    visit(s.onExpireStatus?.status);
+    visit(s.onHitRetaliate?.status);
+  };
+  for (const ability of Object.values(ALL_ABILITIES)) {
+    for (const effect of ability.effects) visit(effect.params.status);
+    for (const tier of ability.upgradePath ?? []) {
+      for (const ep of tier.changes.effectParams ?? []) visit(ep?.status ?? undefined);
+      for (const ae of tier.changes.addEffects ?? []) visit(ae.params.status);
+    }
+  }
+  for (const passives of Object.values(KINGDOM_PASSIVES)) {
+    for (const p of passives) {
+      if ("status" in p) visit(p.status as StatusEffectDefinition);
+    }
+  }
+  return [...seen.entries()].filter(([, dot]) => dot).map(([id]) => id).sort();
 }

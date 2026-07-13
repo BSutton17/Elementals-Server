@@ -39,6 +39,9 @@ export function computeStat(
   opponent?: PlayerState,
   role: "caster" | "target" = "target",
   element?: string,
+  // When false, do not spend usage-limited modifiers — for speculative reads
+  // (e.g. the sim AI estimating a hit) that must not mutate game state.
+  consume = true,
 ): number {
   let flat = base;
   let multiplier = 1;
@@ -59,7 +62,7 @@ export function computeStat(
     else multiplier *= m.value;
 
     // Handle usage limits (ticket #103)
-    if (m.usageLimit !== undefined) {
+    if (consume && m.usageLimit !== undefined) {
       m.usageLimit -= 1;
       if (m.usageLimit <= 0) {
         expiredIds.push(m.id);

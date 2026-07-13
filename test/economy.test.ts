@@ -22,27 +22,27 @@ const player = (id: string): MatchPlayer => ({
   connected: true,
 });
 
-test("awards $0.55 per citizen per second (0.0275 per tick at 20 ticks/sec)", () => {
+test("awards $0.80 per citizen per second (0.04 per tick at 20 ticks/sec)", () => {
   const state = createGameState([player("a")], config);
   const a = state.getPlayer("a")!;
   assert.equal(a.economy.citizens, 10);
 
   applyPassiveIncome(state);
-  assert.equal(a.economy.incomePerTick, 0.275); // 10 * 0.0275
-  assert.equal(a.economy.currency, 0.275);
+  assert.equal(a.economy.incomePerTick, 0.4); // 10 * 0.04
+  assert.equal(a.economy.currency, 0.4);
 
   applyPassiveIncome(state);
   applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 0.825); // three ticks: 0.275 * 3
+  assert.equal(a.economy.currency, 1.2); // three ticks: 0.4 * 3
 });
 
 test("income scales with citizen count and stays precise", () => {
   const state = createGameState([player("a")], config);
   const a = state.getPlayer("a")!;
-  a.economy.citizens = 7; // 7 * 0.0275 = 0.1925 per tick, exact at 4 decimals
+  a.economy.citizens = 7; // 7 * 0.04 = 0.28 per tick, exact at 4 decimals
 
   for (let i = 0; i < 3; i++) applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 0.5775); // 0.1925 * 3
+  assert.equal(a.economy.currency, 0.84); // 0.28 * 3
 });
 
 test("eliminated players earn nothing", () => {

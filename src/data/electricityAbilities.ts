@@ -50,7 +50,7 @@ export const ZAP: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 400,
+      cost: 300,
       changes: {
         effectParams: [{ amount: 350 }],
       },
@@ -72,15 +72,15 @@ export const LIGHTNING_BARRAGE: AbilityDefinition = {
   id: "lightningBarrage",
   name: "Lightning Barrage",
   kind: "attack",
-  cost: 85, // per charge — the pipeline recomputes from charges spent
-  unlockCost: 125,
+  cost: 80, // per charge — the pipeline recomputes from charges spent
+  unlockCost: 100,
   cooldownTicks: 0, // paced by charge regeneration, not an ability cooldown
   targeting: { mode: "singleEnemy" },
   chargeSystem: {
     max: 3,
     rechargeTicks: 3 * TICK.RATE, // 3 s per charge, staggered
-    costPerCharge: 85,
-    damageByCharges: [200, 410, 650],
+    costPerCharge: 80,
+    damageByCharges: [230, 475, 800],
   },
   effects: [
     {
@@ -109,14 +109,14 @@ export const LIGHTNING_BARRAGE: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 450,
+      cost: 400,
       changes: {
         effectParams: [{ amount: 200 }], // +200 flat damage at any charge count
       },
     },
     {
       level: 4,
-      cost: 600,
+      cost: 500,
       changes: {
         chargeSystem: { rechargeTicks: 2 * TICK.RATE }, // 2.5 s -> 2 s
       },
@@ -138,7 +138,7 @@ export const THUNDERDOME_STATUS: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 1.25,
+      value: 2,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -154,7 +154,7 @@ export const THUNDERDOME_STATUS_LV5: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 1.4,
+      value: 2.5,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -169,7 +169,7 @@ export const THUNDERDOME: AbilityDefinition = {
   id: "thunderdome",
   name: "Thunderdome",
   kind: "attack",
-  cost: 300,
+  cost: 350,
   cooldownTicks: 15 * TICK.RATE, // 15 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -194,14 +194,14 @@ export const THUNDERDOME: AbilityDefinition = {
     },
     {
       level: 2,
-      cost: 400,
+      cost: 300,
       changes: {
         effectParams: [null, { durationTicks: 12 * TICK.RATE }], // 8 s -> 12 s
       },
     },
     {
       level: 3,
-      cost: 600,
+      cost: 400,
       changes: {
         cooldownTicks: Math.round(15 * TICK.RATE * 0.9), // 270 ticks (13.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -209,7 +209,7 @@ export const THUNDERDOME: AbilityDefinition = {
     },
     {
       level: 4,
-      cost: 800,
+      cost: 600,
       changes: {
         effectParams: [null, { status: THUNDERDOME_STATUS_LV5 }], // x1.25 -> x1.4
       },
@@ -241,7 +241,7 @@ export const HACK: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 400,
+      cost: 300,
       changes: {
         effectParams: [
           { resourceTransfer: { type: "currency", percent: 0.15 } },
@@ -251,7 +251,7 @@ export const HACK: AbilityDefinition = {
     },
     {
       level: 2,
-      cost: 600,
+      cost: 500,
       changes: {
         cooldownTicks: Math.round(25 * TICK.RATE * 0.85), // 425 ticks (21.25 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -271,7 +271,7 @@ export const THUNDERING_FATE_STATUS: StatusEffectDefinition = {
     // Per-ability cooldown stat (cooldowns.ts): x0 while the status lasts.
     { stat: "cooldown:zap", op: "mult", value: 0 },
     // Per-ability price stat (activation pipeline): Zap costs a quarter.
-    { stat: "abilityCost:zap", op: "mult", value: 0.25 },
+    { stat: "abilityCost:zap", op: "mult", value: 0.15 },
   ],
 };
 
@@ -281,8 +281,8 @@ export const THUNDERING_FATE: AbilityDefinition = {
   id: "thunderingFate",
   name: "Thundering Fate",
   kind: "ultimate",
-  cost: 1000,
-  cooldownTicks: 90 * TICK.RATE, // 90 s
+  cost: 600,
+  cooldownTicks: 60 * TICK.RATE, // 60 s
   targeting: { mode: "self" },
   effects: [
     {
@@ -301,14 +301,14 @@ export const THUNDERING_FATE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 800,
       changes: {
         effectParams: [null, { durationTicks: 12 * TICK.RATE }], // 10 s -> 12 s
       },
     },
     {
       level: 2,
-      cost: 1500,
+      cost: 1000,
       changes: {
         cooldownTicks: Math.round(90 * TICK.RATE * 0.85), // 1530 ticks (76.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

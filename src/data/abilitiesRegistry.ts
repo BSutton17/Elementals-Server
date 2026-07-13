@@ -3,7 +3,7 @@ import { FIREBALL, SCORCHING_SUN, FIRENADO, HEAT_WAVE, BLAZING_DETERMINATION } f
 import { A_LIGHT_BREEZE, HURRICANE, THICK_FOG, BIRDS_EYE_VIEW, DUST_BUNNIES } from "./airAbilities.js";
 import { ROCK_THROW, METEOR_SHOWER, EARTHQUAKE, NATURAL_TERRAIN, BRICK_WALL } from "./earthAbilities.js";
 import { ZAP, LIGHTNING_BARRAGE, THUNDERDOME, HACK, THUNDERING_FATE } from "./electricityAbilities.js";
-import { ICICLE, FLOOD_OF_FROST, FREEZE_TO_THE_CORE, FROZEN_FOCUS, BLIZZARD } from "./iceAbilities.js";
+import { ICICLE, FLOOD_OF_FROST, FREEZE_TO_THE_CORE, SNOWMAN, BLIZZARD } from "./iceAbilities.js";
 import { SLUDGE, ACID_RAIN, GASTRO_ACID, POISON_APPLE, TOXIC_GAS } from "./natureAbilities.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
@@ -36,7 +36,7 @@ export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   icicle: ICICLE,
   floodOfFrost: FLOOD_OF_FROST,
   freezeToTheCore: FREEZE_TO_THE_CORE,
-  frozenFocus: FROZEN_FOCUS,
+  snowman: SNOWMAN,
   blizzard: BLIZZARD,
   sludge: SLUDGE,
   acidRain: ACID_RAIN,

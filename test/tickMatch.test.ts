@@ -41,7 +41,7 @@ test("tickMatch advances the tick and runs all phases", () => {
 
   assert.equal(match.tick, 1);
   assert.equal(state.tick, 1);
-  assert.equal(a.economy.currency, 0.275); // income: 10 citizens * 0.0275
+  assert.equal(a.economy.currency, 0.4); // income: 10 citizens * 0.04
   assert.equal(a.cooldowns.fireball, 1); // cooldown decremented
   assert.equal(a.statuses.length, 0); // burn expired (1 → 0)
 });

@@ -17,18 +17,17 @@ export const CASTLE = {
   /** Starting Castle HP for every player. */
   STARTING_HP: 10_000,
   /** Maximum HP restored by a single repair action. */
-  REPAIR_AMOUNT: 500,
+  REPAIR_AMOUNT: 1000,
   /** Flat base cost of a repair (before growth scaling). */
-  REPAIR_COST: 1000,
+  REPAIR_COST: 500,
   /**
    * Multiplicative cost growth per repair already purchased, so repeated
-   * repairs get progressively more expensive (1000 → 1250 → 1563).
+   * repairs get progressively more expensive (500 → 625 → 781).
    */
   REPAIR_COST_GROWTH: 1.25,
   /**
-   * Hard cap on purchased repairs per match. Ability-based healing (Fluid
-   * Assimilation, Riptide, lifesteal, …) is NOT limited — only the shop's
-   * repair button.
+   * Hard cap on purchased repairs per match. Ability-based healing (Riptide,
+   * lifesteal, …) is NOT limited — only the shop's repair button.
    */
   MAX_REPAIRS: 3,
 } as const;
@@ -41,8 +40,8 @@ export const CITIZENS = {
 
 /** Economy tuning. */
 export const ECONOMY = {
-  /** Money awarded per citizen, per tick (0.0275 per tick = 0.55 per second at 20 ticks/sec). */
-  INCOME_PER_CITIZEN: 0.0275,
+  /** Money awarded per citizen, per tick (0.05 per tick = 1.00 per second at 20 ticks/sec). */
+  INCOME_PER_CITIZEN: 0.06,
   /** Base cost of the first purchased citizen. */
   CITIZEN_COST: 10,
   /**
@@ -50,7 +49,7 @@ export const ECONOMY = {
    * costs more (progressive scaling): cost = CITIZEN_COST × GROWTH^purchased,
    * rounded to whole dollars.
    */
-  CITIZEN_COST_GROWTH: 1.15,
+  CITIZEN_COST_GROWTH: 1.10,
 } as const;
 
 /** Combat defaults shared by all abilities unless overridden by ability data. */

@@ -110,7 +110,7 @@ test("dispelling a status removes its modifiers and restores the stat", () => {
   assert.equal(removeStatus(a, "frozenProduction"), true);
   assert.equal(a.modifiers.length, 0); // restored
   applyPassiveIncome(match.gameState!);
-  assert.equal(a.economy.currency, 0.275); // earning again
+  assert.equal(a.economy.currency, 0.4); // earning again
 });
 
 test("natural expiry through the tick loop also restores the stat", () => {
@@ -234,12 +234,12 @@ test("a production buff increases income only while it lasts", () => {
   applyStatus(a, productionBoost, { sourceId: "a", durationTicks: 2 });
 
   tickMatch(match, 1); // income phase runs before the status expires
-  assert.equal(a.economy.currency, 0.55); // doubled ($0.275 base)
-  assert.equal(b.economy.currency, 0.275); // unaffected neighbor
+  assert.equal(a.economy.currency, 0.8); // doubled ($0.4 base)
+  assert.equal(b.economy.currency, 0.4); // unaffected neighbor
 
   tickMatch(match, 2);
   tickMatch(match, 3); // buff gone
-  assert.equal(a.economy.currency, 1.375); // 0.55 + 0.55 + 0.275
+  assert.equal(a.economy.currency, 2); // 0.8 + 0.8 + 0.4
 });
 
 // --- #80: debuffs — negative temporary effects -----------------------------------
@@ -250,10 +250,10 @@ test("frozen production halts income for exactly its duration", () => {
 
   for (let t = 1; t <= 3; t++) tickMatch(match, t);
   assert.equal(a.economy.currency, 0); // frozen throughout
-  assert.equal(b.economy.currency, 0.825); // opponent unaffected
+  assert.equal(b.economy.currency, 1.2); // opponent unaffected
 
   tickMatch(match, 4);
-  assert.equal(a.economy.currency, 0.275); // thawed
+  assert.equal(a.economy.currency, 0.4); // thawed
 });
 
 test("corrosion amplifies all incoming damage while active", () => {

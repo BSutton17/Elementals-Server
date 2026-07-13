@@ -41,7 +41,7 @@ export function isKingdomId(value: unknown): value is KingdomId {
 export type KingdomPassive = (
   | { type: "productionPerCitizen"; pct: number }
   /** Overrides the per-citizen income rate outright (per tick). Water: every
-   *  citizen produces $0.60/s (0.03/tick) vs the base $0.55/s. */
+   *  citizen produces $0.90/s (0.045/tick) vs the base $0.80/s. */
   | { type: "incomePerCitizen"; amount: number }
   | { type: "statusDurationReduction"; statusId: string; pct: number }
   | { type: "elementalResistance"; element: string; pct: number }
@@ -51,7 +51,7 @@ export type KingdomPassive = (
   | { type: "critChanceModifier"; pct: number }
   | { type: "critDamageMultiplier"; pct: number }
   /** Attacks may be cast with multiple explicit targets (Air, Epic 8). */
-  | { type: "multiTargetAttacks" }
+  | { type: "multiTargetAttacks"; maxTargets: number }
   /** Incoming attacks have this chance to be redirected to another kingdom,
    *  the attacker included (Air, Epic 8). */
   | { type: "attackRedirectChance"; pct: number }
@@ -116,19 +116,22 @@ export type KingdomPassive = (
  */
 export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   water: [
-    // "We're In This Together": every Water citizen produces $0.60/s
-    // (0.03/tick) — a flat per-citizen rate vs the base $0.55/s.
-    { type: "incomePerCitizen", amount: 0.03 },
+    // "We're In This Together": every Water citizen produces $1.15/s
+    // (0.0575/tick) — a flat per-citizen rate vs the base $1.00/s.
+    { type: "incomePerCitizen", amount: 0.0575 },
     { type: "statusDurationReduction", statusId: "burn", pct: 0.4 },
     { type: "elementalResistance", element: "fire", pct: 0.15 },
   ],
   fire: [
     { type: "startingCastleHpMultiplier", pct: 0.85 },
-    { type: "damageMultiplier", pct: 0.15 },
-    { type: "shieldDamageMultiplier", pct: 0.25 },
+    { type: "damageMultiplier", pct: 0.25 },
+    { type: "shieldDamageMultiplier", pct: 0.35 },
   ],
   air: [
-    { type: "multiTargetAttacks" },
+    // "Embrace of Winds": attacks may strike up to maxTargets kingdoms at once
+    // (damage split evenly). Tunable via passive.air.0.maxTargets; design intent
+    // is 3 base, 5 when upgraded (raise this value for the upgraded tier).
+    { type: "multiTargetAttacks", maxTargets: 3 },
     { type: "attackRedirectChance", pct: 0.05 },
   ],
   earth: [
