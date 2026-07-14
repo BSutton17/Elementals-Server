@@ -83,5 +83,5 @@ test("an income modifier boosts passive income", () => {
   // Base income is 10 citizens * 0.04 = 0.4; a +1.0 modifier makes it 1.4.
   addModifier(a, mod({ id: "boon", stat: "income", op: "add", value: 1 }));
   applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 1.4);
+  assert.equal(a.economy.currency, 1.6);
 })

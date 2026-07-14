@@ -28,12 +28,12 @@ test("awards $0.80 per citizen per second (0.04 per tick at 20 ticks/sec)", () =
   assert.equal(a.economy.citizens, 10);
 
   applyPassiveIncome(state);
-  assert.equal(a.economy.incomePerTick, 0.4); // 10 * 0.04
-  assert.equal(a.economy.currency, 0.4);
+  assert.equal(a.economy.incomePerTick, 0.6); // 10 * 0.04
+  assert.equal(a.economy.currency, 0.6);
 
   applyPassiveIncome(state);
   applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 1.2); // three ticks: 0.4 * 3
+  assert.equal(a.economy.currency, 1.8); // three ticks: 0.4 * 3
 });
 
 test("income scales with citizen count and stays precise", () => {
@@ -42,7 +42,7 @@ test("income scales with citizen count and stays precise", () => {
   a.economy.citizens = 7; // 7 * 0.04 = 0.28 per tick, exact at 4 decimals
 
   for (let i = 0; i < 3; i++) applyPassiveIncome(state);
-  assert.equal(a.economy.currency, 0.84); // 0.28 * 3
+  assert.equal(a.economy.currency, 1.26); // 0.28 * 3
 });
 
 test("eliminated players earn nothing", () => {

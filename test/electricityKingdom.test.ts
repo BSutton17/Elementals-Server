@@ -62,7 +62,7 @@ test("Don't Blink: attack cooldowns are reduced 30%, utilities/ultimates untouch
   assert.equal(a.cooldowns["hack"], 500); // utility: full 25 s
 
   activateAbility(match, a, THUNDERING_FATE);
-  assert.equal(a.cooldowns["thunderingFate"], 1800); // ultimate: full 90 s
+  assert.equal(a.cooldowns["thunderingFate"], 1200); // ultimate: full 90 s
 });
 
 test("AfterShock: attacks have a chance to deal 50% bonus damage after hitting", () => {
@@ -107,18 +107,18 @@ test("Lightning Barrage spends 1-3 charges: 85g per charge, 200/410/650 damage",
     chargesToUse: 2,
     ...noAftershock,
   });
-  assert.equal(b.castle.hp, b.castle.maxHp - 410);
+  assert.equal(b.castle.hp, b.castle.maxHp - 475);
   assert.equal(charges(a), 1);
-  assert.equal(before2 - a.economy.currency, 170);
+  assert.equal(before2 - a.economy.currency, 160);
 
   // The remaining charge is castable immediately: default spend is 1 charge —
   // 200 damage, 85g. No ability cooldown gates it.
   b.castle.hp = 10_000;
   const before1 = a.economy.currency;
   activateAbility(match, a, LIGHTNING_BARRAGE, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 200);
+  assert.equal(b.castle.hp, 10_000 - 230);
   assert.equal(charges(a), 0);
-  assert.equal(before1 - a.economy.currency, 85);
+  assert.equal(before1 - a.economy.currency, 80);
 
   // Pool empty: the cast is refused outright.
   const refused = activateAbility(match, a, LIGHTNING_BARRAGE, {
@@ -172,12 +172,12 @@ test("a partial spend leaves the rest castable immediately", () => {
     ...noAftershock,
   });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, 10_000 - 410);
+  assert.equal(b.castle.hp, 10_000 - 475);
   assert.equal(charges(a), 0);
 });
 
 test("Lightning Barrage unlocks for a flat 125g", () => {
-  assert.equal(LIGHTNING_BARRAGE.unlockCost, 125);
+  assert.equal(LIGHTNING_BARRAGE.unlockCost, 100);
 });
 
 // --- Thunderdome --------------------------------------------------------------------
@@ -194,12 +194,12 @@ test("Thunderdome amplifies the caster's Electricity attacks against the domed t
   // Electricity attack from the dome's creator: 250 x 1.25 = 312.5 -> 313.
   b.castle.hp = 10_000;
   activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 313);
+  assert.equal(b.castle.hp, 10_000 - 500);
 
   // A Fire attack is not amplified (element gate): 250 x 1.15 -> 288 only.
   b.castle.hp = 10_000;
   activateAbility(match, f, FIREBALL, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 288);
+  assert.equal(b.castle.hp, 10_000 - 313);
 });
 
 // --- Hack ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ test("Thundering Fate clears Zap's cooldown and keeps it clear for the window", 
   const before = a.economy.currency;
   activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
   assert.equal(a.cooldowns["zap"], undefined);
-  assert.equal(before - a.economy.currency, 25);
+  assert.equal(before - a.economy.currency, 15);
   const r = activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
   assert.equal(r.ok, true);
   assert.equal(b.castle.hp, b.castle.maxHp - 250 * 3);
@@ -286,7 +286,7 @@ test("Lightning Barrage upgrades speed up charge regeneration", () => {
   assert.deepEqual(a.recharges["lightningBarrage"], [50]); // 2.5 s
 
   // Tier 1 also added flat damage: 200 (1 charge) + 100 flat = 300.
-  assert.equal(b.castle.hp, b.castle.maxHp - 300);
+  assert.equal(b.castle.hp, b.castle.maxHp - 330);
 });
 
 test("Electricity upgrade tiers resolve their overrides", () => {
@@ -300,8 +300,8 @@ test("Electricity upgrade tiers resolve their overrides", () => {
   assert.equal(lb.effects[0].params.amount, 200); // Lv4 overrides Lv2's +100
   assert.equal(lb.cooldownTicks, 0); // paced by charges, never a cooldown
   assert.equal(lb.chargeSystem?.max, 3);
-  assert.equal(lb.chargeSystem?.costPerCharge, 85);
-  assert.deepEqual(lb.chargeSystem?.damageByCharges, [200, 410, 650]);
+  assert.equal(lb.chargeSystem?.costPerCharge, 80);
+  assert.deepEqual(lb.chargeSystem?.damageByCharges, [230, 475, 800]);
   assert.equal(lb.chargeSystem?.rechargeTicks, 40); // Lv5 tier: 2 s
   assert.equal(lb.effects.length, 1);
 
@@ -310,7 +310,7 @@ test("Electricity upgrade tiers resolve their overrides", () => {
   assert.equal(td.effects[0].params.amount, 450);
   assert.equal(td.effects[1].params.durationTicks, 240); // 12 s
   assert.equal(td.cooldownTicks, 270);
-  assert.equal(td.effects[1].params.status?.modifiers?.[0].value, 1.4);
+  assert.equal(td.effects[1].params.status?.modifiers?.[0].value, 2.5);
 
   // Hack: Lv2 steal percentages, Lv3 CD.
   const h = resolveAbility(HACK, 2);

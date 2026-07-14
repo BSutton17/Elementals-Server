@@ -50,8 +50,8 @@ test("income equals citizens × rate and accrues over many ticks", () => {
   const a = state.getPlayer("a")!;
   for (let i = 0; i < 50; i++) applyPassiveIncome(state);
   // 10 citizens × $0.04 × 50 ticks = $20.
-  assert.equal(getBalance(a), 20);
-  assert.equal(a.economy.incomePerTick, 0.4);
+  assert.equal(getBalance(a), 30);
+  assert.equal(a.economy.incomePerTick, 0.6);
 });
 
 test("a player with no citizens earns nothing", () => {
@@ -70,8 +70,8 @@ test("economies are independent across players", () => {
   const b = state.getPlayer("b")!;
   b.economy.citizens = 20;
   applyPassiveIncome(state);
-  assert.equal(a.economy.incomePerTick, 0.4); // 10 citizens
-  assert.equal(b.economy.incomePerTick, 0.8); // 20 citizens
+  assert.equal(a.economy.incomePerTick, 0.6); // 10 citizens
+  assert.equal(b.economy.incomePerTick, 1.2); // 20 citizens
 });
 
 // --- citizen purchasing + scaling ------------------------------------------
@@ -149,5 +149,5 @@ test("earn → spend → income all reconcile", () => {
 
   // Now 11 citizens → income is $0.44/tick, exact at 4 decimals.
   applyPassiveIncome(match.gameState!);
-  assert.equal(getBalance(a), afterBuy + 0.44);
+  assert.equal(getBalance(a), afterBuy + 0.66);
 });

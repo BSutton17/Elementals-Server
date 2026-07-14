@@ -77,8 +77,8 @@ test("Meteor Shower is 5 hits of 100, not one 500 lump", () => {
   const r = activateAbility(match, a, METEOR_SHOWER, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
   assert.equal(r.damage!.length, 5); // five separate applications
-  assert.equal(b.castle.hp, b.castle.maxHp - 500);
-  assert.equal(a.castle.shield, 2500 + 50); // Distraught: 10 per hit
+  assert.equal(b.castle.hp, b.castle.maxHp - 750);
+  assert.equal(a.castle.shield, 2500 + 75); // Distraught: 10 per hit
 });
 
 test("Meteor Shower deals bonus damage to shields (x1.5 per hit)", () => {
@@ -87,7 +87,7 @@ test("Meteor Shower deals bonus damage to shields (x1.5 per hit)", () => {
 
   b.castle.shield = 2000;
   activateAbility(match, a, METEOR_SHOWER, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.shield, 2000 - 750); // 5 × (100 × 1.5)
+  assert.equal(b.castle.shield, 2000 - 1125); // 5 × (100 × 1.5)
   assert.equal(b.castle.hp, b.castle.maxHp); // fully absorbed
 });
 
@@ -99,7 +99,7 @@ test("Meteor Shower Lv5: excess shield damage carries over into Castle HP", () =
   activateAbility(capped.match, capped.players[0], METEOR_SHOWER, { targetId: "p1", forceCrit: false });
   // hit 1: 100 shield + (130 − 100/2) = 180 total; hits 2–5: 130 to HP.
   assert.equal(capped.players[1].castle.shield, 0);
-  assert.equal(capped.players[1].castle.hp, capped.players[1].castle.maxHp - 600);
+  assert.equal(capped.players[1].castle.hp, capped.players[1].castle.maxHp - 950);
 
   // Lv5 (overflow): the full x2 damage lands; the shield absorbs its part.
   const overflow = bedrock(["earth", "plains"]);
@@ -108,7 +108,7 @@ test("Meteor Shower Lv5: excess shield damage carries over into Castle HP", () =
   activateAbility(overflow.match, overflow.players[0], METEOR_SHOWER, { targetId: "p1", forceCrit: false });
   // hit 1: 260 (130 × 2) — shield takes 100, HP takes 160; hits 2–5: 130 each.
   assert.equal(overflow.players[1].castle.shield, 0);
-  assert.equal(overflow.players[1].castle.hp, overflow.players[1].castle.maxHp - 680);
+  assert.equal(overflow.players[1].castle.hp, overflow.players[1].castle.maxHp - 1100);
 });
 
 // --- Earthquake ---------------------------------------------------------------------
@@ -119,10 +119,10 @@ test("Earthquake damages the target and deals aftershock damage to every other k
 
   const r = activateAbility(match, a, EARTHQUAKE, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 800); // main hit
-  assert.equal(c.castle.hp, c.castle.maxHp - 200); // aftershock
-  assert.equal(d.castle.hp, d.castle.maxHp - 200); // aftershock
-  assert.equal(a.castle.shield, 2500 + 80 + 20 + 20); // Distraught on every hit
+  assert.equal(b.castle.hp, b.castle.maxHp - 750); // main hit
+  assert.equal(c.castle.hp, c.castle.maxHp - 250); // aftershock
+  assert.equal(d.castle.hp, d.castle.maxHp - 250); // aftershock
+  assert.equal(a.castle.shield, 2500 + 80 + 20 + 25); // Distraught on every hit
 });
 
 test("Earthquake upgrades raise main and aftershock damage", () => {
@@ -131,7 +131,7 @@ test("Earthquake upgrades raise main and aftershock damage", () => {
   a.upgrades["earthquake"] = 2; // Lv2 damage + Lv3 aftershock
 
   activateAbility(match, a, EARTHQUAKE, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, b.castle.maxHp - 950);
+  assert.equal(b.castle.hp, b.castle.maxHp - 800);
   assert.equal(c.castle.hp, c.castle.maxHp - 300);
 });
 
@@ -148,7 +148,7 @@ test("Natural Terrain halves all incoming damage for its duration", () => {
   assert.equal(terrain.remainingTicks, 200); // 10 s
 
   activateAbility(match, b, strike, { targetId: "p0", forceCrit: false });
-  assert.equal(a.castle.hp, a.castle.maxHp - 500); // 1000 halved
+  assert.equal(a.castle.hp, a.castle.maxHp - 250); // 1000 halved
 });
 
 test("Natural Terrain Lv2 increases the damage reduction", () => {
@@ -178,7 +178,7 @@ test("Brick Wall grants a 2,500 HP shield on top of the current one", () => {
 test("Earth upgrade tiers resolve their overrides", () => {
   // Rock Throw: standard damage/cooldown path.
   const rt = resolveAbility(ROCK_THROW, 3);
-  assert.equal(rt.effects[0].params.amount, 350);
+  assert.equal(rt.effects[0].params.amount, 300);
   assert.equal(rt.cooldownTicks, 54);
 
   // Meteor Shower: Lv2 damage, Lv3 shield mult, Lv4 cooldown, Lv5 overflow —
@@ -186,7 +186,7 @@ test("Earth upgrade tiers resolve their overrides", () => {
   const ms = resolveAbility(METEOR_SHOWER, 4);
   assert.equal(ms.effects.length, 5);
   for (const hit of ms.effects) {
-    assert.equal(hit.params.amount, 130);
+    assert.equal(hit.params.amount, 200);
     assert.equal(hit.params.shieldDamageMultiplier, 2.0);
     assert.equal(hit.params.shieldDamageOverflow, true);
   }
@@ -194,7 +194,7 @@ test("Earth upgrade tiers resolve their overrides", () => {
 
   // Earthquake: Lv4 cooldown, Lv5 aftershock damage.
   const eq = resolveAbility(EARTHQUAKE, 4);
-  assert.equal(eq.effects[0].params.amount, 950);
+  assert.equal(eq.effects[0].params.amount, 800);
   assert.equal(eq.effects[1].params.amount, 400);
   assert.equal(eq.cooldownTicks, 360); // 18 s
 

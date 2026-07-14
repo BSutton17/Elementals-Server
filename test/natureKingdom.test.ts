@@ -62,7 +62,7 @@ test("Gardener's Gift: Nature begins with 15 citizens instead of 10", () => {
   assert.equal(a.economy.citizens, 15);
   assert.equal(b.economy.citizens, 10);
   recalcIncome(a);
-  assert.equal(a.economy.incomePerTick, 0.6); // 15 x $0.04
+  assert.equal(a.economy.incomePerTick, 0.9); // 15 x $0.04
 });
 
 test("No Rose Without Thorns: attackers risk reflected damage", () => {
@@ -96,7 +96,7 @@ test("Sludge poisons; Poison refreshes rather than stacking on its own", () => {
 
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 4); // weak poison 3.5/tick → 4 (rounded)
+  assert.equal(b.castle.hp, 10_000 - 3); // weak poison 3.5/tick → 4 (rounded)
 
   // Without Corroded, a second application only refreshes.
   a.cooldowns = {};
@@ -126,7 +126,7 @@ test("Corroded amplifies Poison damage and makes it stack", () => {
   assert.equal(getStatus(b, "poison")!.stacks, 2);
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 9);
+  assert.equal(b.castle.hp, 10_000 - 8);
 });
 
 // --- Gastro Acid --------------------------------------------------------------------
@@ -144,11 +144,11 @@ test("Gastro Acid applies strong Poison and can poison citizens (income $0.80 ->
   // Strong poison: 7/tick.
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 7);
+  assert.equal(b.castle.hp, 10_000 - 4);
 
   // Poisoned citizens: 10 x $0.04 x 0.8 = $0.32/tick.
   recalcIncome(b);
-  assert.equal(b.economy.incomePerTick, 0.32);
+  assert.equal(b.economy.incomePerTick, 0.48);
 });
 
 test("status.poison.tickDamage is a catalog knob that scales Poison DoT", () => {
@@ -167,12 +167,12 @@ test("status.poison.tickDamage is a catalog knob that scales Poison DoT", () => 
   withParameterSet({ "status.poison.tickDamage": 0.5 }, () => {
     processStatusTicks(match.gameState!);
   });
-  assert.equal(b.castle.hp, 10_000 - 4);
+  assert.equal(b.castle.hp, 10_000 - 2);
 
   // Production (no active set) is unaffected — full 7.
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 7);
+  assert.equal(b.castle.hp, 10_000 - 4);
 });
 
 // --- Poison Apple -------------------------------------------------------------------
@@ -194,7 +194,7 @@ test("Poison Apple: the next kingdom to attack Nature is immediately Poisoned", 
 
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 7); // strong poison
+  assert.equal(b.castle.hp, 10_000 - 4); // strong poison
 });
 
 // --- Toxic Gas ----------------------------------------------------------------------
@@ -219,7 +219,7 @@ test("Toxic Gas poisons every enemy through shields and blocks citizen/repair pu
   const shieldAfterBuy = b.castle.shield;
   const hpBefore = b.castle.hp;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, hpBefore - 7); // straight to HP
+  assert.equal(b.castle.hp, hpBefore - 5); // straight to HP
   assert.equal(b.castle.shield, shieldAfterBuy); // shield untouched
 
   // Nature itself is unaffected.

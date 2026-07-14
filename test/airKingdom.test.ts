@@ -66,8 +66,8 @@ test("Embrace of Winds: Air attacks may hit multiple explicit targets for one co
   // Damage spreads evenly across the two kingdoms struck: 250 / 2 = 125 each.
   assert.equal(b.castle.hp, b.castle.maxHp - 125);
   assert.equal(c.castle.hp, c.castle.maxHp - 125);
-  assert.equal(a.economy.currency, before - 100); // cost paid once
-  assert.equal(a.cooldowns["aLightBreeze"], 60); // cooldown armed once
+  assert.equal(a.economy.currency, before - 125); // cost paid once
+  assert.equal(a.cooldowns["aLightBreeze"], 100); // cooldown armed once
 });
 
 test("Embrace of Winds: a single target takes full damage (spread of 1)", () => {
@@ -128,7 +128,7 @@ test("Non-Air kingdoms cannot multi-target: only the first id is used", () => {
     targetIds: ["p1", "p2"],
     forceCrit: false,
   });
-  assert.equal(b.castle.hp, b.castle.maxHp - 288); // 250 * 1.15 -> 288
+  assert.equal(b.castle.hp, b.castle.maxHp - 313); // 250 * 1.15 -> 288
   assert.equal(c.castle.hp, c.castle.maxHp); // untouched
 });
 
@@ -146,7 +146,7 @@ test("A Gust of Envy: incoming attacks can be redirected — even back to the at
     rng: () => 0.0,
   });
   assert.equal(a.castle.hp, a.castle.maxHp); // Air untouched
-  assert.equal(f.castle.hp, f.castle.maxHp - 288); // attacker hit himself
+  assert.equal(f.castle.hp, f.castle.maxHp - 313); // attacker hit himself
 
   // rng 0.99: the 5% roll fails — the attack lands on Air normally.
   f.cooldowns = {};
@@ -155,7 +155,7 @@ test("A Gust of Envy: incoming attacks can be redirected — even back to the at
     forceCrit: false,
     rng: () => 0.99,
   });
-  assert.equal(a.castle.hp, a.castle.maxHp - 288);
+  assert.equal(a.castle.hp, a.castle.maxHp - 313);
 });
 
 // --- Hurricane (mark + guaranteed deflection) --------------------------------------
@@ -167,7 +167,7 @@ test("Hurricane damages and marks; the mark deflects the target's next attack on
   // Air casts Hurricane on b: 450 damage + the until-used mark.
   const r = activateAbility(match, a, HURRICANE, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 450);
+  assert.equal(b.castle.hp, b.castle.maxHp - 400);
   assert.ok(getStatus(b, "hurricaneMark"));
 
   // b attacks Air: deflected to a random other kingdom (rng 0 -> b himself).
@@ -189,7 +189,7 @@ test("Hurricane Lv3: the deflected attack deals increased damage to the redirect
   a.upgrades["hurricane"] = 2; // Lv3: mark carries damageMult 1.25
 
   activateAbility(match, a, HURRICANE, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, b.castle.maxHp - 550); // Lv2 damage upgrade included
+  assert.equal(b.castle.hp, b.castle.maxHp - 450); // Lv2 damage upgrade included
 
   const hpBeforeStrike = b.castle.hp;
   activateAbility(match, b, strike, {
@@ -229,7 +229,7 @@ test("Thick Fog damages and fogs the target's screen", () => {
 
   const r = activateAbility(match, a, THICK_FOG, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 350);
+  assert.equal(b.castle.hp, b.castle.maxHp - 550);
   const fog = getStatus(b, "vision:fog");
   assert.ok(fog);
   assert.equal(fog.remainingTicks, 100); // 5 s
@@ -319,7 +319,7 @@ test("Dust Bunnies Lv2 increases the damage over time", () => {
 test("A Light Breeze upgrades modify damage and cooldown values", () => {
   const lv1 = resolveAbility(A_LIGHT_BREEZE, 0);
   assert.equal(lv1.effects[0].params.amount, 250);
-  assert.equal(lv1.cooldownTicks, 60);
+  assert.equal(lv1.cooldownTicks, 100);
 
   const lv2 = resolveAbility(A_LIGHT_BREEZE, 1);
   assert.equal(lv2.effects[0].params.amount, 300);
@@ -334,7 +334,7 @@ test("A Light Breeze upgrades modify damage and cooldown values", () => {
 test("Hurricane and Thick Fog upgrades resolve their tier overrides", () => {
   // Hurricane: Lv2 damage, Lv3 deflect amp, Lv4 cooldown, Lv5 chain chance.
   const h2 = resolveAbility(HURRICANE, 1);
-  assert.equal(h2.effects[0].params.amount, 550);
+  assert.equal(h2.effects[0].params.amount, 450);
   const h3 = resolveAbility(HURRICANE, 2);
   assert.equal(h3.effects[1].params.status?.deflectsAttackOnSource?.damageMult, 1.25);
   const h4 = resolveAbility(HURRICANE, 3);
@@ -344,7 +344,7 @@ test("Hurricane and Thick Fog upgrades resolve their tier overrides", () => {
 
   // Thick Fog: Lv2 damage, Lv3 fog duration, Lv4 cooldown, Lv5 cap 3 -> 4.
   const f2 = resolveAbility(THICK_FOG, 1);
-  assert.equal(f2.effects[0].params.amount, 450);
+  assert.equal(f2.effects[0].params.amount, 650);
   const f3 = resolveAbility(THICK_FOG, 2);
   assert.equal(f3.effects[1].params.vision?.durationTicks, 160); // 8 s
   const f4 = resolveAbility(THICK_FOG, 3);

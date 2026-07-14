@@ -5,7 +5,7 @@ import { GameLoopManager } from "./engine/GameLoopManager.js";
 import { MatchManager } from "./match/MatchManager.js";
 import { registerConnectionHandlers } from "./net/connection.js";
 import { ReconnectionManager } from "./net/ReconnectionManager.js";
-import { broadcastGameState, broadcastMatchEnded } from "./net/gameSync.js";
+import { broadcastGameState, broadcastGameEvents, broadcastMatchEnded } from "./net/gameSync.js";
 import { createRequestListener } from "./net/health.js";
 import { registerGlobalErrorHandlers } from "./util/errorHandler.js";
 import { logger } from "./util/logger.js";
@@ -33,6 +33,7 @@ const matches = new MatchManager();
 const reconnection = new ReconnectionManager();
 const gameLoops = new GameLoopManager(matches, {
   sync: (match) => broadcastGameState(io, match),
+  syncEvents: (match, events) => broadcastGameEvents(io, match, events),
   onEnd: (match) => broadcastMatchEnded(io, match),
 });
 registerConnectionHandlers(io, {

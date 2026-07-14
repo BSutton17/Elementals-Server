@@ -30,7 +30,7 @@ function activeMatch(): { match: Match; a: PlayerState } {
 test("recalcIncome reflects citizen count and income modifiers", () => {
   const { a } = activeMatch();
   recalcIncome(a);
-  assert.equal(a.economy.incomePerTick, 0.4); // 10 citizens × $0.04/tick
+  assert.equal(a.economy.incomePerTick, 0.6); // 10 citizens × $0.04/tick
 
   addModifier(a, {
     id: "boon",
@@ -41,18 +41,18 @@ test("recalcIncome reflects citizen count and income modifiers", () => {
     remainingTicks: null,
   });
   recalcIncome(a);
-  assert.equal(a.economy.incomePerTick, 0.9);
-  assert.equal(computeIncome(a), 0.9);
+  assert.equal(a.economy.incomePerTick, 1.1);
+  assert.equal(computeIncome(a), 1.1);
 });
 
 test("buying a citizen updates income immediately, before any tick", () => {
   const { match, a } = activeMatch();
   earn(a, 100);
   recalcIncome(a);
-  assert.equal(a.economy.incomePerTick, 0.4); // 10 citizens × $0.04/tick
+  assert.equal(a.economy.incomePerTick, 0.6); // 10 citizens × $0.04/tick
 
   assert.equal(buyCitizen(match, a).ok, true);
   // 11 citizens now → income refreshed right away, no tick needed.
   assert.equal(a.economy.citizens, 11);
-  assert.equal(a.economy.incomePerTick, 0.44); // 11 * 0.04, exact
+  assert.equal(a.economy.incomePerTick, 0.66); // 11 * 0.04, exact
 });

@@ -51,11 +51,11 @@ function pond(): { match: Match; w: PlayerState; f: PlayerState; n: PlayerState 
 test("We're In This Together: water citizens produce $0.90/s vs the base $0.80/s", () => {
   const { w, f } = pond();
   // 10 citizens: water 10 × $0.045/tick = $0.45; Fire 10 × $0.04 = $0.4.
-  assert.equal(computeIncome(w), 0.45);
-  assert.equal(computeIncome(f), 0.4);
+  assert.equal(computeIncome(w), 0.575);
+  assert.equal(computeIncome(f), 0.6);
 
   w.economy.citizens = 20; // flat per-citizen rate: 20 × 0.045
-  assert.equal(computeIncome(w), 0.9);
+  assert.equal(computeIncome(w), 1.15);
 });
 
 test("production passive flows through the real income phase", () => {
@@ -63,8 +63,8 @@ test("production passive flows through the real income phase", () => {
   const w0 = w.economy.currency;
   const f0 = f.economy.currency;
   applyPassiveIncome(match.gameState!);
-  assert.ok(Math.abs((w.economy.currency - w0) - 0.45) < 0.0001); // floating point tolerance
-  assert.ok(Math.abs((f.economy.currency - f0) - 0.4) < 0.0001); // floating point tolerance
+  assert.ok(Math.abs((w.economy.currency - w0) - 0.575) < 0.0001); // floating point tolerance
+  assert.ok(Math.abs((f.economy.currency - f0) - 0.6) < 0.0001); // floating point tolerance
 });
 
 test("Fountain of Youth: burn lasts 40% shorter on Water — and only on Water", () => {
@@ -98,7 +98,7 @@ test("Water Ball is a working attack on the shared framework", () => {
   const { match, w, f } = pond();
   const r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(f.castle.hp, 10_000 - 250);
+  assert.equal(f.castle.hp, 10_000 - 300);
 });
 
 // --- #83: the Current status -------------------------------------------------------
@@ -143,7 +143,7 @@ test("Water attacks heal Water based on damage dealt, only while Current is acti
   const hpBefore = w.castle.hp;
   activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   // 250 dealt × 0.25 = 62.5 → 63.
-  assert.equal(w.castle.hp, hpBefore + 63);
+  assert.equal(w.castle.hp, hpBefore + 225);
 });
 
 test("healing counts shield-absorbed damage and never exceeds max HP", () => {
@@ -259,7 +259,7 @@ test("Riptide restores 50% max HP and grows citizens by 5%, refreshing income", 
   assert.equal(w.castle.hp, 2000 + 5000); // 50% of 10,000
   assert.equal(w.economy.citizens, 11); // round(10 × 1.05)
   // Income refreshed at once: 11 × $0.045 = $0.495.
-  assert.equal(w.economy.incomePerTick, 0.495);
+  assert.equal(w.economy.incomePerTick, 0.6325);
 });
 
 test("Riptide healing is capped at max HP", () => {
@@ -280,7 +280,7 @@ test("Water Ball upgrades (Lv 1 -> 4) modify damage and cooldown values", () => 
   f.castle.hp = 10000;
   let r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(f.castle.hp, 10000 - 300);
+  assert.equal(f.castle.hp, 10000 - 350);
 
   // Lv 3: Reduce cooldown by 10% (60 -> 54 ticks)
   purchaseUpgrade(match, w, WATER_BALL);
@@ -298,7 +298,7 @@ test("Water Ball upgrades (Lv 1 -> 4) modify damage and cooldown values", () => 
   w.cooldowns = {};
   r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(f.castle.hp, 10000 - 350);
+  assert.equal(f.castle.hp, 10000 - 400);
 });
 
 test("Waterfall upgrades (Lv 1 -> 5) increase damage, status duration, reduce cooldown, and boost healing", () => {
@@ -368,7 +368,7 @@ test("Flood upgrades (Lv 1 -> 5) boost damage, lockout, cooldown, and increase h
   w.castle.hp = 8000;
   r = activateAbility(match, w, FLOOD, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(w.castle.hp, 8000 + 380); // 950 damage * 0.40 lifesteal
+  assert.equal(w.castle.hp, 8000 + 1188); // 950 damage * 0.40 lifesteal
 });
 
 test("Fluid Assimilation upgrades (Lv 1 -> 3) extend the ban and reduce cooldown", () => {

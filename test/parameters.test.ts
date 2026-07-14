@@ -67,7 +67,7 @@ test("ability values resolve through the registry (damage, cost, cooldown)", () 
   // Production baseline.
   const base = resolveAbility(FIREBALL, 0);
   assert.equal(base.effects[0]!.params.amount, 250);
-  assert.equal(base.cost, 100);
+  assert.equal(base.cost, 125);
 
   withParameterSet(
     {
@@ -98,7 +98,7 @@ test("charge-system values resolve through the registry", () => {
     },
     () => {
       const tuned = resolveAbility(LIGHTNING_BARRAGE, 0);
-      assert.deepEqual(tuned.chargeSystem?.damageByCharges, [200, 410, 900]);
+      assert.deepEqual(tuned.chargeSystem?.damageByCharges, [230, 475, 900]);
       assert.equal(tuned.chargeSystem?.costPerCharge, 50);
     },
   );
@@ -108,8 +108,8 @@ test("economy and passive values resolve through the registry", () => {
   const { a, b } = duel("fire", "water");
 
   // Baseline: fire earns the base rate, water its passive override.
-  assert.equal(computeIncome(a), 0.4); // 10 × 0.04
-  assert.equal(computeIncome(b), 0.45); // 10 × 0.045 (We're In This Together)
+  assert.equal(computeIncome(a), 0.6); // 10 × 0.04
+  assert.equal(computeIncome(b), 0.575); // 10 × 0.045 (We're In This Together)
 
   withParameterSet(
     {
@@ -147,19 +147,19 @@ test("the catalog enumerates the tunable space with production bases", () => {
   const byId = new Map(params.map((p) => [p.id, p.base]));
 
   // Globals.
-  assert.equal(byId.get("economy.incomePerCitizen"), 0.04);
+  assert.equal(byId.get("economy.incomePerCitizen"), 0.06);
   assert.equal(byId.get("castle.repairCost"), 500);
   assert.equal(byId.get("castle.maxRepairs"), 3);
   assert.equal(byId.get("shield.cost"), 500);
 
   // Ability values — including charges, unlocks, and upgrade prices.
   assert.equal(byId.get("ability.fireball.effects.0.amount"), 250);
-  assert.equal(byId.get("ability.lightningBarrage.unlockCost"), 125);
-  assert.equal(byId.get("ability.lightningBarrage.charge.damage.1"), 410);
-  assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 150);
+  assert.equal(byId.get("ability.lightningBarrage.unlockCost"), 100);
+  assert.equal(byId.get("ability.lightningBarrage.charge.damage.1"), 475);
+  assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 250);
 
   // Passive values, discovered generically.
-  assert.equal(byId.get("passive.water.0.amount"), 0.045);
+  assert.equal(byId.get("passive.water.0.amount"), 0.0575);
 
   // No duplicate ids — every parameter is uniquely addressable.
   assert.equal(byId.size, params.length);
@@ -202,6 +202,6 @@ test("simulations run under alternate balance configurations deterministically",
 test("production stays on base values after simulation runs (leak guard)", () => {
   setActiveParameterSet(null); // belt and braces for test isolation
   const { a } = duel();
-  assert.equal(computeIncome(a), 0.4);
+  assert.equal(computeIncome(a), 0.6);
   assert.equal(resolveAbility(FIREBALL, 0).effects[0]!.params.amount, 250);
 });

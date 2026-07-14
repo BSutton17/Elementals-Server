@@ -1,5 +1,6 @@
 import type { Server } from "socket.io";
 import type { Match } from "../match/Match.js";
+import type { GameplayEvent } from "../engine/events.js";
 import { citizenCost, repairCost } from "../engine/purchases.js";
 
 /**
@@ -26,6 +27,18 @@ export function broadcastGameState(io: Server, match: Match): void {
     })),
     projectiles: [],
   });
+}
+
+/**
+ * Forwards a batch of authoritative gameplay events to everyone in the match's
+ * room (Epic 9). These are the exact events the engine's EventBus emits — the
+ * client's Pixi layer visualizes them and never derives gameplay from them.
+ * Sent alongside `state:sync`; each event carries its own `tick` for timing.
+ * No-op for an empty batch so idle ticks cost nothing.
+ */
+export function broadcastGameEvents(io: Server, match: Match, events: GameplayEvent[]): void {
+  if (events.length === 0) return;
+  io.to(match.roomCode).emit("evt:batch", { tick: match.gameState?.tick ?? 0, events });
 }
 
 /** Broadcasts the final result when a match ends (ticket #50). */

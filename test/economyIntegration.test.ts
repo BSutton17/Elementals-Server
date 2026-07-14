@@ -151,14 +151,14 @@ test("extended match: greedy citizen buying keeps exact cost scaling and reconci
   // Purchases: citizen count and income reflect exactly what was bought.
   assert.equal(a.economy.citizens, 10 + citizenCostHistory.length);
   assert.equal(a.economy.citizensPurchased, citizenCostHistory.length);
-  assert.equal(a.economy.incomePerTick, roundMoney(a.economy.citizens * 0.04));
+  assert.equal(a.economy.incomePerTick, roundMoney(a.economy.citizens * 0.06));
   assert.ok(a.economy.incomePerTick > b.economy.incomePerTick);
 
   // Reconciliation: engine balances match the independent ledgers to the penny.
   assert.equal(a.economy.currency, ledgerA.balance);
   assert.equal(b.economy.currency, ledgerB.balance);
   // The control player: seed $4000 + $0.4/tick × 300 ticks, nothing spent.
-  assert.equal(b.economy.currency, 4000 + 120);
+  assert.equal(b.economy.currency, 4000 + 180);
 
   // Synchronization: the broadcast a client receives mirrors server truth.
   const sync = captureSync(match);

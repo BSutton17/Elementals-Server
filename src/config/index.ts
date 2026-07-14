@@ -59,7 +59,7 @@ const isProduction = environment === "production";
 const isDevelopment = environment === "development";
 
 const DEFAULT_PORT = 3001;
-const DEFAULT_DEV_ORIGIN = "https://elementals-game.netlify.app";
+const DEFAULT_DEV_ORIGIN = "http://localhost:5173/home";
 const DEFAULT_PROD_ORIGIN = "https://elementals-game.netlify.app";
 /**
  * Allowed CORS origins. In development this defaults to the deployed client.

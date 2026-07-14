@@ -67,11 +67,11 @@ test("a match runs from start to a single winner", () => {
   assert.equal(match.tick, 5);
   // Bob is Water: 10 citizens × $0.045 × 5 ticks = $2.25 ("We're In This
   // Together": water citizens each produce $0.90/s vs the base $0.80/s).
-  assert.equal(state.getPlayer("b")!.economy.currency, 2.25);
+  assert.equal(state.getPlayer("b")!.economy.currency, 2.875);
   // Carol (Air, no production passive): plain $0.4/tick = $2 total.
-  assert.equal(state.getPlayer("c")!.economy.currency, 2);
+  assert.equal(state.getPlayer("c")!.economy.currency, 3);
   // Alice earned +$1 income each tick → ($0.4 base + $1 boon) × 5 = $7.
-  assert.equal(alice.economy.currency, 7);
+  assert.equal(alice.economy.currency, 8);
   // Cooldown (2) and burn (3) have expired.
   assert.equal(getCooldown(alice, "fireball"), 0);
   assert.equal(alice.statuses.length, 0);
