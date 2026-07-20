@@ -226,7 +226,7 @@ export const NATURAL_TERRAIN: AbilityDefinition = {
   ],
 };
 
-/** Brick Wall: ultimate — create a 2,500 HP shield. */
+/** Brick Wall: ultimate — create a 4,000 HP shield. */
 export const BRICK_WALL: AbilityDefinition = {
   id: "brickWall",
   name: "Brick Wall",
@@ -235,14 +235,15 @@ export const BRICK_WALL: AbilityDefinition = {
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "self" },
   effects: [
-    { type: "shield", target: "self", params: { amount: 2500 } },
+    { type: "shield", target: "self", params: { amount: 4000 } },
   ],
   upgradePath: [
     {
       level: 1,
       cost: 1000,
       changes: {
-        effectParams: [{ amount: 3500 }], // 2,500 -> 3,500
+        // Preserves the original design's +1,000 upgrade step (2,500 -> 3,500).
+        effectParams: [{ amount: 5000 }], // 4,000 -> 5,000
       },
     },
     {

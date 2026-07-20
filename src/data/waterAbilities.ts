@@ -225,7 +225,7 @@ export const FLUID_ASSIMILATION: AbilityDefinition = {
   id: "fluidAssimilation",
   name: "Fluid Assimilation",
   kind: "utility",
-  cost: 250,
+  cost: 175,
   cooldownTicks: 15 * TICK.RATE, // 15 s
   targeting: { mode: "allEnemies" },
   effects: [

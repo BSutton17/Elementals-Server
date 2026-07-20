@@ -109,7 +109,7 @@ test("economy and passive values resolve through the registry", () => {
 
   // Baseline: fire earns the base rate, water its passive override.
   assert.equal(computeIncome(a), 0.6); // 10 × 0.04
-  assert.equal(computeIncome(b), 0.575); // 10 × 0.045 (We're In This Together)
+  assert.equal(computeIncome(b), 0.675); // 10 × 0.0675 (We're In This Together)
 
   withParameterSet(
     {
@@ -159,7 +159,7 @@ test("the catalog enumerates the tunable space with production bases", () => {
   assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 250);
 
   // Passive values, discovered generically.
-  assert.equal(byId.get("passive.water.0.amount"), 0.0575);
+  assert.equal(byId.get("passive.water.0.amount"), 0.0675);
 
   // No duplicate ids — every parameter is uniquely addressable.
   assert.equal(byId.size, params.length);
@@ -174,14 +174,18 @@ test("simulations run under alternate balance configurations deterministically",
     players: [{ kingdomId: "fire" as const }, { kingdomId: "water" as const }],
   };
 
-  // A candidate that dramatically cheapens and strengthens basic attacks
-  // should still be perfectly reproducible…
+  // A candidate that strengthens basic attacks and thins the castles should
+  // still be perfectly reproducible…
   const candidate = {
     ...config,
     parameters: {
       "ability.fireball.effects.0.amount": 800,
       "ability.waterBall.effects.0.amount": 800,
       "economy.incomePerCitizen": 0.06,
+      // Much lower castle HP guarantees a shorter match regardless of the
+      // economy — bigger attacks alone don't, because Water's lifesteal scales
+      // with damage and can prolong a fight.
+      "castle.startingHp": 2500,
     },
   };
   const a = runSimulation(candidate);
@@ -191,7 +195,7 @@ test("simulations run under alternate balance configurations deterministically",
   // …and actually change outcomes relative to the production baseline.
   const baseline = runSimulation(config);
   assert.notDeepEqual(baseline.records, a.records);
-  // Stronger, cheaper damage ends matches sooner.
+  // Thinner castles (plus stronger attacks) end matches sooner.
   assert.ok(a.totalTicks < baseline.totalTicks);
 
   // The run left no overrides behind: production reads bases again.

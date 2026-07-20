@@ -252,20 +252,28 @@ export function removeStatus(player: PlayerState, statusId: string): boolean {
   return removed;
 }
 
-/** Prunes statuses whose modifiers have been fully consumed. */
-export function pruneExhaustedStatuses(player: PlayerState): void {
+/**
+ * Prunes statuses whose modifiers have been fully consumed (e.g. Blazing
+ * Determination once its one-shot damage buff is spent). Returns the removed
+ * statuses so callers can emit `statusExpired` for them — consumers (VFX,
+ * replays, recorders) can't otherwise tell a usage-exhausted buff has ended.
+ */
+export function pruneExhaustedStatuses(player: PlayerState): StatusEffectInstance[] {
   const keptStatuses: StatusEffectInstance[] = [];
+  const removed: StatusEffectInstance[] = [];
   for (const s of player.statuses) {
     if (s.hasModifiers) {
       const hasActiveMod = player.modifiers.some((m) => m.sourceId === statusModifierSource(s.id));
       if (!hasActiveMod) {
         removeModifiersFromSource(player, statusModifierSource(s.id));
+        removed.push(s);
         continue;
       }
     }
     keptStatuses.push(s);
   }
   player.statuses = keptStatuses;
+  return removed;
 }
 
 export function getStatus(
@@ -288,7 +296,12 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
   const bus = state.events;
   const removed: RemovedStatus[] = [];
   for (const player of state.getPlayers()) {
-    pruneExhaustedStatuses(player);
+    // Usage-exhausted statuses removed this tick still report as expired.
+    for (const s of pruneExhaustedStatuses(player)) {
+      if (bus.enabled) {
+        bus.emit({ type: "statusExpired", tick: state.tick, playerId: player.id, statusId: s.id });
+      }
+    }
 
     const kept: StatusEffectInstance[] = [];
     const expired: StatusEffectInstance[] = [];

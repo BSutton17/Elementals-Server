@@ -146,7 +146,7 @@ test("the locator stays synchronized with the production engine's data", () => {
     ["economy.incomePerCitizen", /INCOME_PER_CITIZEN:\s*0\.06/],
     ["ability.fireball.effects.0.amount", /amount:\s*250/],
     ["ability.lightningBarrage.charge.damage.1", /damageByCharges:\s*\[230, 475, 800\]/],
-    ["passive.water.0.amount", /amount:\s*0\.0575/],
+    ["passive.water.0.amount", /amount:\s*0\.0675/],
   ];
   for (const [id, pattern] of checks) {
     const loc = locateParameter(id);

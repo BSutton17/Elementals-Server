@@ -22,8 +22,8 @@ test("loads development defaults when nothing is configured", async () => {
   assert.equal(cfg.isDevelopment, true);
   assert.equal(cfg.isProduction, false);
   assert.equal(cfg.server.port, 3001);
-  // Development defaults to the deployed client origin (config/index.ts).
-  assert.deepEqual(cfg.cors.origins, ["https://elementals-game.netlify.app"]);
+  // Development defaults to the local Vite dev server origin (config/index.ts).
+  assert.deepEqual(cfg.cors.origins, ["http://localhost:5173"]);
   assert.equal(cfg.logging.level, "debug");
   assert.equal(cfg.reconnect.graceMs, 60_000); // default 60s
 });

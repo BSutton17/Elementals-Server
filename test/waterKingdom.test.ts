@@ -48,14 +48,14 @@ function pond(): { match: Match; w: PlayerState; f: PlayerState; n: PlayerState 
 
 // --- #81: passives applied automatically by the engine -------------------------
 
-test("We're In This Together: water citizens produce $0.90/s vs the base $0.80/s", () => {
+test("We're In This Together: water citizens produce $1.35/s vs the base $1.20/s", () => {
   const { w, f } = pond();
-  // 10 citizens: water 10 × $0.045/tick = $0.45; Fire 10 × $0.04 = $0.4.
-  assert.equal(computeIncome(w), 0.575);
+  // 10 citizens: water 10 × $0.0675/tick = $0.675; Fire 10 × $0.06 = $0.6.
+  assert.equal(computeIncome(w), 0.675);
   assert.equal(computeIncome(f), 0.6);
 
-  w.economy.citizens = 20; // flat per-citizen rate: 20 × 0.045
-  assert.equal(computeIncome(w), 1.15);
+  w.economy.citizens = 20; // flat per-citizen rate: 20 × 0.0675
+  assert.equal(computeIncome(w), 1.35);
 });
 
 test("production passive flows through the real income phase", () => {
@@ -63,7 +63,7 @@ test("production passive flows through the real income phase", () => {
   const w0 = w.economy.currency;
   const f0 = f.economy.currency;
   applyPassiveIncome(match.gameState!);
-  assert.ok(Math.abs((w.economy.currency - w0) - 0.575) < 0.0001); // floating point tolerance
+  assert.ok(Math.abs((w.economy.currency - w0) - 0.675) < 0.0001); // floating point tolerance
   assert.ok(Math.abs((f.economy.currency - f0) - 0.6) < 0.0001); // floating point tolerance
 });
 
@@ -258,8 +258,8 @@ test("Riptide restores 50% max HP and grows citizens by 5%, refreshing income", 
   assert.equal(r.ok, true);
   assert.equal(w.castle.hp, 2000 + 5000); // 50% of 10,000
   assert.equal(w.economy.citizens, 11); // round(10 × 1.05)
-  // Income refreshed at once: 11 × $0.045 = $0.495.
-  assert.equal(w.economy.incomePerTick, 0.6325);
+  // Income refreshed at once: 11 × $0.0675 = $0.7425.
+  assert.equal(w.economy.incomePerTick, 0.7425);
 });
 
 test("Riptide healing is capped at max HP", () => {

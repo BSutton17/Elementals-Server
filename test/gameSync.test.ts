@@ -76,7 +76,7 @@ test("an active match broadcasts periodic state:sync to players", async () => {
       assert.ok(p.economy.currency >= 0);
       assert.equal(p.economy.citizens, 10);
       assert.equal(typeof p.economy.incomePerTick, "number");
-      assert.equal(p.economy.nextCitizenCost, 10); // base cost, none purchased
+      assert.equal(p.economy.nextCitizenCost, 25); // base cost, none purchased
       assert.equal(p.castle.shield, 0);
       assert.equal(typeof p.castle.nextRepairCost, "number");
     }

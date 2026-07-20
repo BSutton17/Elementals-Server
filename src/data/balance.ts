@@ -43,7 +43,7 @@ export const ECONOMY = {
   /** Money awarded per citizen, per tick (0.05 per tick = 1.00 per second at 20 ticks/sec). */
   INCOME_PER_CITIZEN: 0.06,
   /** Base cost of the first purchased citizen. */
-  CITIZEN_COST: 10,
+  CITIZEN_COST: 25,
   /**
    * Multiplicative cost growth per citizen already purchased, so each purchase
    * costs more (progressive scaling): cost = CITIZEN_COST × GROWTH^purchased,
@@ -85,7 +85,7 @@ export const TICK = {
 /** Shield defaults. */
 export const SHIELD = {
   /** Health of the standard purchasable shield. */
-  STANDARD_HP: 1000,
+  STANDARD_HP: 1750,
   /** Cost of the standard shield (matches the client's shop display). */
   COST: 500,
 } as const;

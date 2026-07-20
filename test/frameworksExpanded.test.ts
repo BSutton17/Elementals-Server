@@ -224,8 +224,8 @@ test("resourceTransfer transfers currency and citizens securely, updating income
 
   // Verify income recalculated immediately for both players
   assert.equal(b.economy.incomePerTick, 0.18); // 3 citizens * 0.04
-  // Water caster a: 7 citizens × $0.045 (flat per-citizen override) = 0.315.
-  assert.equal(a.economy.incomePerTick, 0.4025);
+  // Water caster a: 7 citizens × $0.0675 (flat per-citizen override) = 0.4725.
+  assert.equal(a.economy.incomePerTick, 0.4725);
 });
 
 // --- [#107] Cooldown Modifier Framework Tests -------------------------------------

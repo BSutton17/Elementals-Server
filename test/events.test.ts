@@ -13,7 +13,7 @@ import {
 import { earn } from "../src/engine/money.js";
 import type { GameplayEvent } from "../src/engine/events.js";
 import type { MatchPlayer } from "../src/match/types.js";
-import { FIREBALL, SCORCHING_SUN } from "../src/data/fireAbilities.js";
+import { FIREBALL, SCORCHING_SUN, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
 import { RIPTIDE } from "../src/data/waterAbilities.js";
 import { mulberry32 } from "../simulation/src/rng.js";
 import { runSimulation } from "../simulation/src/index.js";
@@ -103,6 +103,28 @@ test("statuses publish on apply, tick (DoT), and expiry", () => {
   assert.equal(expired[0]!.playerId, "b");
 });
 
+test("a usage-exhausted buff (Blazing Determination) reports statusExpired when consumed", () => {
+  const { match, a, ofType } = arena();
+
+  // Apply the one-shot damage buff to self.
+  const buff = activateAbility(match, a, BLAZING_DETERMINATION, {});
+  assert.equal(buff.ok, true);
+  assert.ok(ofType("statusApplied").some((e) => e.statusId === "blazingDetermination"));
+  assert.equal(
+    ofType("statusExpired").filter((e) => e.statusId === "blazingDetermination").length,
+    0, // not gone yet — it ends by being USED, not by timing out
+  );
+
+  // Spend it on the next attack: the buff is consumed and pruned, which must now
+  // publish statusExpired so VFX/replays learn the buff ended.
+  const hit = activateAbility(match, a, FIREBALL, { targetId: "b" });
+  assert.equal(hit.ok, true);
+
+  const expired = ofType("statusExpired").filter((e) => e.statusId === "blazingDetermination");
+  assert.equal(expired.length, 1);
+  assert.equal(expired[0]!.playerId, "a");
+});
+
 test("heals publish with the actual amount restored", () => {
   const { match, b, ofType } = arena();
   b.castle.hp = 9_900; // only 100 missing; Riptide restores 50% max
@@ -125,7 +147,7 @@ test("economy purchases publish purchase / citizensChanged / shieldGained / heal
     tick: match.tick,
     playerId: "a",
     kind: "citizen",
-    cost: 10,
+    cost: 25,
   });
   assert.equal(ofType("citizensChanged")[0]!.delta, 1);
   assert.equal(ofType("citizensChanged")[0]!.total, 11);

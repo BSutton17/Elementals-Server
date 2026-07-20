@@ -84,8 +84,8 @@ test("citizen cost follows the exact scaling sequence", () => {
     costs.push(citizenCost(a));
     buyCitizen(match, a);
   }
-  // base 10 × 1.10^n, rounded to whole dollars.
-  assert.deepEqual(costs, [10, 11, 12, 13, 15, 16]);
+  // base 25 × 1.10^n, rounded to whole dollars.
+  assert.deepEqual(costs, [25, 28, 30, 33, 37, 40]);
   assert.equal(a.economy.citizens, config.startingCitizens + 6);
 });
 

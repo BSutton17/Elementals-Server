@@ -39,7 +39,7 @@ test("global engine constants have fixed friendly names", () => {
 });
 
 test("passives are named by their engine primitive, not a raw field", () => {
-  // passive.water.0 is { type: 'incomePerCitizen', amount: 0.045 }.
+  // passive.water.0 is { type: 'incomePerCitizen', amount: 0.0675 }.
   assert.equal(describeParameter("passive.water.0.amount"), "Water Income Per Citizen");
   // A field that adds information is appended.
   assert.equal(

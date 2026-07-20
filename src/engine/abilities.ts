@@ -763,9 +763,18 @@ function activateAbilityInner(
     if (focus.stacks <= 0) removeStatus(caster, focus.id);
   }
 
-  // Clean up any statuses that are now exhausted (modifiers consumed)
-  pruneExhaustedStatuses(caster);
-  for (const target of targets) pruneExhaustedStatuses(target);
+  // Clean up any statuses that are now exhausted (modifiers consumed), e.g.
+  // Blazing Determination once its buffed strike lands. Report each as expired
+  // so VFX/replays learn the buff ended by being USED, not by timing out.
+  const pruneBus = match.gameState!.events;
+  const emitExpired = (playerId: string, exhausted: ReturnType<typeof pruneExhaustedStatuses>) => {
+    if (!pruneBus.enabled) return;
+    for (const s of exhausted) {
+      pruneBus.emit({ type: "statusExpired", tick: match.tick, playerId, statusId: s.id });
+    }
+  };
+  emitExpired(caster.id, pruneExhaustedStatuses(caster));
+  for (const target of targets) emitExpired(target.id, pruneExhaustedStatuses(target));
 
   return { ok: true, damage, targetId: targets[0]!.id };
 }

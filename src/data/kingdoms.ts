@@ -41,7 +41,7 @@ export function isKingdomId(value: unknown): value is KingdomId {
 export type KingdomPassive = (
   | { type: "productionPerCitizen"; pct: number }
   /** Overrides the per-citizen income rate outright (per tick). Water: every
-   *  citizen produces $0.90/s (0.045/tick) vs the base $0.80/s. */
+   *  citizen produces $1.35/s (0.0675/tick) vs the base $1.20/s. */
   | { type: "incomePerCitizen"; amount: number }
   | { type: "statusDurationReduction"; statusId: string; pct: number }
   | { type: "elementalResistance"; element: string; pct: number }
@@ -84,7 +84,7 @@ export type KingdomPassive = (
  * an empty list means "no engine-applied passives yet".
  *
  * Water (Epic 6, ticket #81):
- *  - "We're In This Together" — +10% production per citizen.
+ *  - "We're In This Together" — every citizen produces $1.35/s vs base $1.20/s.
  *  - "Fountain of Youth" — 40% reduced Burn duration; 15% less Fire damage.
  *
  * Air (Epic 8):
@@ -116,9 +116,9 @@ export type KingdomPassive = (
  */
 export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   water: [
-    // "We're In This Together": every Water citizen produces $1.15/s
-    // (0.0575/tick) — a flat per-citizen rate vs the base $1.00/s.
-    { type: "incomePerCitizen", amount: 0.0575 },
+    // "We're In This Together": every Water citizen produces $1.35/s
+    // (0.0675/tick) — a flat per-citizen rate above the base $1.20/s.
+    { type: "incomePerCitizen", amount: 0.0675 },
     { type: "statusDurationReduction", statusId: "burn", pct: 0.4 },
     { type: "elementalResistance", element: "fire", pct: 0.15 },
   ],
