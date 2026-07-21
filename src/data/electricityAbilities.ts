@@ -138,7 +138,7 @@ export const THUNDERDOME_STATUS: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 2,
+      value: 1.75,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -154,7 +154,7 @@ export const THUNDERDOME_STATUS_LV5: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 2.5,
+      value: 2,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -295,7 +295,7 @@ export const THUNDERING_FATE: AbilityDefinition = {
       // …and keep it clear for the window.
       type: "status",
       target: "self",
-      params: { status: THUNDERING_FATE_STATUS, durationTicks: 10 * TICK.RATE },
+      params: { status: THUNDERING_FATE_STATUS, durationTicks: 3 * TICK.RATE },
     },
   ],
   upgradePath: [
@@ -303,7 +303,7 @@ export const THUNDERING_FATE: AbilityDefinition = {
       level: 1,
       cost: 800,
       changes: {
-        effectParams: [null, { durationTicks: 12 * TICK.RATE }], // 10 s -> 12 s
+        effectParams: [null, { durationTicks: 5 * TICK.RATE }], // 10 s -> 12 s
       },
     },
     {

@@ -294,7 +294,7 @@ export const BLAZING_DETERMINATION_STATUS: StatusEffectDefinition = {
     {
       stat: "damage",
       op: "mult",
-      value: 2.25,
+      value: 2.75,
       usageLimit: 1,
     },
   ],
@@ -307,7 +307,7 @@ export const BLAZING_DETERMINATION_STATUS_LV2: StatusEffectDefinition = {
     {
       stat: "damage",
       op: "mult",
-      value: 2.5,
+      value: 3.25,
       usageLimit: 1,
     },
   ],
