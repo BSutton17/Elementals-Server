@@ -46,7 +46,7 @@ export const FIREBALL: AbilityDefinition = {
   id: "fireball",
   name: "Fireball",
   kind: "attack",
-  cost: 125,
+  cost: 100,
   cooldownTicks: 3 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   // A plain damage attack — Burn is applied only by Scorching Sun (guaranteed)
@@ -61,14 +61,14 @@ export const FIREBALL: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 250,
+      cost: 150,
       changes: {
         effectParams: [{ amount: 300 }],
       },
     },
     {
       level: 2,
-      cost: 300,
+      cost: 200,
       changes: {
         cooldownTicks: Math.round(3 * TICK.RATE * 0.9), // 54 ticks (2.7 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
@@ -76,7 +76,7 @@ export const FIREBALL: AbilityDefinition = {
     },
     {
       level: 3,
-      cost: 350,
+      cost: 300,
       changes: {
         effectParams: [{ amount: 350 }],
       },
@@ -89,7 +89,7 @@ export const SCORCHING_SUN: AbilityDefinition = {
   id: "scorchingSun",
   name: "Scorching Sun",
   kind: "attack",
-  cost: 300,
+  cost: 250,
   cooldownTicks: 8 * TICK.RATE, // 8 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -111,14 +111,14 @@ export const SCORCHING_SUN: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 350,
+      cost: 300,
       changes: {
         effectParams: [{ amount: 400 }],
       },
     },
     {
       level: 2,
-      cost: 450,
+      cost: 400,
       changes: {
         effectParams: [null, { durationTicks: 7 * TICK.RATE }], // burn duration 5s -> 7s (140 ticks)
       },
@@ -148,7 +148,7 @@ export const FIRENADO: AbilityDefinition = {
   id: "firenado",
   name: "Firenado",
   kind: "attack",
-  cost: 450,
+  cost: 350,
   cooldownTicks: 20 * TICK.RATE, // 12 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -318,7 +318,7 @@ export const BLAZING_DETERMINATION: AbilityDefinition = {
   id: "blazingDetermination",
   name: "Blazing Determination",
   kind: "utility",
-  cost: 750,
+  cost: 650,
   cooldownTicks: 35 * TICK.RATE, // 30s
   targeting: { mode: "self" },
   effects: [

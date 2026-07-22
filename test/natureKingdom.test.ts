@@ -146,9 +146,9 @@ test("Gastro Acid applies strong Poison and can poison citizens (income $0.80 ->
   processStatusTicks(match.gameState!);
   assert.equal(b.castle.hp, 10_000 - 4);
 
-  // Poisoned citizens: 10 x $0.04 x 0.8 = $0.32/tick.
+  // Poisoned citizens: income is reduced by the Poisoned Citizens debuff.
   recalcIncome(b);
-  assert.equal(b.economy.incomePerTick, 0.48);
+  assert.equal(b.economy.incomePerTick, 0.3);
 });
 
 test("status.poison.tickDamage is a catalog knob that scales Poison DoT", () => {

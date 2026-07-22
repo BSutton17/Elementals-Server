@@ -138,7 +138,7 @@ export const THUNDERDOME_STATUS: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 1.75,
+      value: 1.25,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -154,7 +154,7 @@ export const THUNDERDOME_STATUS_LV5: StatusEffectDefinition = {
     {
       stat: "damageTaken",
       op: "mult",
-      value: 2,
+      value: 1.5,
       conditions: [
         { type: "attackElement", params: { element: "electricity" } },
         { type: "targetHasStatusFromCaster", params: { statusId: "thunderdome" } },
@@ -224,7 +224,7 @@ export const HACK: AbilityDefinition = {
   name: "Hack",
   kind: "utility",
   cost: 300,
-  cooldownTicks: 25 * TICK.RATE, // 25 s
+  cooldownTicks: 60 * TICK.RATE, // 25 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
@@ -271,7 +271,7 @@ export const THUNDERING_FATE_STATUS: StatusEffectDefinition = {
     // Per-ability cooldown stat (cooldowns.ts): x0 while the status lasts.
     { stat: "cooldown:zap", op: "mult", value: 0 },
     // Per-ability price stat (activation pipeline): Zap costs a quarter.
-    { stat: "abilityCost:zap", op: "mult", value: 0.15 },
+    { stat: "abilityCost:zap", op: "mult", value: 0.65 },
   ],
 };
 
@@ -281,8 +281,8 @@ export const THUNDERING_FATE: AbilityDefinition = {
   id: "thunderingFate",
   name: "Thundering Fate",
   kind: "ultimate",
-  cost: 600,
-  cooldownTicks: 60 * TICK.RATE, // 60 s
+  cost: 750,
+  cooldownTicks: 180 * TICK.RATE, // 60 s
   targeting: { mode: "self" },
   effects: [
     {

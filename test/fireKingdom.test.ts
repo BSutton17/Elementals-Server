@@ -207,11 +207,10 @@ test("Blazing Determination multiplies next attack damage by 2.5x and gets consu
   activateAbility(match, a, BLAZING_DETERMINATION, { targetId: "a" });
   assert.ok(getStatus(a, "blazingDetermination"));
 
-  // Cast Fireball (base 250)
-  // Base 250 * 1.15 (passive) * 2.50 (Blazing Determination) = 718.75 -> rounded to 719
+  // Cast Fireball (base 250) empowered by Fire's passive + Blazing Determination.
   b.castle.hp = 10_000;
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 703);
+  assert.equal(b.castle.hp, 10_000 - 859);
 
   // Status and modifiers should be consumed/removed instantly
   assert.ok(!getStatus(a, "blazingDetermination"));
@@ -319,16 +318,16 @@ test("Heat Wave upgrades swap status modifiers for Crit Chance and Crit Damage",
 });
 
 test("Blazing Determination upgrades swap status multiplier and reduce cooldown", () => {
-  // Lv 1 (Default): 2.5x next attack, 20s cooldown
+  // Lv 1 (Default): 2.75x next attack, 35s cooldown
   const lv1 = resolveAbility(BLAZING_DETERMINATION, 0);
   const status1 = lv1.effects[0].params.status!;
-  assert.equal(status1.modifiers?.[0].value, 2.25);
+  assert.equal(status1.modifiers?.[0].value, 2.75);
   assert.equal(lv1.cooldownTicks, 700);
 
-  // Lv 2: Increase damage multiplier to 2.75x
+  // Lv 2: Increase damage multiplier to 3.25x
   const lv2 = resolveAbility(BLAZING_DETERMINATION, 1);
   const status2 = lv2.effects[0].params.status!;
-  assert.equal(status2.modifiers?.[0].value, 2.5);
+  assert.equal(status2.modifiers?.[0].value, 3.25);
   assert.equal(lv2.cooldownTicks, 700);
 
   // Lv 3: Reduce cooldown to 15s (300 ticks)

@@ -65,7 +65,7 @@ test("casts publish abilityCast and damage with full breakdowns", () => {
     casterId: "a",
     abilityId: "fireball",
     targetIds: ["b"],
-    cost: 125,
+    cost: 100,
     chargesUsed: undefined,
   });
 
@@ -154,8 +154,8 @@ test("economy purchases publish purchase / citizensChanged / shieldGained / heal
 
   buyShield(match, a);
   const shield = ofType("shieldGained")[0]!;
-  assert.equal(shield.amount, 1000);
-  assert.equal(shield.total, 1000);
+  assert.equal(shield.amount, 1750);
+  assert.equal(shield.total, 1750);
   assert.equal(shield.cause, "purchase");
 
   a.castle.hp = 5_000;
@@ -166,7 +166,7 @@ test("economy purchases publish purchase / citizensChanged / shieldGained / heal
   unlockOrUpgradeAbility(match, a, "fireball");
   const unlock = ofType("purchase").find((e) => e.kind === "unlock")!;
   assert.equal(unlock.itemId, "fireball");
-  assert.equal(unlock.cost, 63);
+  assert.equal(unlock.cost, 50);
 });
 
 test("cooldown completion and eliminations publish through the tick loop", () => {

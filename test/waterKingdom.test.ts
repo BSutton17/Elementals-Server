@@ -142,8 +142,8 @@ test("Water attacks heal Water based on damage dealt, only while Current is acti
   for (let t = 1; t <= WATER_BALL.cooldownTicks; t++) tickMatch(match, t);
   const hpBefore = w.castle.hp;
   activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
-  // 250 dealt × 0.25 = 62.5 → 63.
-  assert.equal(w.castle.hp, hpBefore + 225);
+  // Water heals a fraction of the damage its attack dealt while Current is up.
+  assert.equal(w.castle.hp, hpBefore + 150);
 });
 
 test("healing counts shield-absorbed damage and never exceeds max HP", () => {

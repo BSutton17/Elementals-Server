@@ -39,7 +39,7 @@ export const FLOODED_STATUS: StatusEffectDefinition = {
 };
 
 /** Healing per point of damage dealt to a Current-marked target (#85). */
-const CURRENT_LIFESTEAL = { ratio: 0.75, requiresTargetStatus: "current" };
+const CURRENT_LIFESTEAL = { ratio: 0.5, requiresTargetStatus: "current" };
 
 /** Water Ball (#82): basic Water attack. */
 export const WATER_BALL: AbilityDefinition = {

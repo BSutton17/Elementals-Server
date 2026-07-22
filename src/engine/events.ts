@@ -27,6 +27,13 @@ export type GameplayEvent =
       targetIds: string[];
       cost: number;
       chargesUsed?: number;
+      /**
+       * Attacks Air's wind passive deflected (Epic 9 VFX). Each entry maps the
+       * kingdom that intercepted the shot (`via`) to the kingdom it was turned
+       * toward (`to`, also in `targetIds`). The renderer plays a two-leg
+       * deflection (attacker → via → to); absent when nothing was redirected.
+       */
+      redirects?: { via: string; to: string }[];
     }
   | {
       type: "damage";

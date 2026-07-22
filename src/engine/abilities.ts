@@ -539,6 +539,10 @@ function activateAbilityInner(
     );
 
   let targets: PlayerState[];
+  // Air's wind passive (Epic 9 VFX): records shots turned aside so the renderer
+  // can play the attacker → Air → new-target deflection. `via` is the kingdom
+  // that intercepted the shot; `to` is where it was hurled instead.
+  const windRedirects: { via: string; to: string }[] = [];
   switch (effective.targeting.mode) {
     case "self":
     case "noTarget":
@@ -581,6 +585,9 @@ function activateAbilityInner(
           return { ok: false, error: "INVALID_TARGET" };
         }
         let target = resolved;
+        // The Air castle where the wind first intercepts this shot (set by the
+        // first wind redirect below); drives the deflection animation's `via`.
+        let windVia: string | null = null;
 
         // Apply targeting redirection (ticket #109)
         const redirectId = getTargetingRedirect(target, caster);
@@ -600,6 +607,7 @@ function activateAbilityInner(
         if (mark) {
           const destinations = otherPlayers(target.id);
           if (destinations.length > 0) {
+            windVia = target.id; // the shot reaches this Air castle first
             target = destinations[Math.floor(rng() * destinations.length)]!;
             // Hurricane Lv 3: the deflected attack hits the redirected target
             // harder — a one-use damage multiplier on this activation.
@@ -632,8 +640,16 @@ function activateAbilityInner(
         if (redirectPct > 0 && rng() < redirectPct) {
           const destinations = otherPlayers(target.id);
           if (destinations.length > 0) {
+            if (windVia === null) windVia = target.id; // first interception point
             target = destinations[Math.floor(rng() * destinations.length)]!;
           }
+        }
+
+        // A wind redirect actually fired — record it for the deflection VFX. If
+        // the shot somehow lands back on the intercepting castle, there's nothing
+        // to animate, so skip it.
+        if (windVia !== null && windVia !== target.id) {
+          windRedirects.push({ via: windVia, to: target.id });
         }
 
         targets.push(target);
@@ -690,6 +706,7 @@ function activateAbilityInner(
       targetIds: targets.map((t) => t.id),
       cost: castCost,
       chargesUsed: chargesPlanned,
+      ...(windRedirects.length > 0 ? { redirects: windRedirects } : {}),
     });
   }
 

@@ -67,7 +67,7 @@ test("ability values resolve through the registry (damage, cost, cooldown)", () 
   // Production baseline.
   const base = resolveAbility(FIREBALL, 0);
   assert.equal(base.effects[0]!.params.amount, 250);
-  assert.equal(base.cost, 125);
+  assert.equal(base.cost, 100);
 
   withParameterSet(
     {
@@ -156,7 +156,7 @@ test("the catalog enumerates the tunable space with production bases", () => {
   assert.equal(byId.get("ability.fireball.effects.0.amount"), 250);
   assert.equal(byId.get("ability.lightningBarrage.unlockCost"), 100);
   assert.equal(byId.get("ability.lightningBarrage.charge.damage.1"), 475);
-  assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 250);
+  assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 150);
 
   // Passive values, discovered generically.
   assert.equal(byId.get("passive.water.0.amount"), 0.0675);

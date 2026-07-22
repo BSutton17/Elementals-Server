@@ -13,17 +13,22 @@ import type { StatusEffectDefinition } from "../engine/status.js";
  * expected to move in later balance tickets.
  */
 
-/** Frozen: the bearer cannot attack (design: 4 seconds). */
+/** Frozen: the bearer cannot attack AND produces no gold — the whole kingdom is
+ *  locked in ice (design: 4 seconds). */
 export const FROZEN_STATUS: StatusEffectDefinition = {
   id: "frozen",
   name: "Frozen",
   category: "crowdControl",
   stacking: "refresh",
   blocksAttacks: true,
+  // A frozen kingdom's economy halts too — no gold while encased in ice.
+  modifiers: [
+    { stat: "income", op: "mult", value: 0 },
+  ],
 };
 
 /** The standard Frozen duration (design: "cannot attack for 4 seconds"). */
-export const FROZEN_DURATION = 5 * TICK.RATE;
+export const FROZEN_DURATION = 7 * TICK.RATE;
 
 /** Frostbite: the bearer's production is slowed by 50% (Ice's retaliation). */
 export const FROSTBITE_STATUS: StatusEffectDefinition = {
@@ -32,7 +37,7 @@ export const FROSTBITE_STATUS: StatusEffectDefinition = {
   category: "debuff",
   stacking: "refresh",
   modifiers: [
-    { stat: "income", op: "mult", value: 0.5 },
+    { stat: "income", op: "mult", value: 0.8 },
   ],
 };
 
@@ -44,7 +49,7 @@ export const CHILLING_RETRIBUTION_STATUS: StatusEffectDefinition = {
   stacking: "refresh",
   modifiers: [
     // The global cooldown stat setCooldown applies (ticket #107).
-    { stat: "cooldown", op: "mult", value: 1.3 },
+    { stat: "cooldown", op: "mult", value: 1.75 },
   ],
 };
 
@@ -52,7 +57,7 @@ export const CHILLING_RETRIBUTION_STATUS: StatusEffectDefinition = {
 export const CHILLING_RETRIBUTION_STATUS_LV5: StatusEffectDefinition = {
   ...CHILLING_RETRIBUTION_STATUS,
   modifiers: [
-    { stat: "cooldown", op: "mult", value: 1.45 },
+    { stat: "cooldown", op: "mult", value: 2 },
   ],
 };
 
@@ -103,7 +108,7 @@ export const ICICLE: AbilityDefinition = {
       // (a shattering blow on a frozen castle). Generic bonus-vs-status, same
       // primitive as Fire's bonus to burning targets.
       params: {
-        amount: 450,
+        amount: 250,
         element: "ice",
         bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 350 },
       },
@@ -114,7 +119,7 @@ export const ICICLE: AbilityDefinition = {
       level: 1,
       cost: 150,
       changes: {
-        effectParams: [{ amount: 500 }],
+        effectParams: [{ amount: 400 }],
       },
     },
     {
@@ -149,9 +154,9 @@ export const FLOOD_OF_FROST: AbilityDefinition = {
       type: "damage",
       target: "target",
       params: {
-        amount: 650,
+        amount: 450,
         element: "ice",
-        bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 400 },
+        bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 300 },
       },
     },
     {
@@ -166,7 +171,7 @@ export const FLOOD_OF_FROST: AbilityDefinition = {
       level: 1,
       cost: 200,
       changes: {
-        effectParams: [{ amount: 750 }],
+        effectParams: [{ amount: 550 }],
       },
     },
     {
@@ -209,7 +214,7 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
       // Freeze to the Core applies Frozen itself (below), so this bonus only
       // triggers when the target is ALREADY frozen (a re-freeze / follow-up).
       params: {
-        amount: 750,
+        amount: 650,
         element: "ice",
         bonusDamageIfTargetHasStatus: { statusId: "frozen", extraAmount: 550 },
       },
@@ -225,7 +230,7 @@ export const FREEZE_TO_THE_CORE: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ amount: 850 }],
+        effectParams: [{ amount: 800 }],
       },
     },
     {
@@ -304,13 +309,21 @@ export const BLIZZARD: AbilityDefinition = {
       target: "target",
       params: { status: BLIZZARD_STATUS, durationTicks: 7 * TICK.RATE }, // 7 s
     },
+    {
+      // Blizzard also FREEZES every opposing kingdom for the storm's duration —
+      // encased in ice: no attacks, no gold (Frozen), and the frozen visuals.
+      type: "status",
+      target: "target",
+      params: { status: FROZEN_STATUS, durationTicks: 7 * TICK.RATE }, // 7 s
+    },
   ],
   upgradePath: [
     {
       level: 1,
       cost: 800,
       changes: {
-        effectParams: [{ durationTicks: 9 * TICK.RATE }], // 7 s -> 9 s
+        // Both the storm marker and the freeze extend together (7 s -> 9 s).
+        effectParams: [{ durationTicks: 9 * TICK.RATE }, { durationTicks: 9 * TICK.RATE }],
       },
     },
     {

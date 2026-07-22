@@ -164,13 +164,13 @@ test("Natural Terrain Lv2 increases the damage reduction", () => {
 
 // --- Brick Wall ---------------------------------------------------------------------
 
-test("Brick Wall grants a 2,500 HP shield on top of the current one", () => {
+test("Brick Wall grants a 4,000 HP shield on top of the current one", () => {
   const { match, players } = bedrock(["earth", "plains"]);
   const a = players[0];
 
   const r = activateAbility(match, a, BRICK_WALL);
   assert.equal(r.ok, true);
-  assert.equal(a.castle.shield, 2500 + 2500);
+  assert.equal(a.castle.shield, 2500 + 4000);
 });
 
 // --- Earth Ability Upgrades -----------------------------------------------------------
@@ -205,6 +205,6 @@ test("Earth upgrade tiers resolve their overrides", () => {
 
   // Brick Wall: Lv2 shield HP, Lv3 cooldown.
   const bw = resolveAbility(BRICK_WALL, 2);
-  assert.equal(bw.effects[0].params.amount, 3500);
+  assert.equal(bw.effects[0].params.amount, 5000);
   assert.equal(bw.cooldownTicks, 1530); // 76.5 s
 });

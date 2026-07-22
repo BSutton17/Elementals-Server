@@ -78,7 +78,7 @@ export const POISONED_CITIZENS_STATUS: StatusEffectDefinition = {
   category: "debuff",
   stacking: "refresh",
   modifiers: [
-    { stat: "income", op: "mult", value: 0.8 },
+    { stat: "income", op: "mult", value: 0.5 },
   ],
 };
 
