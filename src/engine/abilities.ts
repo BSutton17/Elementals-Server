@@ -1096,6 +1096,17 @@ function applyEffect(
         if (actualSteal > 0) {
           recipient.economy.citizens -= actualSteal;
           caster.economy.citizens += actualSteal;
+          // The citizen price ladder travels with the stolen citizens: the
+          // victim steps back down the cost curve (rebuying what was taken
+          // isn't double-priced) and the thief climbs it by the same amount,
+          // conserving total purchase pressure. Clamped — you can't inherit
+          // more "purchases" than the victim had actually made.
+          const purchasedMoved = Math.min(
+            actualSteal,
+            recipient.economy.citizensPurchased,
+          );
+          recipient.economy.citizensPurchased -= purchasedMoved;
+          caster.economy.citizensPurchased += purchasedMoved;
           recalcIncome(caster);
           recalcIncome(recipient);
           if (bus.enabled) {

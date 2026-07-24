@@ -222,6 +222,38 @@ test("Hack steals a percentage of the target's money and citizens, dealing no da
   assert.equal(a.economy.citizens, aCitizens + 1);
 });
 
+test("Hack moves the citizen price ladder with the stolen citizens", () => {
+  const { match, players } = grid(["electricity", "plains"]);
+  const [a, b] = players;
+
+  // The victim has climbed the cost curve by two purchases; the hacker none.
+  b.economy.citizens = 20;
+  b.economy.citizensPurchased = 2;
+  a.economy.citizensPurchased = 0;
+
+  activateAbility(match, a, HACK, { targetId: "p1" }); // steals 10% = 2 citizens
+  assert.equal(b.economy.citizens, 18);
+  // Both ladders adjust: the victim steps back down, the thief climbs up.
+  assert.equal(b.economy.citizensPurchased, 0);
+  assert.equal(a.economy.citizensPurchased, 2);
+});
+
+test("Hack's ladder transfer is clamped to what the victim actually purchased", () => {
+  const { match, players } = grid(["electricity", "plains"]);
+  const [a, b] = players;
+
+  // 20 citizens but only 1 was purchased (the rest are starting stock).
+  b.economy.citizens = 20;
+  b.economy.citizensPurchased = 1;
+  a.economy.citizensPurchased = 3;
+
+  activateAbility(match, a, HACK, { targetId: "p1" }); // steals 2 citizens
+  assert.equal(b.economy.citizens, 18);
+  // Only 1 ladder step existed to take — never negative on the victim.
+  assert.equal(b.economy.citizensPurchased, 0);
+  assert.equal(a.economy.citizensPurchased, 4);
+});
+
 // --- Thundering Fate ----------------------------------------------------------------
 
 test("Thundering Fate clears Zap's cooldown and keeps it clear for the window", () => {

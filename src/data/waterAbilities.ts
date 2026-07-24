@@ -39,7 +39,7 @@ export const FLOODED_STATUS: StatusEffectDefinition = {
 };
 
 /** Healing per point of damage dealt to a Current-marked target (#85). */
-const CURRENT_LIFESTEAL = { ratio: 0.5, requiresTargetStatus: "current" };
+const CURRENT_LIFESTEAL = { ratio: 0.4, requiresTargetStatus: "current" };
 
 /** Water Ball (#82): basic Water attack. */
 export const WATER_BALL: AbilityDefinition = {
@@ -226,13 +226,13 @@ export const FLUID_ASSIMILATION: AbilityDefinition = {
   name: "Fluid Assimilation",
   kind: "utility",
   cost: 175,
-  cooldownTicks: 15 * TICK.RATE, // 15 s
+  cooldownTicks: 25 * TICK.RATE, // 15 s
   targeting: { mode: "allEnemies" },
   effects: [
     {
       type: "status",
       target: "target",
-      params: { status: ASSIMILATED_STATUS, durationTicks: 10 * TICK.RATE },
+      params: { status: ASSIMILATED_STATUS, durationTicks: 5 * TICK.RATE },
     },
   ],
   upgradePath: [
