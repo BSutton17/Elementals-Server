@@ -231,7 +231,7 @@ export const BRICK_WALL: AbilityDefinition = {
   id: "brickWall",
   name: "Brick Wall",
   kind: "ultimate",
-  cost: 1000,
+  cost: 750,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "self" },
   effects: [

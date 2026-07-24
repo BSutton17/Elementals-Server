@@ -55,7 +55,7 @@ const strike: AbilityDefinition = {
 test("Rock Hard Determination: Earth begins the game with a fully intact shield", () => {
   const { players } = bedrock(["earth", "plains"]);
   const [a, b] = players;
-  assert.equal(a.castle.shield, 2500);
+  assert.equal(a.castle.shield, 2000);
   assert.equal(b.castle.shield, 0); // everyone else starts bare
 });
 
@@ -65,7 +65,24 @@ test("Distraught: dealing damage regenerates Earth's shield", () => {
 
   activateAbility(match, a, ROCK_THROW, { targetId: "p1", forceCrit: false });
   assert.equal(b.castle.hp, b.castle.maxHp - 250);
-  assert.equal(a.castle.shield, 2500 + 25); // 10% of 250 dealt
+  assert.equal(a.castle.shield, 2000 + 25); // 10% of 250 dealt
+});
+
+test("Distraught only repairs an ACTIVE shield — it never conjures one", () => {
+  const { match, players } = bedrock(["earth", "plains"]);
+  const [a, b] = players;
+
+  // Shield fully broken: dealing damage must NOT hand Earth a fresh shield.
+  a.castle.shield = 0;
+  activateAbility(match, a, ROCK_THROW, { targetId: "p1", forceCrit: false });
+  assert.equal(b.castle.hp, b.castle.maxHp - 250); // the hit still lands
+  assert.equal(a.castle.shield, 0); // …but no shield is generated from nothing
+
+  // With even a sliver of shield standing, it tops back up as normal.
+  a.cooldowns = {};
+  a.castle.shield = 10;
+  activateAbility(match, a, ROCK_THROW, { targetId: "p1", forceCrit: false });
+  assert.equal(a.castle.shield, 10 + 25);
 });
 
 // --- Meteor Shower ------------------------------------------------------------------
@@ -78,7 +95,7 @@ test("Meteor Shower is 5 hits of 100, not one 500 lump", () => {
   assert.equal(r.ok, true);
   assert.equal(r.damage!.length, 5); // five separate applications
   assert.equal(b.castle.hp, b.castle.maxHp - 750);
-  assert.equal(a.castle.shield, 2500 + 75); // Distraught: 10 per hit
+  assert.equal(a.castle.shield, 2000 + 75); // Distraught: 10 per hit
 });
 
 test("Meteor Shower deals bonus damage to shields (x1.5 per hit)", () => {
@@ -122,7 +139,7 @@ test("Earthquake damages the target and deals aftershock damage to every other k
   assert.equal(b.castle.hp, b.castle.maxHp - 750); // main hit
   assert.equal(c.castle.hp, c.castle.maxHp - 250); // aftershock
   assert.equal(d.castle.hp, d.castle.maxHp - 250); // aftershock
-  assert.equal(a.castle.shield, 2500 + 80 + 20 + 25); // Distraught on every hit
+  assert.equal(a.castle.shield, 2000 + 80 + 20 + 25); // Distraught on every hit
 });
 
 test("Earthquake upgrades raise main and aftershock damage", () => {
@@ -170,7 +187,7 @@ test("Brick Wall grants a 4,000 HP shield on top of the current one", () => {
 
   const r = activateAbility(match, a, BRICK_WALL);
   assert.equal(r.ok, true);
-  assert.equal(a.castle.shield, 2500 + 4000);
+  assert.equal(a.castle.shield, 2000 + 4000);
 });
 
 // --- Earth Ability Upgrades -----------------------------------------------------------

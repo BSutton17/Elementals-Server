@@ -267,7 +267,7 @@ export const DUST_BUNNIES: AbilityDefinition = {
   id: "dustBunnies",
   name: "Dust Bunnies",
   kind: "ultimate",
-  cost: 1000,
+  cost: 800,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [

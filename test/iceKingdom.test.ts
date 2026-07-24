@@ -83,7 +83,7 @@ test("Cold Embrace: Ice attacks have a 10% chance to Freeze", () => {
   activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.05 });
   const frozen = getStatus(b, "frozen");
   assert.ok(frozen);
-  assert.equal(frozen.remainingTicks, 140);
+  assert.equal(frozen.remainingTicks, 80); // Cold Embrace freezes for 4 s
 });
 
 test("Frozen kingdoms cannot attack — utilities still work", () => {
@@ -91,7 +91,9 @@ test("Frozen kingdoms cannot attack — utilities still work", () => {
   const [a, b] = players;
 
   activateAbility(match, a, FREEZE_TO_THE_CORE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.ok(getStatus(b, "frozen"));
+  const froze = getStatus(b, "frozen");
+  assert.ok(froze);
+  assert.equal(froze.remainingTicks, 80); // Freeze to the Core freezes for 4 s
 
   const blocked = activateAbility(match, b, strike, { targetId: "p0", forceCrit: false, rng: () => 0.99 });
   assert.equal(blocked.ok, false);
@@ -227,12 +229,17 @@ test("Blizzard stops every opposing kingdom from attacking and freezes their pro
     const status = getStatus(p, "blizzard");
     assert.ok(status);
     assert.equal(status.remainingTicks, 140); // 7 s
+    // …and the storm FREEZES every opposing kingdom for the same 7 s.
+    const frozen = getStatus(p, "frozen");
+    assert.ok(frozen, "Blizzard freezes every opposing kingdom");
+    assert.equal(frozen.remainingTicks, 140); // 7 s
     const blocked = activateAbility(match, p, strike, { targetId: "p0", forceCrit: false, rng: () => 0.99 });
     assert.equal(blocked.error, "ATTACKS_BLOCKED");
     recalcIncome(p);
     assert.equal(p.economy.incomePerTick, 0); // production frozen
   }
   assert.ok(!getStatus(a, "blizzard")); // never the caster
+  assert.ok(!getStatus(a, "frozen")); // …and the caster is never frozen either
 });
 
 // --- Ice Ability Upgrades -------------------------------------------------------------

@@ -40,18 +40,18 @@ function activeMatch(
 
 // --- [#111] Fire Passives ---------------------------------------------------------
 
-test("Set Your Heart Ablaze! configures starting castle HP to 8500 and increases damage by 15%", () => {
+test("Set Your Heart Ablaze! configures starting castle HP to 9000 and increases damage by 15%", () => {
   const { match, a, b } = activeMatch("fire", "plains");
 
-  // Verify starting HP/maxHp for Fire is 8500
-  assert.equal(a.castle.hp, 8500);
-  assert.equal(a.castle.maxHp, 8500);
+  // Verify starting HP/maxHp for Fire is 9000
+  assert.equal(a.castle.hp, 9000);
+  assert.equal(a.castle.maxHp, 9000);
 
   // Cast Fireball (base damage 250)
   // Base 250 * 1.15 = 287.5 -> rounded to 288
   b.castle.hp = 10_000;
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 313);
+  assert.equal(b.castle.hp, 10_000 - 338);
 });
 
 test("Roast! deals 1.25x damage to shields", () => {
@@ -72,7 +72,7 @@ test("Roast! deals 1.25x damage to shields", () => {
   b.castle.hp = 10_000;
   b.castle.shield = 2000;
   activateAbility(match, a, strike, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.shield, 2000 - 1688);
+  assert.equal(b.castle.shield, 2000 - 1958);
 });
 
 // --- [#113] Burn Status DoT -------------------------------------------------------
@@ -103,7 +103,7 @@ test("Scorching Sun applies Burn directly, and deals bonus damage to burning tar
   // Base 450 * 1.15 = 517.5 -> rounded to 518
   b.castle.hp = 10_000;
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 375);
+  assert.equal(b.castle.hp, 10_000 - 405);
 
   // Target should have Burn status now
   const burn = getStatus(b, "burn");
@@ -117,7 +117,7 @@ test("Scorching Sun applies Burn directly, and deals bonus damage to burning tar
   b.castle.hp = 10_000;
   a.cooldowns = {};
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 625);
+  assert.equal(b.castle.hp, 10_000 - 675);
 });
 
 test("Burn amplifies Fire attacks from the applier only", () => {
@@ -127,8 +127,8 @@ test("Burn amplifies Fire attacks from the applier only", () => {
   applyStatus(b, BURN_STATUS, { sourceId: "a", durationTicks: 1000 });
   b.castle.hp = 10_000;
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  // 250 * 1.15 (passive) = 287.5 -> 288, amplified: 288 * 1.25 = 360
-  assert.equal(b.castle.hp, 10_000 - 391);
+  // Fire passive + Burn amplification
+  assert.equal(b.castle.hp, 10_000 - 423);
 
   // A Burn applied by someone else does not amplify a's attacks.
   b.statuses = [];
@@ -137,7 +137,7 @@ test("Burn amplifies Fire attacks from the applier only", () => {
   b.castle.hp = 10_000;
   a.cooldowns = {};
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 313); // unamplified
+  assert.equal(b.castle.hp, 10_000 - 338); // unamplified
 });
 
 test("Firenado has a 50% chance to apply Burn", () => {
@@ -210,7 +210,7 @@ test("Blazing Determination multiplies next attack damage by 2.5x and gets consu
   // Cast Fireball (base 250) empowered by Fire's passive + Blazing Determination.
   b.castle.hp = 10_000;
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 859);
+  assert.equal(b.castle.hp, 10_000 - 928);
 
   // Status and modifiers should be consumed/removed instantly
   assert.ok(!getStatus(a, "blazingDetermination"));
@@ -220,7 +220,7 @@ test("Blazing Determination multiplies next attack damage by 2.5x and gets consu
   b.castle.hp = 10_000;
   a.cooldowns = {}; // clear fireball CD
   activateAbility(match, a, FIREBALL, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 313);
+  assert.equal(b.castle.hp, 10_000 - 338);
 });
 
 // --- Fire Ability Upgrades --------------------------------------------------------

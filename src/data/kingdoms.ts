@@ -123,9 +123,9 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     { type: "elementalResistance", element: "fire", pct: 0.15 },
   ],
   fire: [
-    { type: "startingCastleHpMultiplier", pct: 0.85 },
-    { type: "damageMultiplier", pct: 0.25 },
-    { type: "shieldDamageMultiplier", pct: 0.35 },
+    { type: "startingCastleHpMultiplier", pct: 0.9 },
+    { type: "damageMultiplier", pct: 0.35 },
+    { type: "shieldDamageMultiplier", pct: 0.45 },
   ],
   air: [
     // "Embrace of Winds": attacks may strike up to maxTargets kingdoms at once
@@ -135,7 +135,7 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     { type: "attackRedirectChance", pct: 0.05 },
   ],
   earth: [
-    { type: "startingShield", amount: 2500 },
+    { type: "startingShield", amount: 2000 },
     { type: "shieldOnDamageDealt", pct: 0.1 },
   ],
   electricity: [

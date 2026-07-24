@@ -916,9 +916,11 @@ function applyEffect(
       }
 
       // Distraught (Earth passive, Epic 9): dealing damage slowly rebuilds
-      // the caster's shield — a fraction of the damage dealt.
+      // the caster's shield — a fraction of the damage dealt. It only tops up an
+      // ACTIVE shield; with no shield standing it regenerates nothing (the
+      // passive repairs a shield, it never conjures one from nothing).
       const shieldRegen = shieldOnDamageDealt(caster);
-      if (shieldRegen > 0 && recipient.id !== caster.id) {
+      if (shieldRegen > 0 && recipient.id !== caster.id && caster.castle.shield > 0) {
         const dealt = applied.absorbedByShield + applied.dealtToHp;
         const regen = Math.round(dealt * shieldRegen);
         caster.castle.shield += regen;

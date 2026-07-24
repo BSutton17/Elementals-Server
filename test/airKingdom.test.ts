@@ -128,7 +128,7 @@ test("Non-Air kingdoms cannot multi-target: only the first id is used", () => {
     targetIds: ["p1", "p2"],
     forceCrit: false,
   });
-  assert.equal(b.castle.hp, b.castle.maxHp - 313); // 250 * 1.15 -> 288
+  assert.equal(b.castle.hp, b.castle.maxHp - 338);
   assert.equal(c.castle.hp, c.castle.maxHp); // untouched
 });
 
@@ -146,7 +146,7 @@ test("A Gust of Envy: incoming attacks can be redirected — even back to the at
     rng: () => 0.0,
   });
   assert.equal(a.castle.hp, a.castle.maxHp); // Air untouched
-  assert.equal(f.castle.hp, f.castle.maxHp - 313); // attacker hit himself
+  assert.equal(f.castle.hp, f.castle.maxHp - 338); // attacker hit himself
 
   // rng 0.99: the 5% roll fails — the attack lands on Air normally.
   f.cooldowns = {};
@@ -155,7 +155,7 @@ test("A Gust of Envy: incoming attacks can be redirected — even back to the at
     forceCrit: false,
     rng: () => 0.99,
   });
-  assert.equal(a.castle.hp, a.castle.maxHp - 313);
+  assert.equal(a.castle.hp, a.castle.maxHp - 338);
 });
 
 // --- Hurricane (mark + guaranteed deflection) --------------------------------------

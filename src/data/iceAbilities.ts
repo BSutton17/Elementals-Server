@@ -28,7 +28,7 @@ export const FROZEN_STATUS: StatusEffectDefinition = {
 };
 
 /** The standard Frozen duration (design: "cannot attack for 4 seconds"). */
-export const FROZEN_DURATION = 7 * TICK.RATE;
+export const FROZEN_DURATION = 4 * TICK.RATE;
 
 /** Frostbite: the bearer's production is slowed by 50% (Ice's retaliation). */
 export const FROSTBITE_STATUS: StatusEffectDefinition = {

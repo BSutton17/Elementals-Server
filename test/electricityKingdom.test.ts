@@ -199,7 +199,7 @@ test("Thunderdome amplifies the caster's Electricity attacks against the domed t
   // A Fire attack is not amplified (element gate): 250 x 1.15 -> 288 only.
   b.castle.hp = 10_000;
   activateAbility(match, f, FIREBALL, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 313);
+  assert.equal(b.castle.hp, 10_000 - 338);
 });
 
 // --- Hack ---------------------------------------------------------------------------
