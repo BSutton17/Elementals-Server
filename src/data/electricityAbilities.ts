@@ -223,7 +223,7 @@ export const HACK: AbilityDefinition = {
   id: "hack",
   name: "Hack",
   kind: "utility",
-  cost: 300,
+  cost: 350,
   cooldownTicks: 60 * TICK.RATE, // 25 s
   targeting: { mode: "singleEnemy" },
   effects: [

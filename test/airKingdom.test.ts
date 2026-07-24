@@ -132,6 +132,110 @@ test("Non-Air kingdoms cannot multi-target: only the first id is used", () => {
   assert.equal(c.castle.hp, c.castle.maxHp); // untouched
 });
 
+// --- A Light Breeze bounce under Bird's Eye View -----------------------------------
+
+/** Give Air the Bird's Eye View reveal so bounce mode engages. */
+function grantBirdsEye(match: Match, a: PlayerState): void {
+  const r = activateAbility(match, a, BIRDS_EYE_VIEW);
+  assert.equal(r.ok, true);
+  assert.equal(getStatus(a, "birdsEyeView") !== undefined, true);
+}
+
+test("Bird's Eye bounce: full damage per landing, no multi-target spread", () => {
+  const { match, players } = skies(["air", "plains", "water"]);
+  const [a, b, c] = players;
+  grantBirdsEye(match, a);
+
+  // rng always 0: every bounce roll (0 < 0.5) succeeds → 4 landings, and each
+  // candidate pick is index 0. Two selected (b, c) → the chain alternates
+  // b, c, b, c: each castle is hit twice, full 250 damage per landing.
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2"],
+    forceCrit: false,
+    rng: () => 0,
+  });
+  assert.equal(b.castle.hp, b.castle.maxHp - 500); // two full 250 hits
+  assert.equal(c.castle.hp, c.castle.maxHp - 500);
+});
+
+test("Bird's Eye bounce: cost and cooldown are paid once for the whole chain", () => {
+  const { match, players } = skies(["air", "plains", "water"]);
+  const a = players[0];
+  grantBirdsEye(match, a);
+
+  const before = a.economy.currency;
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2"],
+    forceCrit: false,
+    rng: () => 0,
+  });
+  assert.equal(before - a.economy.currency, 125); // one cast price
+  assert.equal(a.cooldowns["aLightBreeze"], 100); // one cooldown
+});
+
+test("Bird's Eye bounce: 50% roll can stop the chain early (still full damage)", () => {
+  const { match, players } = skies(["air", "plains", "water"]);
+  const [a, b, c] = players;
+  grantBirdsEye(match, a);
+
+  // rng always 0.99: the first bounce roll fails (0.99 ≥ 0.5), so only the
+  // guaranteed initial landing lands — full damage, and NOT spread.
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2"],
+    forceCrit: false,
+    rng: () => 0.99,
+  });
+  assert.equal(b.castle.hp, b.castle.maxHp - 250); // full, not 125 (no spread)
+  assert.equal(c.castle.hp, c.castle.maxHp); // chain never reached it
+});
+
+test("Bird's Eye bounce never strikes the same castle twice in a row", () => {
+  const { match, players } = skies(["air", "plains", "water", "nature"]);
+  const [a, b, c, d] = players;
+  grantBirdsEye(match, a);
+
+  // Three selected (b, c, d), rng 0 → 4 landings, always the first eligible
+  // candidate: b, c, b, c (d is never the "first candidate" here, but the key
+  // property is that no landing repeats the previous castle).
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2", "p3"],
+    forceCrit: false,
+    rng: () => 0,
+  });
+  // b at landings 0 & 2, c at 1 & 3 → two full hits each; consecutive landings
+  // always differ, and d is untouched by this particular roll sequence.
+  assert.equal(b.castle.hp, b.castle.maxHp - 500);
+  assert.equal(c.castle.hp, c.castle.maxHp - 500);
+  assert.equal(d.castle.hp, d.castle.maxHp);
+});
+
+test("Bird's Eye + one kingdom selected does not bounce (single full hit)", () => {
+  const { match, players } = skies(["air", "plains", "water"]);
+  const [a, b, c] = players;
+  grantBirdsEye(match, a);
+
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1"],
+    forceCrit: false,
+    rng: () => 0, // would bounce if it could, but there's nowhere to go
+  });
+  assert.equal(b.castle.hp, b.castle.maxHp - 250);
+  assert.equal(c.castle.hp, c.castle.maxHp); // untouched
+});
+
+test("Without Bird's Eye, a multi-target Breeze still spreads (no bounce)", () => {
+  const { match, players } = skies(["air", "plains", "water"]);
+  const [a, b, c] = players;
+  // No Bird's Eye status — Embrace of Winds spread behavior is unchanged.
+  activateAbility(match, a, A_LIGHT_BREEZE, {
+    targetIds: ["p1", "p2"],
+    forceCrit: false,
+    rng: () => 0,
+  });
+  assert.equal(b.castle.hp, b.castle.maxHp - 125); // 250 / 2 spread
+  assert.equal(c.castle.hp, c.castle.maxHp - 125);
+});
+
 // --- A Gust of Envy (5% incoming redirect) -----------------------------------------
 
 test("A Gust of Envy: incoming attacks can be redirected — even back to the attacker", () => {

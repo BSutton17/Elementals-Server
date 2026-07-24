@@ -57,7 +57,8 @@ test("an active match broadcasts periodic state:sync to players", async () => {
           citizens: number;
           nextCitizenCost: number;
         };
-        castle: { shield: number; nextRepairCost: number };
+        castle: { shield: number; nextRepairCost: number; nextShieldCost: number };
+        abilityCosts: Record<string, number>;
       }[];
     }>((resolve, reject) => {
       joiner.on("state:sync", resolve);
@@ -79,6 +80,9 @@ test("an active match broadcasts periodic state:sync to players", async () => {
       assert.equal(p.economy.nextCitizenCost, 25); // base cost, none purchased
       assert.equal(p.castle.shield, 0);
       assert.equal(typeof p.castle.nextRepairCost, "number");
+      assert.equal(p.castle.nextShieldCost, 500); // base cost, none bought
+      // Effective ability prices ride along; empty until abilities are bought.
+      assert.deepEqual(p.abilityCosts, {});
     }
   } finally {
     host.close();

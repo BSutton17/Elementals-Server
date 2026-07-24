@@ -87,6 +87,7 @@ export function listParameters(): ParameterDescriptor[] {
   add("castle.repairCostGrowth", CASTLE.REPAIR_COST_GROWTH);
   add("castle.maxRepairs", CASTLE.MAX_REPAIRS);
   add("shield.cost", SHIELD.COST);
+  add("shield.costGrowth", SHIELD.COST_GROWTH);
   add("shield.standardHp", SHIELD.STANDARD_HP);
   add("combat.baseCritChance", COMBAT.BASE_CRIT_CHANCE);
   add("combat.baseCritMultiplier", COMBAT.BASE_CRIT_MULTIPLIER);

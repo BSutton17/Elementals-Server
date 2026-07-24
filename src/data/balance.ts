@@ -58,6 +58,15 @@ export const COMBAT = {
   BASE_CRIT_CHANCE: 0.05,
   /** Damage multiplier applied on a critical strike. */
   BASE_CRIT_MULTIPLIER: 1.5,
+  /**
+   * "Besieged" comeback bonus: when several kingdoms gang up on you, your own
+   * attacks hit harder. Each enemy *beyond the first* currently targeting you
+   * grants this fraction of extra outgoing attack damage — so a fair 1v1 is
+   * unbuffed, but being triple-teamed pays you back for the pressure.
+   */
+  BESIEGED_DAMAGE_PER_ATTACKER: 0.1,
+  /** Cap on besieging attackers that count toward the bonus (beyond the first). */
+  BESIEGED_MAX_STACKS: 6,
 } as const;
 
 /** Lobby / room defaults. */
@@ -86,8 +95,14 @@ export const TICK = {
 export const SHIELD = {
   /** Health of the standard purchasable shield. */
   STANDARD_HP: 1750,
-  /** Cost of the standard shield (matches the client's shop display). */
+  /** Cost of the first shield (matches the client's shop display). */
   COST: 500,
+  /**
+   * Multiplier applied per shield already bought this match, so each shield
+   * costs a little more than the last (500 → 525 → 551 → …). Only one shield
+   * can be active at a time, so this scales with cumulative purchases.
+   */
+  COST_GROWTH: 1.05,
 } as const;
 
 /** Targeting rules. */

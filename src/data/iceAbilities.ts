@@ -300,7 +300,7 @@ export const BLIZZARD: AbilityDefinition = {
   id: "blizzard",
   name: "Blizzard",
   kind: "ultimate",
-  cost: 500,
+  cost: 650,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [

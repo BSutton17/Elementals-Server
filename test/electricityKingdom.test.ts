@@ -218,7 +218,7 @@ test("Hack steals a percentage of the target's money and citizens, dealing no da
   assert.equal(b.castle.hp, b.castle.maxHp); // no damage
   assert.equal(b.economy.currency, 900); // -10%
   assert.equal(b.economy.citizens, 9); // -10%
-  assert.equal(a.economy.currency, aCurrency - 300 + 100); // cost, then loot
+  assert.equal(a.economy.currency, aCurrency - 350 + 100); // cost, then loot
   assert.equal(a.economy.citizens, aCitizens + 1);
 });
 
@@ -292,10 +292,10 @@ test("cooldown-reduction upgrade tiers also cut the ability's price 15%", () => 
   assert.equal(z.cooldownTicks, 54);
   assert.equal(z.cost, 85);
 
-  // Hack Lv3 (tier 2 reduces cooldown): cost floor(300 × 0.85) = 255.
+  // Hack Lv3 (tier 2 reduces cooldown): cost floor(350 × 0.85) = 297.
   const h = resolveAbility(HACK, 2);
   assert.equal(h.cooldownTicks, 425);
-  assert.equal(h.cost, 255);
+  assert.equal(h.cost, 297);
 
   // Below the tier, the price is untouched.
   assert.equal(resolveAbility(ZAP, 1).cost, 100);

@@ -1,4 +1,5 @@
 import { KINGDOM_PASSIVES, type KingdomPassive } from "../data/kingdoms.js";
+import { COMBAT } from "../data/balance.js";
 import type { PlayerState } from "../match/playerState.js";
 import { evaluateCondition } from "./conditions.js";
 import { getActiveParameterSet, param } from "./parameters.js";
@@ -79,6 +80,32 @@ export function elementalDamageMultiplier(
     }
   }
   return mult;
+}
+
+/**
+ * "Besieged" outgoing-damage multiplier (universal, not a kingdom passive):
+ * the more enemies are locked onto `attacker` right now, the harder its own
+ * attacks land. Each living enemy targeting the attacker *beyond the first*
+ * adds `BESIEGED_DAMAGE_PER_ATTACKER`, capped at `BESIEGED_MAX_STACKS` — so a
+ * 1v1 is neutral (×1) and being ganged up on scales the comeback. Computed
+ * live from targeting state (which shifts every tick), so it is fed into the
+ * damage pipeline as an option rather than stored as a modifier.
+ */
+export function besiegedDamageMultiplier(
+  attacker: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  let besiegers = 0;
+  for (const p of allPlayers) {
+    if (!p.eliminated && p.id !== attacker.id && p.target === attacker.id) {
+      besiegers++;
+    }
+  }
+  const stacks = Math.min(
+    param("combat.besiegedMaxStacks", COMBAT.BESIEGED_MAX_STACKS),
+    Math.max(0, besiegers - 1),
+  );
+  return 1 + param("combat.besiegedDamagePerAttacker", COMBAT.BESIEGED_DAMAGE_PER_ATTACKER) * stacks;
 }
 
 /** Outgoing damage multiplier from passives. */

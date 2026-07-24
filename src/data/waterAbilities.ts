@@ -194,7 +194,7 @@ export const FLOOD: AbilityDefinition = {
       level: 4,
       cost: 500,
       changes: {
-        // Lv5: increased healing from Flood — lifesteal ratio 25% -> 40%.
+        // Lv5: increased healing from Flood — lifesteal ratio 40% -> 125%.
         effectParams: [
           { lifesteal: { ratio: 1.25, requiresTargetStatus: "current" } },
         ],
@@ -218,7 +218,7 @@ export const ASSIMILATED_STATUS: StatusEffectDefinition = {
 
 /**
  * Fluid Assimilation (#89, reworked): utility — no enemy can attack Water for
- * 10 seconds. Applies Assimilated to every living enemy; existing lock-ons
+ * 5 seconds. Applies Assimilated to every living enemy; existing lock-ons
  * onto Water are severed (same mechanism as Flood, ticket #88).
  */
 export const FLUID_ASSIMILATION: AbilityDefinition = {
@@ -226,7 +226,7 @@ export const FLUID_ASSIMILATION: AbilityDefinition = {
   name: "Fluid Assimilation",
   kind: "utility",
   cost: 175,
-  cooldownTicks: 25 * TICK.RATE, // 15 s
+  cooldownTicks: 35 * TICK.RATE, // 25 s
   targeting: { mode: "allEnemies" },
   effects: [
     {
@@ -240,7 +240,7 @@ export const FLUID_ASSIMILATION: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ durationTicks: 12 * TICK.RATE }], // protection 10s -> 12s
+        effectParams: [{ durationTicks: 12 * TICK.RATE }], // protection 5s -> 12s
       },
     },
     {
@@ -254,7 +254,7 @@ export const FLUID_ASSIMILATION: AbilityDefinition = {
   ],
 };
 
-/** Riptide (#90): ultimate — restore 50% Castle HP, +20% citizens. */
+/** Riptide (#90): ultimate — restore 50% Castle HP, +5% citizens. */
 export const RIPTIDE: AbilityDefinition = {
   id: "riptide",
   name: "Riptide",

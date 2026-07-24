@@ -74,7 +74,8 @@ export const DUST_BUNNIES_STATUS_LV2: StatusEffectDefinition = {
   ],
 };
 
-/** A Light Breeze: basic Air attack. */
+/** A Light Breeze: basic Air attack. Under Bird's Eye View, a multi-kingdom
+ *  cast ricochets between the selected kingdoms (Epic 8, `bounce`). */
 export const A_LIGHT_BREEZE: AbilityDefinition = {
   id: "aLightBreeze",
   name: "A Light Breeze",
@@ -82,6 +83,10 @@ export const A_LIGHT_BREEZE: AbilityDefinition = {
   cost: 125,
   cooldownTicks: 5 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
+  // Bird's Eye View turns a multi-target Breeze into a bouncing gust: full
+  // damage per landing, 50% to bounce again, up to 4 landings, never the same
+  // castle twice in a row. One kingdom selected = no bounce (a normal hit).
+  bounce: { requiresCasterStatus: "birdsEyeView", chance: 0.5, maxLandings: 4 },
   effects: [
     {
       type: "damage",

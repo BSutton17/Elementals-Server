@@ -16,6 +16,8 @@ export interface CastleState {
   shield: number;
   /** Number of repairs purchased (drives progressive repair cost). */
   repairs: number;
+  /** Number of shields purchased this match (drives progressive shield cost). */
+  shieldsPurchased: number;
 }
 
 export interface EconomyState {
@@ -198,6 +200,7 @@ export function createPlayerState(
       maxHp: startingHp,
       shield: startingShield,
       repairs: 0,
+      shieldsPurchased: 0,
     },
     economy: {
       citizens: startingCitizens,

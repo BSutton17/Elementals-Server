@@ -8,6 +8,7 @@ import {
   citizenCost,
   repairCastle,
   repairCost,
+  shieldCost,
 } from "../src/engine/purchases.js";
 import { canAfford, earn, roundMoney } from "../src/engine/money.js";
 import { broadcastGameState } from "../src/net/gameSync.js";
@@ -231,15 +232,16 @@ test("extended match: shields obey the one-active rule and rebuy only after depl
   const a = state.getPlayer("a")!;
 
   const ledger = makeLedger();
-  earn(a, 1000);
-  ledger.earn(1000);
+  earn(a, 2000);
+  ledger.earn(2000);
 
   let shieldsBought = 0;
 
-  // First shield.
+  // First shield (cost = SHIELD.COST, none bought yet).
+  const firstCost = shieldCost(a);
   assert.equal(buyShield(match, a).ok, true);
   assert.equal(a.castle.shield, SHIELD.STANDARD_HP);
-  ledger.spend(SHIELD.COST);
+  ledger.spend(firstCost);
   shieldsBought++;
 
   // Across many ticks, every rebuy attempt is rejected while a shield is active,
@@ -258,11 +260,14 @@ test("extended match: shields obey the one-active rule and rebuy only after depl
     // Simulate combat depleting the shield partway through the match.
     if (t === 75) a.castle.shield = 0;
 
-    // Once depleted, a fresh shield can be bought exactly once.
+    // Once depleted, a fresh shield can be bought exactly once — at the higher,
+    // scaled price (second purchase = SHIELD.COST × COST_GROWTH).
     if (t === 76) {
+      const secondCost = shieldCost(a);
+      assert.equal(secondCost, Math.round(SHIELD.COST * SHIELD.COST_GROWTH));
       assert.equal(buyShield(match, a).ok, true);
       assert.equal(a.castle.shield, SHIELD.STANDARD_HP);
-      ledger.spend(SHIELD.COST);
+      ledger.spend(secondCost);
       shieldsBought++;
     }
   }

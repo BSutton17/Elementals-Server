@@ -115,8 +115,21 @@ export function repairCastle(match: Match, player: PlayerState): TransactionResu
 }
 
 /**
+ * Cost of the player's next shield: a flat `SHIELD.COST` scaled by
+ * `SHIELD.COST_GROWTH^shieldsPurchased` so each shield costs more than the last
+ * (500 → 525 → 551 → …), rounded to dollars. Only one shield can be active at a
+ * time, so this scales with cumulative purchases across the match.
+ */
+export function shieldCost(player: PlayerState): number {
+  return Math.round(
+    param("shield.cost", SHIELD.COST) *
+      param("shield.costGrowth", SHIELD.COST_GROWTH) ** player.castle.shieldsPurchased,
+  );
+}
+
+/**
  * Purchases the standard shield (ticket #58): grants `SHIELD.STANDARD_HP` of
- * shield health for `SHIELD.COST`.
+ * shield health at the current, progressively-scaling cost (`shieldCost`).
  *
  * Cannot buy another standard shield while one is already active (ticket #59).
  * Kingdom abilities that grant shields apply them directly (via the effect
@@ -127,18 +140,19 @@ export function buyShield(match: Match, player: PlayerState): TransactionResult 
     return { ok: false, error: "SHIELD_ACTIVE" };
   }
 
-  const shieldCost = param("shield.cost", SHIELD.COST);
-  const validation = validateTransaction(match, player, shieldCost);
+  const cost = shieldCost(player);
+  const validation = validateTransaction(match, player, cost);
   if (!validation.ok) return validation;
 
-  spend(player, shieldCost);
+  spend(player, cost);
   const granted = param("shield.standardHp", SHIELD.STANDARD_HP);
   player.castle.shield += granted;
+  player.castle.shieldsPurchased += 1;
 
   // Gameplay events (#204).
   const bus = match.gameState!.events;
   if (bus.enabled) {
-    bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "shield", cost: shieldCost });
+    bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "shield", cost });
     bus.emit({
       type: "shieldGained",
       tick: match.tick,

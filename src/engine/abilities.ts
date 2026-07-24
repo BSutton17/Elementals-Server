@@ -14,6 +14,7 @@ import {
 } from "./status.js";
 import { resolveDamage } from "./damage.js";
 import {
+  besiegedDamageMultiplier,
   canMultiTargetAttacks,
   multiTargetLimit,
   attackRedirectChance,
@@ -211,6 +212,17 @@ export interface AbilityDefinition {
    * cap is full fails with TARGET_LIMIT — nothing is spent, no cooldown armed.
    */
   maxConcurrentAffected?: { statusId: string; limit: number };
+  /**
+   * Status-gated ricochet (Air's A Light Breeze under Bird's Eye View, Epic 8):
+   * when the caster bears `requiresCasterStatus` and has 2+ distinct kingdoms
+   * selected, the attack bounces *between* the selected kingdoms instead of
+   * striking them all at once. The first selected kingdom is hit, then each
+   * further bounce is a `chance` roll up to `maxLandings` total landings; a
+   * bounce never lands on the same castle twice in a row. Every landing deals
+   * the attack's full damage (no multi-target spread). With one kingdom
+   * selected (or the status absent) the attack keeps its normal form.
+   */
+  bounce?: { requiresCasterStatus: string; chance: number; maxLandings: number };
   /** Ordered upgrade tiers (ticket #75); omitted = not upgradeable. */
   upgradePath?: UpgradeTier[];
 }
@@ -673,6 +685,35 @@ function activateAbilityInner(
     }
   }
 
+  // 4c. Status-gated bounce (A Light Breeze under Bird's Eye View, Epic 8):
+  // rebuild `targets` into a ricochet sequence *between* the selected kingdoms.
+  // The first selected kingdom is struck, then each further bounce is a 50%
+  // roll up to `maxLandings` landings, never repeating the previous castle.
+  // Every landing keeps full damage (bounced ⇒ no multi-target spread below).
+  let bounced = false;
+  const bounceSpec = effective.bounce;
+  if (
+    bounceSpec &&
+    effective.targeting.mode === "singleEnemy" &&
+    caster.statuses.some((s) => s.id === bounceSpec.requiresCasterStatus)
+  ) {
+    // Pool = the distinct selected kingdoms resolved above (a single selection
+    // has nowhere to bounce, so it stays an ordinary hit).
+    const pool: PlayerState[] = [];
+    for (const t of targets) if (!pool.some((p) => p.id === t.id)) pool.push(t);
+    if (pool.length >= 2) {
+      const sequence: PlayerState[] = [pool[0]!]; // the guaranteed first landing
+      while (sequence.length < bounceSpec.maxLandings && rng() < bounceSpec.chance) {
+        const last = sequence[sequence.length - 1]!;
+        const candidates = pool.filter((p) => p.id !== last.id); // no repeat in a row
+        if (candidates.length === 0) break;
+        sequence.push(candidates[Math.floor(rng() * candidates.length)]!);
+      }
+      targets = sequence;
+      bounced = true;
+    }
+  }
+
   // 5. All validation passed — only now spend, and arm the cooldown
   // immediately, before any effect resolves (#73, #74). Effects can never run
   // twice off one activation, even if effect execution itself re-enters.
@@ -730,8 +771,13 @@ function activateAbilityInner(
   // spread 1 (unchanged). Only the multi-target singleEnemy path can resolve
   // more than one primary target, so every other attack keeps full damage.
   // Non-damage effects (status, heal, …) still apply in full to each target.
-  const damageSpread =
-    effective.targeting.mode === "singleEnemy" ? Math.max(1, targets.length) : 1;
+  // A bounce chain deals full damage per landing (each is its own gust), so it
+  // never spreads; otherwise Embrace of Winds divides across the kingdoms hit.
+  const damageSpread = bounced
+    ? 1
+    : effective.targeting.mode === "singleEnemy"
+      ? Math.max(1, targets.length)
+      : 1;
 
   for (let i = 0; i < duplicateCount; i++) {
     // Apply to each resolved target
@@ -892,6 +938,12 @@ function applyEffect(
         ignoreShields: p.ignoreShields,
         shieldDamageMultiplier: p.shieldDamageMultiplier,
         shieldDamageOverflow: p.shieldDamageOverflow,
+        // "Besieged" comeback: the caster hits harder the more kingdoms are
+        // ganged up on it right now (universal, live from targeting state).
+        besiegedMultiplier: besiegedDamageMultiplier(
+          caster,
+          match.gameState!.getPlayers(),
+        ),
       });
       const applied = applyDamage(recipient, resolved.amount, {
         ignoreShields: p.ignoreShields,

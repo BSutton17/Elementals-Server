@@ -142,8 +142,8 @@ test("Water attacks heal Water based on damage dealt, only while Current is acti
   for (let t = 1; t <= WATER_BALL.cooldownTicks; t++) tickMatch(match, t);
   const hpBefore = w.castle.hp;
   activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
-  // Water heals a fraction of the damage its attack dealt while Current is up.
-  assert.equal(w.castle.hp, hpBefore + 150);
+  // Water heals 40% of the damage its attack dealt while Current is up.
+  assert.equal(w.castle.hp, hpBefore + 120); // 300 dmg × 0.40
 });
 
 test("healing counts shield-absorbed damage and never exceeds max HP", () => {
@@ -153,7 +153,7 @@ test("healing counts shield-absorbed damage and never exceeds max HP", () => {
   w.castle.hp = w.castle.maxHp - 10; // nearly full
 
   activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
-  assert.equal(w.castle.hp, w.castle.maxHp); // 63 heal capped at +10
+  assert.equal(w.castle.hp, w.castle.maxHp); // 120 heal capped at +10
 });
 
 // --- #86/#87: Flood damage and duration ---------------------------------------------
@@ -217,7 +217,7 @@ test("the ban lifts when Flood expires", () => {
 
 // --- #89 (reworked): Fluid Assimilation -----------------------------------------------
 
-test("Fluid Assimilation bars every enemy from targeting Water for 10 seconds", () => {
+test("Fluid Assimilation bars every enemy from targeting Water for 5 seconds", () => {
   const { match, w, f, n } = pond();
   match.tick = 1000; // clear of all switch cooldowns
   const r = activateAbility(match, w, FLUID_ASSIMILATION);
@@ -241,10 +241,10 @@ test("Fluid Assimilation severs an existing lock-on onto Water", () => {
   assert.equal(f.target, null); // lock broken the moment the mist rises
 });
 
-test("the Fluid Assimilation ban lifts after 10 seconds", () => {
+test("the Fluid Assimilation ban lifts after 5 seconds", () => {
   const { match, w, f } = pond();
   activateAbility(match, w, FLUID_ASSIMILATION);
-  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  for (let t = 1; t <= 5 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(hasStatus(f, "assimilated"), false);
   assert.deepEqual(selectTarget(match, f, "w"), { ok: true });
 });
@@ -326,7 +326,7 @@ test("Waterfall upgrades (Lv 1 -> 5) increase damage, status duration, reduce co
   assert.equal(r.ok, true);
   assert.equal(getCooldown(w, "waterfall"), 9 * TICK.RATE);
 
-  // Lv 5: Increase healing received from attacking Current targets (25% -> 40% lifesteal ratio)
+  // Lv 5: lifesteal ratio pinned at 40% (same as the new base ratio)
   purchaseUpgrade(match, w, WATERFALL);
   w.cooldowns = {};
   f.castle.hp = 10000;
@@ -360,7 +360,7 @@ test("Flood upgrades (Lv 1 -> 5) boost damage, lockout, cooldown, and increase h
   assert.equal(r.ok, true);
   assert.equal(getCooldown(w, "flood"), 18 * TICK.RATE);
 
-  // Lv 5: Increased healing from Flood — lifesteal 25% -> 40%
+  // Lv 5: Increased healing from Flood — lifesteal 40% -> 125%
   purchaseUpgrade(match, w, FLOOD);
   w.cooldowns = {};
   f.castle.hp = 10000;
@@ -374,7 +374,7 @@ test("Flood upgrades (Lv 1 -> 5) boost damage, lockout, cooldown, and increase h
 test("Fluid Assimilation upgrades (Lv 1 -> 3) extend the ban and reduce cooldown", () => {
   const { match, w, f } = pond();
 
-  // Lv 2: protection 10 s -> 12 s.
+  // Lv 2: protection 5 s -> 12 s.
   purchaseUpgrade(match, w, FLUID_ASSIMILATION);
   let r = activateAbility(match, w, FLUID_ASSIMILATION);
   assert.equal(r.ok, true);

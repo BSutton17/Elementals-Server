@@ -125,7 +125,7 @@ test("repair only restores missing HP; the flat cost applies regardless", () => 
 
 test("shield lifecycle: buy, block duplicate, rebuy after depletion", () => {
   const { match, a } = activeMatch();
-  earn(a, 1000);
+  earn(a, 2000);
 
   assert.equal(buyShield(match, a).ok, true);
   assert.equal(a.castle.shield, SHIELD.STANDARD_HP);

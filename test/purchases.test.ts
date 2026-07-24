@@ -6,6 +6,7 @@ import {
   citizenCost,
   repairCastle,
   repairCost,
+  shieldCost,
 } from "../src/engine/purchases.js";
 import { earn } from "../src/engine/money.js";
 import { Match } from "../src/match/Match.js";
@@ -155,7 +156,7 @@ test("buying a shield fails without enough money", () => {
 
 test("cannot buy a second shield while one is active", () => {
   const { match, a } = activeMatch();
-  earn(a, 1000);
+  earn(a, 2000);
 
   assert.equal(buyShield(match, a).ok, true); // first one
   const second = buyShield(match, a);
@@ -165,6 +166,24 @@ test("cannot buy a second shield while one is active", () => {
   // Once depleted, another can be bought.
   a.castle.shield = 0;
   assert.equal(buyShield(match, a).ok, true);
+});
+
+test("each shield costs 1.05× the last (scales with cumulative purchases)", () => {
+  const { match, a } = activeMatch();
+  earn(a, 5000);
+
+  assert.equal(shieldCost(a), SHIELD.COST); // 500, none bought yet
+  buyShield(match, a);
+  a.castle.shield = 0; // deplete so the next is buyable
+
+  const second = Math.round(SHIELD.COST * SHIELD.COST_GROWTH); // 525
+  assert.equal(shieldCost(a), second);
+  buyShield(match, a);
+  a.castle.shield = 0;
+
+  const third = Math.round(SHIELD.COST * SHIELD.COST_GROWTH ** 2); // 551
+  assert.equal(shieldCost(a), third);
+  assert.equal(a.castle.shieldsPurchased, 2);
 });
 
 test("repairing a full castle is rejected", () => {

@@ -126,6 +126,13 @@ export interface ResolveDamageOptions {
    * into castle HP instead (Meteor Shower Lv 5).
    */
   shieldDamageOverflow?: boolean;
+  /**
+   * "Besieged" outgoing multiplier (≥ 1): the attacker hits harder while
+   * multiple enemies are targeting it. Computed live from targeting state by
+   * `besiegedDamageMultiplier` at the call site (which has the full roster) and
+   * passed in here. Defaults to 1 (no bonus).
+   */
+  besiegedMultiplier?: number;
 }
 
 export interface ResolvedDamage extends DamageResult {
@@ -157,10 +164,14 @@ export function resolveDamage(
 ): ResolvedDamage {
   const base = Math.max(0, baseAmount);
 
-  // 1. Attacker-side modifiers (buffs/debuffs/passives/temp effects).
+  // 1. Attacker-side modifiers (buffs/debuffs/passives/temp effects), then the
+  // universal "besieged" comeback multiplier (harder-hitting while ganged up on).
+  const besieged = Math.max(1, options.besiegedMultiplier ?? 1);
   const afterAttackerModifiers = Math.max(
     0,
-    computeStat(attacker, "damage", base, defender, "caster", options.element) * damageMultiplier(attacker, defender, options.element),
+    computeStat(attacker, "damage", base, defender, "caster", options.element) *
+      damageMultiplier(attacker, defender, options.element) *
+      besieged,
   );
 
   // 2. Elemental interaction.
