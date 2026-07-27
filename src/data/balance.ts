@@ -67,6 +67,12 @@ export const COMBAT = {
   BESIEGED_DAMAGE_PER_ATTACKER: 0.1,
   /** Cap on besieging attackers that count toward the bonus (beyond the first). */
   BESIEGED_MAX_STACKS: 6,
+  /**
+   * Besieged also rallies your economy: each besieging attacker beyond the
+   * first grants this many extra gold PER SECOND (your citizens work harder to
+   * fund the defense). Uses the same capped stack count as the damage bonus.
+   */
+  BESIEGED_INCOME_PER_ATTACKER: 2,
 } as const;
 
 /** Lobby / room defaults. */
@@ -79,8 +85,11 @@ export const LOBBY = {
 export const MATCH = {
   /** Minimum players required to start a match. */
   MIN_PLAYERS: 2,
-  /** Maximum players allowed in a match. */
+  /** Maximum total seats in a room (players + spectators). */
   MAX_PLAYERS: 8,
+  /** Maximum kingdom-playing participants; the remaining seat(s) up to
+   *  MAX_PLAYERS may only join as spectators. */
+  MAX_ACTIVE_PLAYERS: 7,
 } as const;
 
 /** Game-loop timing. */
@@ -103,6 +112,22 @@ export const SHIELD = {
    * can be active at a time, so this scales with cumulative purchases.
    */
   COST_GROWTH: 1.05,
+  /**
+   * After a shield is broken by damage, this many ticks must pass before a new
+   * one can be bought (7.5 s) — you can't instantly re-wall mid-assault.
+   */
+  BREAK_COOLDOWN_TICKS: 7.5 * 20,
+} as const;
+
+/** Space kingdom — the Supernova charge meter (Shooting Star / Saturn's Rings /
+ *  Orion's Belt misses fill it; Supernova fires at the current level). */
+export const SPACE = {
+  /**
+   * Cumulative meter "xp" required to reach Supernova levels 1, 2, and 3. The
+   * cost per level ramps: 50 to reach L1, +100 for L2 (150 total), +200 for L3
+   * (250 total). The last entry doubles as the full-charge cap.
+   */
+  SUPERNOVA_LEVEL_THRESHOLDS: [50, 150, 250],
 } as const;
 
 /** Targeting rules. */

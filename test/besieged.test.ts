@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { activateAbility } from "../src/engine/abilities.js";
-import { besiegedDamageMultiplier } from "../src/engine/passives.js";
+import { besiegedDamageMultiplier, besiegedIncomePerTick } from "../src/engine/passives.js";
+import { applyPassiveIncome } from "../src/engine/economy.js";
 import { withParameterSet } from "../src/engine/parameters.js";
 import { selectTarget } from "../src/engine/targeting.js";
 import { earn } from "../src/engine/money.js";
 import { WATER_BALL } from "../src/data/waterAbilities.js";
-import { COMBAT } from "../src/data/balance.js";
+import { COMBAT, TICK } from "../src/data/balance.js";
 import type { MatchPlayer } from "../src/match/types.js";
 import type { PlayerState } from "../src/match/playerState.js";
 
@@ -99,6 +100,57 @@ test("the bonus is capped: extra besiegers past the cap add nothing", () => {
   assert.equal(
     besiegedDamageMultiplier(me, all),
     1 + COMBAT.BESIEGED_MAX_STACKS * COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
+  );
+});
+
+// --- Besieged defensive income ------------------------------------------------------
+
+test("besieged grants no bonus income in a fair 1v1, but pays out when ganged up on", () => {
+  const { match, players } = arena(4);
+  const [me, a, b, c] = players;
+  const all = match.gameState!.getPlayers();
+
+  assert.equal(besiegedIncomePerTick(me, all), 0); // nobody targeting
+  selectTarget(match, a, me.id);
+  assert.equal(besiegedIncomePerTick(me, all), 0); // one attacker — still nothing
+
+  selectTarget(match, b, me.id); // 2 besiegers -> 1 stack
+  assert.equal(
+    besiegedIncomePerTick(me, all),
+    COMBAT.BESIEGED_INCOME_PER_ATTACKER / TICK.RATE,
+  );
+
+  selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
+  assert.equal(
+    besiegedIncomePerTick(me, all),
+    (2 * COMBAT.BESIEGED_INCOME_PER_ATTACKER) / TICK.RATE,
+  );
+});
+
+test("the passive-income phase adds the besieged bonus to earnings", () => {
+  const { match, players } = arena(4);
+  const [me, a, b] = players;
+  selectTarget(match, a, me.id);
+  selectTarget(match, b, me.id); // 1 besieged stack on `me`
+
+  me.economy.currency = 0;
+  const bonusPerTick = COMBAT.BESIEGED_INCOME_PER_ATTACKER / TICK.RATE;
+  applyPassiveIncome(match.gameState!);
+  // Earned = base income (from citizens) + the besieged defensive bonus, and
+  // the HUD's incomePerTick reflects the boost.
+  assert.ok(me.economy.currency > 0);
+  assert.ok(
+    Math.abs(me.economy.currency - me.economy.incomePerTick) < 1e-9,
+    "earned exactly the (boosted) per-tick income",
+  );
+  // A besieged player out-earns an un-besieged twin with the same citizens.
+  const c = players[3];
+  c.economy.currency = 0;
+  c.economy.citizens = me.economy.citizens;
+  applyPassiveIncome(match.gameState!);
+  assert.ok(
+    me.economy.incomePerTick - c.economy.incomePerTick > bonusPerTick - 1e-9,
+    "besieged income exceeds the un-besieged baseline by the bonus",
   );
 });
 

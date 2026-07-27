@@ -99,25 +99,22 @@ test("Burn status ticks damage over time based on stack count", () => {
 test("Scorching Sun applies Burn directly, and deals bonus damage to burning targets", () => {
   const { match, a, b } = activeMatch("fire", "plains");
 
-  // Cast Scorching Sun
-  // Base 450 * 1.15 = 517.5 -> rounded to 518
+  // Cast Scorching Sun — base 450 × 1.35 (Set Your Heart Ablaze!) = 607.5 -> 608.
   b.castle.hp = 10_000;
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 405);
+  assert.equal(b.castle.hp, 10_000 - 540); // base 400 × 1.35
 
   // Target should have Burn status now
   const burn = getStatus(b, "burn");
   assert.ok(burn);
   assert.equal(burn.remainingTicks, 100); // 5 seconds (100 ticks)
 
-  // Cast Scorching Sun again on target who is already burning
-  // Base 450 + 200 (burn bonus) = 650
-  // Multiplied by 1.15 (Set Your Heart Ablaze!) = 747.5 -> rounded to 748
-  // Amplified by Burn (fire attacks from the applier): 748 * 1.25 = 935
+  // Cast again on a burning target: (450 + 100 burn bonus) × 1.35 = 742.5,
+  // then Burn amplifies the applier's Fire attacks × 1.25 = 928.
   b.castle.hp = 10_000;
   a.cooldowns = {};
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 675);
+  assert.equal(b.castle.hp, 10_000 - 844); // (400+100)×1.35×1.25 burn amp
 });
 
 test("Burn amplifies Fire attacks from the applier only", () => {
@@ -188,7 +185,7 @@ test("Heat Wave applies stats and refreshes duration without stacking", () => {
   const chance = a.modifiers.find((m) => m.stat === "critChance" && m.sourceId === "status:heatWave");
   const mult = a.modifiers.find((m) => m.stat === "critMultiplier" && m.sourceId === "status:heatWave");
   assert.ok(chance);
-  assert.equal(chance.value, 0.05);
+  assert.equal(chance.value, 0.15);
   assert.ok(mult);
   assert.equal(mult.value, 0.10);
 
@@ -250,14 +247,14 @@ test("Fireball upgrades modify damage and cooldown values", () => {
 test("Scorching Sun upgrades modify damage, burn duration, cooldown, and bonus damage", () => {
   // Lv 1 (Default): Damage 450, Burn duration 100 (5s), CD 160 (8s), bonus damage 200
   const lv1 = resolveAbility(SCORCHING_SUN, 0);
-  assert.equal(lv1.effects[0].params.amount, 300);
+  assert.equal(lv1.effects[0].params.amount, 400);
   assert.equal(lv1.effects[1].params.durationTicks, 100);
   assert.equal(lv1.cooldownTicks, 160);
   assert.equal(lv1.effects[0].params.bonusDamageIfTargetHasStatus?.extraAmount, 100);
 
-  // Lv 2: Increased damage (550)
+  // Lv 2: Increased damage
   const lv2 = resolveAbility(SCORCHING_SUN, 1);
-  assert.equal(lv2.effects[0].params.amount, 400);
+  assert.equal(lv2.effects[0].params.amount, 500);
 
   // Lv 3: Burn duration increased (7s -> 140 ticks)
   const lv3 = resolveAbility(SCORCHING_SUN, 2);
@@ -275,14 +272,14 @@ test("Scorching Sun upgrades modify damage, burn duration, cooldown, and bonus d
 test("Firenado upgrades modify damage, burn chance, cooldown, and burn duration", () => {
   // Lv 1 (Default): Damage 800, chance 0.50, CD 240 (12s), burn duration 100 (5s)
   const lv1 = resolveAbility(FIRENADO, 0);
-  assert.equal(lv1.effects[0].params.amount, 500);
+  assert.equal(lv1.effects[0].params.amount, 600);
   assert.equal(lv1.effects[1].chance, 0.50);
   assert.equal(lv1.cooldownTicks, 400);
   assert.equal(lv1.effects[1].params.durationTicks, 100);
 
-  // Lv 2: Increased damage (1000)
+  // Lv 2: Increased damage
   const lv2 = resolveAbility(FIRENADO, 1);
-  assert.equal(lv2.effects[0].params.amount, 600);
+  assert.equal(lv2.effects[0].params.amount, 700);
 
   // Lv 3: Burn chance increased (0.75)
   const lv3 = resolveAbility(FIRENADO, 2);
@@ -301,19 +298,19 @@ test("Heat Wave upgrades swap status modifiers for Crit Chance and Crit Damage",
   // Lv 1 (Default): +5% Crit Chance, +10% Crit Damage
   const lv1 = resolveAbility(HEAT_WAVE, 0);
   const status1 = lv1.effects[0].params.status!;
-  assert.equal(status1.modifiers?.[0].value, 0.05);
+  assert.equal(status1.modifiers?.[0].value, 0.15);
   assert.equal(status1.modifiers?.[1].value, 0.10);
 
-  // Lv 2: Increase Crit Chance (+7.5%)
+  // Lv 2: Increase Crit Chance
   const lv2 = resolveAbility(HEAT_WAVE, 1);
   const status2 = lv2.effects[0].params.status!;
-  assert.equal(status2.modifiers?.[0].value, 0.075);
+  assert.equal(status2.modifiers?.[0].value, 0.20);
   assert.equal(status2.modifiers?.[1].value, 0.10);
 
-  // Lv 3: Increase Crit Damage (+15%)
+  // Lv 3: Increase Crit Damage
   const lv3 = resolveAbility(HEAT_WAVE, 2);
   const status3 = lv3.effects[0].params.status!;
-  assert.equal(status3.modifiers?.[0].value, 0.075);
+  assert.equal(status3.modifiers?.[0].value, 0.20);
   assert.equal(status3.modifiers?.[1].value, 0.15);
 });
 

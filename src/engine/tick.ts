@@ -3,6 +3,7 @@ import { applyPassiveIncome } from "./economy.js";
 import { processStatusTicks, tickStatuses } from "./status.js";
 import { tickModifiers } from "./modifiers.js";
 import { tickCooldowns, tickRecharges } from "./cooldowns.js";
+import { collapseBlackHoles } from "./abilities.js";
 import { processDeaths } from "./elimination.js";
 import { resolveWinner } from "./winConditions.js";
 
@@ -32,6 +33,11 @@ export function tickMatch(match: Match, tick: number): boolean {
   // Cooldown phase: advance every ability's cooldown and charge regeneration.
   tickCooldowns(state);
   tickRecharges(state);
+
+  // Space's Black Hole: if one is open and its time is up, collapse it and dump
+  // the pooled damage on the last kingdom that fed it (before death detection so
+  // a fatal dump is resolved this tick).
+  collapseBlackHoles(match);
 
   // Death phase: detect castles at 0 HP and run the elimination process
   // (tickets #69–#70) before checking whether the match is over.

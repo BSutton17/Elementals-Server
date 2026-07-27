@@ -106,6 +106,12 @@ export class Match {
     return this.players.size;
   }
 
+  /** Kingdom-playing participants (spectators excluded) — the count capped at
+   *  `MATCH.MAX_ACTIVE_PLAYERS`. */
+  get activePlayerCount(): number {
+    return this.getPlayers().filter((p) => !p.spectator).length;
+  }
+
   /**
    * Transitions the match from the lobby into an active game with the given
    * config snapshot (ticket #37). Per-player gameplay state is initialized by
@@ -141,10 +147,12 @@ export class Match {
    * Disconnected players (mid reconnection-grace) do not block the start.
    */
   canStart(): boolean {
-    const connected = this.getPlayers().filter((p) => p.connected);
+    // Spectators never gate the start — only connected, kingdom-playing
+    // participants must be present (≥ MIN) and all ready with a kingdom.
+    const players = this.getPlayers().filter((p) => p.connected && !p.spectator);
     return (
-      connected.length >= MATCH.MIN_PLAYERS &&
-      connected.every((p) => p.ready && p.kingdomId !== null)
+      players.length >= MATCH.MIN_PLAYERS &&
+      players.every((p) => p.ready && p.kingdomId !== null)
     );
   }
 
@@ -156,6 +164,7 @@ export class Match {
     players: MatchPlayer[];
     playerCount: number;
     maxPlayers: number;
+    maxActivePlayers: number;
     tick: number;
     winnerId: string | null;
     config: MatchConfig | null;
@@ -168,6 +177,7 @@ export class Match {
       players: this.getPlayers(),
       playerCount: this.playerCount,
       maxPlayers: this.maxPlayers,
+      maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
       tick: this.tick,
       winnerId: this.winnerId,
       config: this.config,

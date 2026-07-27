@@ -10,7 +10,7 @@ import {
 } from "../src/data/waterAbilities.js";
 import { activateAbility, purchaseUpgrade } from "../src/engine/abilities.js";
 import { getCooldown } from "../src/engine/cooldowns.js";
-import { applyStatus, getStatus, hasStatus } from "../src/engine/status.js";
+import { applyStatus, getStatus, hasStatus, processStatusTicks } from "../src/engine/status.js";
 import { resolveDamage } from "../src/engine/damage.js";
 import { applyPassiveIncome, computeIncome } from "../src/engine/economy.js";
 import { earn } from "../src/engine/money.js";
@@ -90,6 +90,46 @@ test("Fountain of Youth: 15% less damage from Fire attacks — other elements fu
   // And fire into a non-Water kingdom is not reduced.
   const intoFire = resolveDamage(w, f, 400, { element: "fire", forceCrit: false });
   assert.equal(intoFire.amount, 400);
+});
+
+test("Fountain of Youth: 15% less DoT tick damage (Burn/Poison/Father Time) on Water", () => {
+  const { match, w, f } = pond();
+  const gs = match.gameState!;
+  // A burn dealing 100/tick lands on Water and on a non-Water bystander.
+  const burn = {
+    id: "burn",
+    category: "debuff" as const,
+    stacking: "refresh" as const,
+    tickEffects: [{ type: "damage" as const, amount: 100 }],
+  };
+  applyStatus(w, burn, { sourceId: "f", durationTicks: 100 });
+  applyStatus(f, burn, { sourceId: "w", durationTicks: 100 });
+  w.castle.hp = 10_000;
+  f.castle.hp = 10_000;
+  processStatusTicks(gs);
+  assert.equal(w.castle.hp, 10_000 - 85); // 100 × 0.85 (Fountain of Youth)
+  assert.equal(f.castle.hp, 10_000 - 100); // full on a non-Water kingdom
+});
+
+test("Fountain of Youth: 15% less damage from Meteor Shower (a named direct-damage ability)", () => {
+  const { match, w, f } = pond();
+  // A plain damage ability whose id is in Fountain of Youth's sources is cut
+  // 15% against Water; an otherwise-identical ability whose id isn't, is not.
+  const dmgAbility = (id: string) => ({
+    id,
+    kind: "attack" as const,
+    cost: 0,
+    cooldownTicks: 0,
+    targeting: { mode: "singleEnemy" as const },
+    effects: [{ type: "damage" as const, target: "target" as const, params: { amount: 400 } }],
+  });
+  w.castle.hp = 10_000;
+  activateAbility(match, f, dmgAbility("meteorShower"), { targetId: "w", forceCrit: false, rng: () => 0.99 });
+  assert.equal(w.castle.hp, 10_000 - 340); // 400 × 0.85
+
+  w.castle.hp = 10_000;
+  activateAbility(match, f, dmgAbility("rockThrow"), { targetId: "w", forceCrit: false, rng: () => 0.99 });
+  assert.equal(w.castle.hp, 10_000 - 400); // not a listed source → full damage
 });
 
 // --- #82: Water Ball -------------------------------------------------------------

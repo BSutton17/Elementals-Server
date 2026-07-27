@@ -31,7 +31,8 @@ export type TargetError =
   | "INVALID_PHASE"
   | "ELIMINATED"
   | "INVALID_TARGET"
-  | "TARGET_ON_COOLDOWN";
+  | "TARGET_ON_COOLDOWN"
+  | "TARGET_LOCKED";
 
 export interface TargetResult {
   ok: boolean;
@@ -51,6 +52,13 @@ export function selectTarget(
 ): TargetResult {
   if (match.phase !== "active") return { ok: false, error: "INVALID_PHASE" };
   if (player.eliminated) return { ok: false, error: "ELIMINATED" };
+
+  // Space's Supernova (L2/L3) forces every kingdom onto its victim and locks
+  // the selection: no swaps (or clears) while the lock is active. Re-selecting
+  // the already-forced target is a harmless no-op.
+  if (player.statuses.some((s) => s.blocksTargetChange) && targetId !== player.target) {
+    return { ok: false, error: "TARGET_LOCKED" };
+  }
 
   // Clearing the target is always legal for an active player.
   if (targetId === null) {

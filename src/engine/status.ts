@@ -8,8 +8,10 @@ import type {
 import { type EffectCondition } from "./conditions.js";
 import { addModifier, removeModifiersFromSource, computeStat } from "./modifiers.js";
 import { applyDamage } from "./combat.js";
-import { statusDurationMultiplier } from "./passives.js";
+import { statusDurationMultiplier, dotResistanceMultiplier } from "./passives.js";
 import { param } from "./parameters.js";
+import { TICK } from "../data/balance.js";
+import { recalcIncome } from "./economy.js";
 
 /**
  * Reusable status-effect framework (tickets #47, #76–#80): apply, update, and
@@ -98,6 +100,63 @@ export interface StatusEffectDefinition {
   /** Applied to the next player who damages the bearer, then consumed
    *  (Epic 12, Nature's Poison Apple). */
   onHitRetaliate?: { status: StatusEffectDefinition; durationTicks: number };
+  /** Additional statuses applied to the biter alongside `onHitRetaliate` when
+   *  the mark springs (Poison Apple also poisons the biter's citizens). Applied
+   *  and consumed together with the primary retaliation. */
+  onHitRetaliateExtra?: { status: StatusEffectDefinition; durationTicks: number }[];
+  /**
+   * While active, time runs backward on the bearer's treasury: instead of
+   * earning passive income, they LOSE it each tick (floored at 0). Drains gold
+   * at their own gold/sec rate (Time's "Back to the Future").
+   */
+  drainsIncome?: boolean;
+  /**
+   * While active, the bearer cannot change target (Space's Supernova L2/L3
+   * forced redirect). The forced target and the target to restore on expiry are
+   * set on the instance when applied.
+   */
+  blocksTargetChange?: boolean;
+  /**
+   * While active, each incoming attack on the bearer has this probability (0–1)
+   * to miss entirely (Space's Orion's Belt). Snapshotted on apply.
+   */
+  incomingMissChance?: number;
+  /**
+   * When an incoming attack misses via `incomingMissChance`, add this many
+   * points to the bearer's Supernova meter (Orion's Belt feeds the meter).
+   */
+  missChargesSupernova?: number;
+  /**
+   * While active, whenever the STATUS'S SOURCE (the applier) takes damage,
+   * the bearer also takes this fraction of it (Love's Cupid's Arrow —
+   * "infatuated" kingdoms feel a share of what Love feels).
+   */
+  bearerTakesPctOfSourceDamage?: number;
+  /**
+   * While active, ANY damage the bearer takes is instead fully negated and
+   * converted into healing for this fraction of the raw incoming amount
+   * (Love's "Love Galore").
+   */
+  negateDamageHealPct?: number;
+  /**
+   * While active, damage the bearer takes is reflected back at the attacker
+   * in full proportion (no chance roll — unlike the passive `thorns`, which
+   * rolls per hit) at this fraction (Love's "Have some Empathy!", 1 = 100%).
+   */
+  thornsPct?: number;
+  /**
+   * A two-phase status that stays HIDDEN until it reveals (Love's "Love
+   * Galore"). While unrevealed, its damage-negation heals the bearer silently
+   * and enemies see phantom damage numbers instead. It reveals when EITHER the
+   * initial (stealth) window elapses OR `negateDamageHealPct` healing reaches
+   * `revealHealThreshold` — whichever comes first — at which point the status
+   * restarts for a fresh window of the same length, now fully visible.
+   */
+  revealsBeforeExpiry?: boolean;
+  /** Cumulative negated-damage healing that triggers an early reveal (paired
+   *  with `revealsBeforeExpiry`; passed through the applying effect's params so
+   *  it scales with upgrades). */
+  revealHealThreshold?: number;
 }
 
 /**
@@ -165,6 +224,7 @@ export function applyStatus(
       // Snapshot the recurring effects so per-tick processing needs no
       // definition lookup (#78).
       tickEffects: definition.tickEffects?.map((t) => ({ ...t })),
+      initialDurationTicks: durationTicks,
       blocksTargetingSource: definition.blocksTargetingSource,
       deflectsAttackOnSource: definition.deflectsAttackOnSource
         ? { ...definition.deflectsAttackOnSource }
@@ -174,6 +234,15 @@ export function applyStatus(
       onExpireStatus: definition.onExpireStatus,
       blocksPurchases: definition.blocksPurchases,
       onHitRetaliate: definition.onHitRetaliate,
+      onHitRetaliateExtra: definition.onHitRetaliateExtra,
+      drainsIncome: definition.drainsIncome,
+      blocksTargetChange: definition.blocksTargetChange,
+      incomingMissChance: definition.incomingMissChance,
+      missChargesSupernova: definition.missChargesSupernova,
+      bearerTakesPctOfSourceDamage: definition.bearerTakesPctOfSourceDamage,
+      negateDamageHealPct: definition.negateDamageHealPct,
+      thornsPct: definition.thornsPct,
+      revealsBeforeExpiry: definition.revealsBeforeExpiry,
       hasModifiers: (definition.modifiers ?? []).length > 0,
     };
     player.statuses.push(instance);
@@ -211,6 +280,10 @@ export function applyStatus(
     case "refresh":
       existing.remainingTicks = durationTicks;
       existing.sourceId = options.sourceId;
+      // Re-application renews the effect: restart its elapsed clock so ramping
+      // DoTs and half-life steps measure from this fresh application.
+      existing.tickElapsed = 0;
+      existing.initialDurationTicks = durationTicks;
       // Re-application wins: a stronger variant's recurring effects replace
       // the snapshot (Epic 12, e.g. strong Poison over weak).
       if (definition.tickEffects) {
@@ -225,6 +298,8 @@ export function applyStatus(
       existing.stacks = Math.min(existing.stacks + stacks, max);
       existing.remainingTicks = durationTicks;
       existing.sourceId = options.sourceId;
+      existing.tickElapsed = 0;
+      existing.initialDurationTicks = durationTicks;
       if (definition.tickEffects) {
         existing.tickEffects = definition.tickEffects.map((t) => ({ ...t }));
       }
@@ -309,6 +384,16 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
       status.remainingTicks -= 1;
       if (status.remainingTicks > 0) {
         kept.push(status);
+      } else if (status.revealsBeforeExpiry && !status.revealed) {
+        // Two-phase status (Love's "Love Galore"): the stealth window ran out
+        // without the healing threshold being crossed — reveal now and restart
+        // for a fresh, fully-visible window of the same length.
+        status.revealed = true;
+        status.remainingTicks = status.initialDurationTicks ?? 1;
+        kept.push(status);
+        if (bus.enabled) {
+          bus.emit({ type: "statusRevealed", tick: state.tick, playerId: player.id, statusId: status.id });
+        }
       } else {
         removed.push({ playerId: player.id, status });
         expired.push(status);
@@ -330,6 +415,45 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
     // Frozen briefly slows production). Applied after the reassignment so
     // the follow-up isn't wiped with the expiring batch.
     for (const status of expired) {
+      // Love's Cupid's Arrow expiring: the "infatuated" kingdom's loaned
+      // citizens travel home. Only the raw citizen count moves — the loan
+      // never touched the price ladder, so there's nothing to unwind there.
+      if (status.citizenLoanAmount) {
+        const lover = state.getPlayer(status.sourceId);
+        if (lover) {
+          const giveBack = Math.min(status.citizenLoanAmount, lover.economy.citizens);
+          if (giveBack > 0) {
+            lover.economy.citizens -= giveBack;
+            player.economy.citizens += giveBack;
+            recalcIncome(lover);
+            recalcIncome(player);
+            if (bus.enabled) {
+              bus.emit({
+                type: "resourceTransfer",
+                tick: state.tick,
+                fromId: lover.id,
+                toId: player.id,
+                resource: "citizens",
+                amount: giveBack,
+                cause: "infatuated",
+              });
+            }
+          }
+        }
+      }
+      // Space's Supernova lock expiring: return the bearer to the target they
+      // had before they were forced onto the victim (#redirect).
+      if (status.blocksTargetChange && status.restoreTargetId !== undefined) {
+        player.target = status.restoreTargetId;
+        if (bus.enabled && status.restoreTargetId !== null) {
+          bus.emit({
+            type: "targetChanged",
+            tick: state.tick,
+            playerId: player.id,
+            targetId: status.restoreTargetId,
+          });
+        }
+      }
       if (status.onExpireStatus) {
         const inst = applyStatus(player, status.onExpireStatus.status, {
           sourceId: status.sourceId,
@@ -366,13 +490,62 @@ export function processStatusTicks(
   for (const player of state.getPlayers()) {
     if (player.eliminated) continue;
     for (const status of player.statuses) {
+      // Advance the status's own tick counter once per game tick, for
+      // interval-cadence effects (e.g. Father Time's once-per-second punish).
+      const elapsed = (status.tickElapsed = (status.tickElapsed ?? 0) + 1);
       for (const effect of status.tickEffects ?? []) {
+        // Interval cadence: fire only on this effect's Nth tick (default every).
+        const interval = effect.intervalTicks ?? 1;
+        if (interval > 1 && elapsed % interval !== 0) continue;
+
+        // Idle gate (Father Time): the tick is avoided if the bearer landed a
+        // damaging attack since the last evaluation — measured over the window
+        // that just closed — and the countdown resets for the next window.
+        if (effect.onlyIfBearerIdleSinceLastTick) {
+          const windowStart = status.lastIdleEvalTick ?? state.tick - interval;
+          const dealtDamage = player.lastDamageDealtTick > windowStart;
+          status.lastIdleEvalTick = state.tick;
+          if (dealtDamage) {
+            // Interrupted — the victim bought back a second. No damage.
+            if (bus.enabled) {
+              bus.emit({
+                type: "statusTick",
+                tick: state.tick,
+                playerId: player.id,
+                statusId: status.id,
+                interrupted: true,
+              });
+            }
+            continue;
+          }
+        }
+
         if (effect.chance !== undefined && rng() >= effect.chance) {
           continue;
         }
-        const stacked = effect.perStack
-          ? effect.amount * status.stacks
+        // Half-life step: past the midpoint of its duration, the effect can
+        // switch to a heavier magnitude (Father Time: 100 → 200 in the back
+        // half). Measured from the elapsed clock vs the applied duration.
+        const pastHalfLife =
+          effect.amountAfterHalfLife !== undefined &&
+          status.initialDurationTicks !== undefined &&
+          elapsed * 2 > status.initialDurationTicks;
+        const perTickAmount = pastHalfLife
+          ? effect.amountAfterHalfLife!
           : effect.amount;
+        let stacked = effect.perStack
+          ? perTickAmount * status.stacks
+          : perTickAmount;
+        // Ramp: DoTs that worsen the longer they fester (Nature's Poison vs
+        // Fire's flat Burn) — ×(1 + rampPerSecond × secondsActive), capped.
+        if (effect.rampPerSecond) {
+          const seconds = elapsed / param("tick.rate", TICK.RATE);
+          const rampMult = Math.min(
+            effect.rampMaxMultiplier ?? Number.POSITIVE_INFINITY,
+            1 + effect.rampPerSecond * seconds,
+          );
+          stacked *= rampMult;
+        }
         // Balance knob (ticket #202): a DoT's per-tick DAMAGE is tunable through
         // `status.<id>.tickDamage` (a multiplier, so all severity variants —
         // e.g. weak/strong Poison — scale together and keep their ratio). Reads
@@ -383,14 +556,26 @@ export function processStatusTicks(
             : stacked;
         // DoT amplification (Epic 12): statuses on the bearer may amplify a
         // named DoT via "dotDamage:<statusId>" modifiers — e.g. Corroded
-        // increasing Poison damage.
+        // increasing Poison damage. Kingdom DoT-resistance passives (Water's
+        // "Fountain of Youth") then cut damage from named DoTs by their pct.
         const amount = Math.round(
-          computeStat(player, `dotDamage:${status.id}`, base),
+          computeStat(player, `dotDamage:${status.id}`, base) *
+            (effect.type === "damage" ? dotResistanceMultiplier(player, status.id) : 1),
         );
         if (effect.type === "damage") {
           const applied = applyDamage(player, amount, {
             ignoreShields: effect.ignoreShields,
+            tick: state.tick,
           });
+          // Attribute this DoT tick back to the attack that applied the status,
+          // so Blip's undo refunds status-based damage too (if still journaled).
+          if (status.journalId) {
+            const rec = player.attackJournal.find((r) => r.id === status.journalId);
+            if (rec) {
+              rec.hpRefund += applied.dealtToHp;
+              rec.shieldRefund += applied.absorbedByShield;
+            }
+          }
           // Gameplay event (#204): DoT damage, attributed to its status.
           if (bus.enabled) {
             bus.emit({
@@ -412,6 +597,30 @@ export function processStatusTicks(
                 playerId: player.id,
                 cause: `status:${status.id}`,
               });
+            }
+          }
+          // Love's "BFFS!!!" link: DoT damage on a linked castle also lands
+          // on its partner (single hop — the partner's own link never
+          // re-triggers from this direct applyDamage call).
+          const link = player.statuses.find((s) => s.linkedPartnerId);
+          if (link) {
+            const partner = state.getPlayer(link.linkedPartnerId!);
+            if (partner && !partner.eliminated) {
+              const mirrored = applyDamage(partner, amount, { tick: state.tick });
+              if (bus.enabled) {
+                bus.emit({
+                  type: "damage",
+                  tick: state.tick,
+                  sourceId: status.sourceId,
+                  targetId: partner.id,
+                  amount: mirrored.absorbedByShield + mirrored.dealtToHp,
+                  absorbedByShield: mirrored.absorbedByShield,
+                  dealtToHp: mirrored.dealtToHp,
+                  overkill: mirrored.incoming - mirrored.absorbedByShield - mirrored.dealtToHp,
+                  crit: false,
+                  cause: `linked:status:${status.id}`,
+                });
+              }
             }
           }
         } else {

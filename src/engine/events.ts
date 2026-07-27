@@ -49,6 +49,13 @@ export type GameplayEvent =
       crit: boolean;
       element?: string;
       cause: EventCause;
+      /**
+       * A decoy damage number that did NOT actually land (Love's "Love Galore"
+       * stealth phase): the hit was silently converted to healing, but enemies
+       * still see a normal-looking damage number. The client hides it from the
+       * bearer (they know they weren't hurt) and shows it to everyone else.
+       */
+      phantom?: boolean;
     }
   | {
       type: "heal";
@@ -79,6 +86,40 @@ export type GameplayEvent =
       stacks: number;
     }
   | { type: "statusExpired"; tick: number; playerId: string; statusId: string }
+  | {
+      // A two-phase hidden status revealed itself (Love's "Love Galore"): its
+      // stealth window ended or its healing threshold was crossed. The client
+      // starts the reveal aura and switches from phantom damage to visible
+      // healing numbers on the bearer. The status stays active for a fresh
+      // window afterward.
+      type: "statusRevealed";
+      tick: number;
+      playerId: string;
+      statusId: string;
+    }
+  | {
+      // Time's Blip! rewound the most recent attack on `playerId`: HP/shield
+      // restored, its statuses stripped. `sourceId`/`abilityId` name the undone
+      // attack so the client can rewind a travel projectile back to its caster.
+      type: "attackUndone";
+      tick: number;
+      playerId: string;
+      sourceId: string;
+      abilityId: string;
+      removedStatusIds: string[];
+    }
+  | {
+      // A recurring status's interval tick fired (Father Time's per-second
+      // punish). `interrupted` = the bearer avoided it by landing a damaging
+      // attack, so the countdown reset instead of dealing damage. The damage
+      // itself (when not interrupted) still arrives as a `damage` event with
+      // cause `status:<id>`.
+      type: "statusTick";
+      tick: number;
+      playerId: string;
+      statusId: string;
+      interrupted: boolean;
+    }
   | {
       type: "purchase";
       tick: number;
@@ -130,6 +171,58 @@ export type GameplayEvent =
       regenerated: number;
     }
   | { type: "matchEnded"; tick: number; winnerId: string | null }
+  /** Space's Supernova meter gained progress (Shooting Star / Saturn's Rings /
+   *  Orion's Belt misses). `level` is the resulting Supernova level (0–3). */
+  | {
+      type: "supernovaCharged";
+      tick: number;
+      playerId: string;
+      meter: number;
+      level: number;
+    }
+  /** Space fired its Supernova at `targetId` at the given level, emptying the
+   *  meter. The damage arrives as a separate `damage` event. */
+  | {
+      type: "supernovaFired";
+      tick: number;
+      playerId: string;
+      targetId: string;
+      level: number;
+    }
+  /** An incoming attack was negated by Orion's Belt (a chance-based miss on the
+   *  bearer). `attackerId`/`abilityId` name the whiffed attack. */
+  | {
+      type: "attackMissed";
+      tick: number;
+      playerId: string;
+      attackerId: string;
+      abilityId: string;
+      cause: string;
+    }
+  /** Space's Black Hole opened over the field (`playerId` = its owner); for
+   *  `durationTicks` all attacks are absorbed into it. */
+  | {
+      type: "blackHoleOpened";
+      tick: number;
+      playerId: string;
+      durationTicks: number;
+    }
+  /** The Black Hole swallowed an attack's damage instead of it landing. */
+  | {
+      type: "blackHoleAbsorbed";
+      tick: number;
+      ownerId: string;
+      attackerId: string;
+      amount: number;
+    }
+  /** The Black Hole collapsed, dumping all absorbed damage onto `victimId`. */
+  | {
+      type: "blackHoleCollapsed";
+      tick: number;
+      ownerId: string;
+      victimId: string | null;
+      amount: number;
+    }
   /** Reserved for the projectile system (GAME_TICK.md §5); no emitter yet. */
   | {
       type: "projectileSpawned";

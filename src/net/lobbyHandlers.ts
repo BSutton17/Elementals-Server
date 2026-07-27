@@ -9,6 +9,7 @@ import { ensureSessionId } from "./sessionHandlers.js";
 import { buildMatchSnapshot } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
 import { isKingdomId } from "../data/kingdoms.js";
+import { MATCH } from "../data/balance.js";
 import { logger } from "../util/logger.js";
 
 export interface LobbyDeps {
@@ -186,7 +187,10 @@ export function registerLobbyHandlers(
       }
 
       const kingdom = payload?.kingdom;
-      if (!isKingdomId(kingdom)) {
+      // The sentinel "spectator" opts this seat out of playing — no kingdom,
+      // watches only. Any other value must be a real kingdom id.
+      const wantsSpectate = kingdom === "spectator";
+      if (!wantsSpectate && !isKingdomId(kingdom)) {
         respond(ack, fail("INVALID_PAYLOAD", "Unknown kingdom"));
         return;
       }
@@ -202,6 +206,14 @@ export function registerLobbyHandlers(
         return;
       }
 
+      if (wantsSpectate) {
+        player.spectator = true;
+        player.kingdomId = null;
+        broadcastLobbyUpdate(io, match);
+        respond(ack, ok({ spectator: true }));
+        return;
+      }
+
       // Enforce exclusivity — reject if another player already holds it.
       const taken = match
         .getPlayers()
@@ -211,6 +223,20 @@ export function registerLobbyHandlers(
         return;
       }
 
+      // Cap kingdom-playing participants: if the max already hold a kingdom and
+      // this seat isn't one of them, it can only spectate.
+      const otherActive = match
+        .getPlayers()
+        .filter((p) => p.id !== playerId && !p.spectator && p.kingdomId !== null).length;
+      if (otherActive >= MATCH.MAX_ACTIVE_PLAYERS) {
+        respond(
+          ack,
+          fail("PLAYERS_FULL", `Only ${MATCH.MAX_ACTIVE_PLAYERS} players can play — join as a spectator`),
+        );
+        return;
+      }
+
+      player.spectator = false;
       player.kingdomId = kingdom;
       broadcastLobbyUpdate(io, match);
       respond(ack, ok({ kingdom: player.kingdomId }));

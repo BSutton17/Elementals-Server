@@ -5,6 +5,9 @@ import { EARTH_ABILITIES } from "./earthAbilities.js";
 import { ELECTRICITY_ABILITIES } from "./electricityAbilities.js";
 import { ICE_ABILITIES } from "./iceAbilities.js";
 import { NATURE_ABILITIES } from "./natureAbilities.js";
+import { TIME_ABILITIES } from "./timeAbilities.js";
+import { SPACE_ABILITIES } from "./spaceAbilities.js";
+import { LOVE_ABILITIES } from "./loveAbilities.js";
 import type { KingdomId } from "./kingdoms.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
@@ -21,6 +24,9 @@ export const KINGDOM_ABILITIES: Record<KingdomId, AbilityDefinition[]> = {
   electricity: ELECTRICITY_ABILITIES,
   ice: ICE_ABILITIES,
   nature: NATURE_ABILITIES,
+  time: TIME_ABILITIES,
+  space: SPACE_ABILITIES,
+  love: LOVE_ABILITIES,
 };
 
 /** The ability set for a kingdom id, or an empty list for unknown ids. */

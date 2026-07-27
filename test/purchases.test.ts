@@ -9,6 +9,7 @@ import {
   shieldCost,
 } from "../src/engine/purchases.js";
 import { earn } from "../src/engine/money.js";
+import { applyDamage } from "../src/engine/combat.js";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { CASTLE, ECONOMY, SHIELD } from "../src/data/balance.js";
@@ -165,6 +166,30 @@ test("cannot buy a second shield while one is active", () => {
   assert.equal(a.castle.shield, SHIELD.STANDARD_HP); // still just one
   // Once depleted, another can be bought.
   a.castle.shield = 0;
+  assert.equal(buyShield(match, a).ok, true);
+});
+
+test("a shield broken by damage can't be rebought until the break cooldown passes", () => {
+  const { match, a } = activeMatch();
+  earn(a, 5000);
+  match.tick = 1000;
+  assert.equal(buyShield(match, a).ok, true);
+
+  // Break the shield with an over-shield hit at tick 1000.
+  applyDamage(a, a.castle.shield + 100, { tick: 1000 });
+  assert.equal(a.castle.shield, 0);
+
+  // Immediately after breaking: rebuy is on cooldown.
+  const r = buyShield(match, a);
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "SHIELD_COOLDOWN");
+
+  // Still blocked one tick before 7.5 s.
+  match.tick = 1000 + SHIELD.BREAK_COOLDOWN_TICKS - 1;
+  assert.equal(buyShield(match, a).error, "SHIELD_COOLDOWN");
+
+  // At 7.5 s the shield can be rebought.
+  match.tick = 1000 + SHIELD.BREAK_COOLDOWN_TICKS;
   assert.equal(buyShield(match, a).ok, true);
 });
 

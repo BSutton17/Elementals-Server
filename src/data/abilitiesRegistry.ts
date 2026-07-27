@@ -5,6 +5,9 @@ import { ROCK_THROW, METEOR_SHOWER, EARTHQUAKE, NATURAL_TERRAIN, BRICK_WALL } fr
 import { ZAP, LIGHTNING_BARRAGE, THUNDERDOME, HACK, THUNDERING_FATE } from "./electricityAbilities.js";
 import { ICICLE, FLOOD_OF_FROST, FREEZE_TO_THE_CORE, SNOWMAN, BLIZZARD } from "./iceAbilities.js";
 import { SLUDGE, ACID_RAIN, GASTRO_ACID, POISON_APPLE, TOXIC_GAS } from "./natureAbilities.js";
+import { TIK_TOK, HALF_PASSED_12, FATHER_TIME, BLIP, BACK_TO_THE_FUTURE } from "./timeAbilities.js";
+import { SHOOTING_STAR, SATURNS_RINGS, SUPERNOVA, ORIONS_BELT, BLACK_HOLE } from "./spaceAbilities.js";
+import { TOUGH_LOVE, CUPIDS_ARROW, BFFS, EMPATHY, LOVE_GALORE } from "./loveAbilities.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
 export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
@@ -43,4 +46,19 @@ export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   gastroAcid: GASTRO_ACID,
   poisonApple: POISON_APPLE,
   toxicGas: TOXIC_GAS,
+  tikTok: TIK_TOK,
+  halfPassed12: HALF_PASSED_12,
+  fatherTime: FATHER_TIME,
+  blip: BLIP,
+  backToTheFuture: BACK_TO_THE_FUTURE,
+  shootingStar: SHOOTING_STAR,
+  saturnsRings: SATURNS_RINGS,
+  supernova: SUPERNOVA,
+  orionsBeltAbility: ORIONS_BELT,
+  blackHole: BLACK_HOLE,
+  toughLove: TOUGH_LOVE,
+  cupidsArrow: CUPIDS_ARROW,
+  bffs: BFFS,
+  empathy: EMPATHY,
+  loveGalore: LOVE_GALORE,
 };

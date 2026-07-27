@@ -19,6 +19,9 @@ import type { PlayerState } from "../match/playerState.js";
 export interface DamageOptions {
   /** If set, the hit bypasses shields and applies directly to castle HP. */
   ignoreShields?: boolean;
+  /** Current match tick — recorded when this hit breaks the shield, so the
+   *  buy-shield break cooldown can be enforced. */
+  tick?: number;
 }
 
 export interface DamageApplication {
@@ -63,6 +66,10 @@ export function applyDamage(
     absorbedByShield = Math.min(target.castle.shield, remaining);
     target.castle.shield -= absorbedByShield;
     remaining -= absorbedByShield;
+    // Shield just shattered: start the buy-shield break cooldown.
+    if (target.castle.shield === 0 && options.tick !== undefined) {
+      target.castle.shieldBrokenAtTick = options.tick;
+    }
   }
 
   // 2. Remaining damage hits castle HP (#66), clamped at 0.

@@ -1,5 +1,5 @@
 import { KINGDOM_PASSIVES, type KingdomPassive } from "../data/kingdoms.js";
-import { COMBAT } from "../data/balance.js";
+import { COMBAT, TICK } from "../data/balance.js";
 import type { PlayerState } from "../match/playerState.js";
 import { evaluateCondition } from "./conditions.js";
 import { getActiveParameterSet, param } from "./parameters.js";
@@ -67,6 +67,26 @@ export function statusDurationMultiplier(
   return mult;
 }
 
+/**
+ * Damage-taken multiplier from DoT-resistance passives (Water's "Fountain of
+ * Youth"), for a given source id — a status id (a DoT tick like "burn"/"poison"/
+ * "fatherTimeMark") or an ability id (direct damage like "meteorShower"). 1 when
+ * the player has no matching resistance; multiple matches stack multiplicatively.
+ */
+export function dotResistanceMultiplier(
+  player: PlayerState,
+  sourceId: string | undefined,
+): number {
+  if (!sourceId) return 1;
+  let mult = 1;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "dotResistance" && p.sources.includes(sourceId)) {
+      mult *= Math.max(0, 1 - p.pct);
+    }
+  }
+  return mult;
+}
+
 /** Damage multiplier for elemental damage taken by this player (1 = neutral). */
 export function elementalDamageMultiplier(
   player: PlayerState,
@@ -82,30 +102,135 @@ export function elementalDamageMultiplier(
   return mult;
 }
 
+/** Living enemies currently targeting `player`. */
+export function besiegerCount(
+  player: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  let n = 0;
+  for (const p of allPlayers) {
+    if (!p.eliminated && p.id !== player.id && p.target === player.id) n++;
+  }
+  return n;
+}
+
+/**
+ * "Besieged" stack count for `player`: living enemies currently targeting it
+ * *beyond the first*, capped at `BESIEGED_MAX_STACKS`. 0 in a fair 1v1. Shared
+ * by both besieged bonuses (outgoing damage and defensive income).
+ */
+export function besiegedStacks(
+  player: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  return Math.min(
+    param("combat.besiegedMaxStacks", COMBAT.BESIEGED_MAX_STACKS),
+    Math.max(0, besiegerCount(player, allPlayers) - 1),
+  );
+}
+
+/**
+ * Income multiplier from the "income per besieger" passive (Space's "Vast
+ * Universe"): ×(1 + pct × kingdoms currently targeting you). 1 without it.
+ */
+export function besiegerIncomeMultiplier(
+  player: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  let mult = 1;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "incomeMultiplierPerBesieger") {
+      mult *= 1 + p.pct * besiegerCount(player, allPlayers);
+    }
+  }
+  return mult;
+}
+
 /**
  * "Besieged" outgoing-damage multiplier (universal, not a kingdom passive):
  * the more enemies are locked onto `attacker` right now, the harder its own
- * attacks land. Each living enemy targeting the attacker *beyond the first*
- * adds `BESIEGED_DAMAGE_PER_ATTACKER`, capped at `BESIEGED_MAX_STACKS` — so a
- * 1v1 is neutral (×1) and being ganged up on scales the comeback. Computed
- * live from targeting state (which shifts every tick), so it is fed into the
- * damage pipeline as an option rather than stored as a modifier.
+ * attacks land. Each stack adds `BESIEGED_DAMAGE_PER_ATTACKER` — so a 1v1 is
+ * neutral (×1) and being ganged up on scales the comeback. Computed live from
+ * targeting state, fed into the damage pipeline as an option.
  */
 export function besiegedDamageMultiplier(
   attacker: PlayerState,
   allPlayers: readonly PlayerState[],
 ): number {
-  let besiegers = 0;
-  for (const p of allPlayers) {
-    if (!p.eliminated && p.id !== attacker.id && p.target === attacker.id) {
-      besiegers++;
+  const stacks = besiegedStacks(attacker, allPlayers);
+  return 1 + param("combat.besiegedDamagePerAttacker", COMBAT.BESIEGED_DAMAGE_PER_ATTACKER) * stacks;
+}
+
+/**
+ * "Besieged" defensive income bonus (universal): while ganged up on, your
+ * citizens work harder — each besieging attacker beyond the first grants
+ * `BESIEGED_INCOME_PER_ATTACKER` extra gold PER SECOND. Returned as a PER-TICK
+ * amount so the passive-income phase can add it straight to the tick's earnings.
+ */
+export function besiegedIncomePerTick(
+  player: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  const stacks = besiegedStacks(player, allPlayers);
+  if (stacks <= 0) return 0;
+  const perSecond =
+    param("combat.besiegedIncomePerAttacker", COMBAT.BESIEGED_INCOME_PER_ATTACKER) * stacks;
+  return perSecond / param("tick.rate", TICK.RATE);
+}
+
+/**
+ * Time-scaling OUTGOING attack multiplier (Time's "Longevity", attack half):
+ * grows `pct` for every `intervalTicks` of match time elapsed. 1 when the
+ * player has no such passive. Unbounded. Fed into the damage pipeline as an
+ * option (computed at the call site, which has match.tick).
+ */
+export function scalingAttackMultiplier(
+  player: PlayerState,
+  elapsedTicks: number,
+): number {
+  const elapsed = Math.max(0, elapsedTicks);
+  let mult = 1;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "scalingDamageMultiplier" && p.intervalTicks > 0) {
+      mult *= 1 + p.pct * Math.floor(elapsed / p.intervalTicks);
     }
   }
-  const stacks = Math.min(
-    param("combat.besiegedMaxStacks", COMBAT.BESIEGED_MAX_STACKS),
-    Math.max(0, besiegers - 1),
-  );
-  return 1 + param("combat.besiegedDamagePerAttacker", COMBAT.BESIEGED_DAMAGE_PER_ATTACKER) * stacks;
+  return mult;
+}
+
+/**
+ * Time-scaling INCOMING damage-taken multiplier (Time's "Longevity", defense
+ * half): drops `pct` for every `intervalTicks` of match time elapsed, floored
+ * at 0 (never negative). 1 when the player has no such passive.
+ */
+export function scalingDamageTakenMultiplier(
+  player: PlayerState,
+  elapsedTicks: number,
+): number {
+  const elapsed = Math.max(0, elapsedTicks);
+  let mult = 1;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "scalingDamageReduction" && p.intervalTicks > 0) {
+      mult *= Math.max(0, 1 - p.pct * Math.floor(elapsed / p.intervalTicks));
+    }
+  }
+  return mult;
+}
+
+/**
+ * The bonus-citizen-on-purchase passive (Time's "Time is money"), or
+ * null. `chance` to grant `amount` extra citizen(s) free per hire, without
+ * advancing the price ladder.
+ */
+export function bonusCitizenOnPurchase(
+  player: PlayerState,
+): { chance: number; amount: number } | null {
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "bonusCitizenOnPurchase") {
+      return { chance: p.chance, amount: p.amount };
+    }
+  }
+  return null;
 }
 
 /** Outgoing damage multiplier from passives. */
@@ -272,4 +397,24 @@ export function critDamageMultiplier(player: PlayerState): number {
     }
   }
   return mult;
+}
+
+/** Overridden citizen price-ladder BASE cost (Love's "Warm Welcome": 20 vs the
+ *  default 25), or null to use the default. The growth factor is unchanged, so
+ *  EVERY hire is proportionally cheaper. */
+export function citizenBaseCostOverride(player: PlayerState): number | null {
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "citizenBaseCost") return p.amount;
+  }
+  return null;
+}
+
+/** Fraction of any OTHER kingdom's healing this player also receives, summed
+ *  across passives (Love's "Feel the love!"). 0 without it. */
+export function healShareGlobalPct(player: PlayerState): number {
+  let pct = 0;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "healShareGlobal") pct += p.pct;
+  }
+  return pct;
 }

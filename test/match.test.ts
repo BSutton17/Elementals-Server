@@ -113,9 +113,48 @@ test("serializes to a plain client-facing view", () => {
     ],
     playerCount: 1,
     maxPlayers: MATCH.MAX_PLAYERS,
+    maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
     tick: 0,
     winnerId: null,
     config: null,
     startedAt: null,
   });
+});
+
+test("spectators don't gate canStart, don't count as active players, and get no PlayerState", () => {
+  const match = new Match("1234");
+  const play = (id: string, kingdomId: string) => {
+    const p = makePlayer(id);
+    p.kingdomId = kingdomId as MatchPlayer["kingdomId"];
+    p.ready = true;
+    match.addPlayer(p);
+    return p;
+  };
+  play("a", "fire");
+  play("b", "water");
+  // A spectator: no kingdom, not ready — must NOT block the start.
+  const spec = makePlayer("s");
+  spec.spectator = true;
+  match.addPlayer(spec);
+
+  assert.equal(match.activePlayerCount, 2); // spectator excluded
+  assert.equal(match.canStart(), true);
+
+  match.start(createMatchConfig(match));
+  // Only the two real players get a gameplay PlayerState; the spectator doesn't.
+  assert.ok(match.gameState!.getPlayer("a"));
+  assert.ok(match.gameState!.getPlayer("b"));
+  assert.equal(match.gameState!.getPlayer("s"), undefined);
+});
+
+test("a lone real player plus a spectator cannot start (min players not met)", () => {
+  const match = new Match("1234");
+  const a = makePlayer("a");
+  a.kingdomId = "fire" as MatchPlayer["kingdomId"];
+  a.ready = true;
+  match.addPlayer(a);
+  const spec = makePlayer("s");
+  spec.spectator = true;
+  match.addPlayer(spec);
+  assert.equal(match.canStart(), false); // only 1 active player < MIN
 });

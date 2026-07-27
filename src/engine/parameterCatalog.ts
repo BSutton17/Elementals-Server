@@ -131,6 +131,7 @@ function statusesWithDoT(): string[] {
     seen.set(s.id, (seen.get(s.id) ?? false) || damages);
     visit(s.onExpireStatus?.status);
     visit(s.onHitRetaliate?.status);
+    for (const extra of s.onHitRetaliateExtra ?? []) visit(extra.status);
   };
   for (const ability of Object.values(ALL_ABILITIES)) {
     for (const effect of ability.effects) visit(effect.params.status);

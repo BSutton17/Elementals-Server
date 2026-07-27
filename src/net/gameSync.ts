@@ -5,6 +5,8 @@ import type { GameplayEvent } from "../engine/events.js";
 import { citizenCost, repairCost, shieldCost } from "../engine/purchases.js";
 import { resolveAbility } from "../engine/abilities.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
+import { SHIELD } from "../data/balance.js";
+import { param } from "../engine/parameters.js";
 
 /**
  * Broadcasts the current authoritative game state to everyone in a match's room
@@ -44,7 +46,17 @@ export function broadcastGameState(io: Server, match: Match): void {
     players: state.getPlayers().map((p) => ({
       ...p,
       economy: { ...p.economy, nextCitizenCost: citizenCost(p) },
-      castle: { ...p.castle, nextRepairCost: repairCost(p), nextShieldCost: shieldCost(p) },
+      castle: {
+        ...p.castle,
+        nextRepairCost: repairCost(p),
+        nextShieldCost: shieldCost(p),
+        // Ticks left on the buy-shield break cooldown (0 = ready to rebuy).
+        shieldCooldownRemaining: Math.max(
+          0,
+          param("shield.breakCooldownTicks", SHIELD.BREAK_COOLDOWN_TICKS) -
+            (state.tick - p.castle.shieldBrokenAtTick),
+        ),
+      },
       abilityCosts: abilityCosts(p),
     })),
     projectiles: [],

@@ -28,6 +28,7 @@ export interface MatchSnapshot {
   hostId: string | null;
   winnerId: string | null;
   maxPlayers: number;
+  maxActivePlayers: number;
   /** Ruleset snapshot once the match has started; null while in the lobby. */
   config: MatchConfig | null;
   /** The requesting player's own full record (null if not in the match). */
@@ -63,6 +64,7 @@ export function buildMatchSnapshot(
     hostId: view.hostId,
     winnerId: view.winnerId,
     maxPlayers: view.maxPlayers,
+    maxActivePlayers: view.maxActivePlayers,
     config: view.config,
     you: match.getPlayer(forPlayerId) ?? null,
     players: view.players,

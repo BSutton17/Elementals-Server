@@ -23,4 +23,8 @@ export interface MatchPlayer {
   ready: boolean;
   /** Whether the player currently has a live connection. */
   connected: boolean;
+  /** A spectator watches the match without a kingdom/castle — never gets a
+   *  gameplay PlayerState, doesn't count toward the active-player cap or the
+   *  start requirements. The 8th seat can only ever be a spectator. */
+  spectator?: boolean;
 }

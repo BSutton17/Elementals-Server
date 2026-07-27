@@ -4,7 +4,8 @@ import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import { spend } from "./money.js";
 import { recalcIncome } from "./economy.js";
-import { purchaseUpgrade } from "./abilities.js";
+import { bonusCitizenOnPurchase, citizenBaseCostOverride } from "./passives.js";
+import { purchaseUpgrade, shareHealGlobally } from "./abilities.js";
 import { validateTransaction, type TransactionResult } from "./transactions.js";
 import { param } from "./parameters.js";
 
@@ -20,9 +21,11 @@ import { param } from "./parameters.js";
  */
 export function citizenCost(player: PlayerState): number {
   const purchased = player.economy.citizensPurchased;
+  // Love's "Warm Welcome" lowers the ladder's BASE cost (20 vs 25) but keeps the
+  // same growth, so every hire is proportionally cheaper (20 → 22 → 24 → …).
+  const base = citizenBaseCostOverride(player) ?? param("economy.citizenCost", ECONOMY.CITIZEN_COST);
   return Math.round(
-    param("economy.citizenCost", ECONOMY.CITIZEN_COST) *
-      param("economy.citizenCostGrowth", ECONOMY.CITIZEN_COST_GROWTH) ** purchased,
+    base * param("economy.citizenCostGrowth", ECONOMY.CITIZEN_COST_GROWTH) ** purchased,
   );
 }
 
@@ -42,8 +45,16 @@ export function buyCitizen(match: Match, player: PlayerState): TransactionResult
   if (!validation.ok) return validation;
 
   spend(player, cost);
-  player.economy.citizens += 1;
+  // The price ladder advances by exactly one hire, always.
   player.economy.citizensPurchased += 1;
+  // Base purchase grants one citizen; Time's "Time is money" has a
+  // chance to throw in a free bonus citizen without advancing the ladder.
+  let gained = 1;
+  const bonus = bonusCitizenOnPurchase(player);
+  if (bonus && match.rng() < bonus.chance) {
+    gained += bonus.amount;
+  }
+  player.economy.citizens += gained;
   // Citizen count changed — refresh income immediately (ticket #55).
   recalcIncome(player);
 
@@ -55,7 +66,7 @@ export function buyCitizen(match: Match, player: PlayerState): TransactionResult
       type: "citizensChanged",
       tick: match.tick,
       playerId: player.id,
-      delta: 1,
+      delta: gained,
       total: player.economy.citizens,
       cause: "purchase",
     });
@@ -111,6 +122,9 @@ export function repairCastle(match: Match, player: PlayerState): TransactionResu
     bus.emit({ type: "purchase", tick: match.tick, playerId: player.id, kind: "repair", cost });
     bus.emit({ type: "heal", tick: match.tick, targetId: player.id, amount: repaired, overheal: param("castle.repairAmount", CASTLE.REPAIR_AMOUNT) - repaired, cause: "repair" });
   }
+  // Love's "Feel the love!": a repair is healing too — share a cut with any
+  // kingdom that taxes global healing.
+  shareHealGlobally(match, player, repaired);
   return { ok: true };
 }
 
@@ -138,6 +152,11 @@ export function shieldCost(player: PlayerState): number {
 export function buyShield(match: Match, player: PlayerState): TransactionResult {
   if (player.castle.shield > 0) {
     return { ok: false, error: "SHIELD_ACTIVE" };
+  }
+  // A freshly-broken shield can't be replaced instantly — wait out the cooldown.
+  const cooldown = param("shield.breakCooldownTicks", SHIELD.BREAK_COOLDOWN_TICKS);
+  if (match.tick - player.castle.shieldBrokenAtTick < cooldown) {
+    return { ok: false, error: "SHIELD_COOLDOWN" };
   }
 
   const cost = shieldCost(player);

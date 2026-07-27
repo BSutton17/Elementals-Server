@@ -18,6 +18,9 @@ export const KINGDOM_IDS = [
   "electricity",
   "ice",
   "nature",
+  "time",
+  "space",
+  "love",
 ] as const;
 
 export type KingdomId = (typeof KINGDOM_IDS)[number];
@@ -45,6 +48,11 @@ export type KingdomPassive = (
   | { type: "incomePerCitizen"; amount: number }
   | { type: "statusDurationReduction"; statusId: string; pct: number }
   | { type: "elementalResistance"; element: string; pct: number }
+  /** Reduces damage taken from named damage-over-time sources by `pct`. Each
+   *  `source` matches either a status id (its per-tick DoT damage, e.g. "burn",
+   *  "poison", "fatherTimeMark") or an ability id (its direct damage, e.g.
+   *  "meteorShower"). Water's "Fountain of Youth". */
+  | { type: "dotResistance"; pct: number; sources: string[] }
   | { type: "startingCastleHpMultiplier"; pct: number }
   | { type: "damageMultiplier"; pct: number }
   | { type: "shieldDamageMultiplier"; pct: number }
@@ -77,6 +85,27 @@ export type KingdomPassive = (
   /** Begin the game with this many additional citizens (Nature's
    *  "Gardener's Gift", Epic 12). */
   | { type: "startingCitizensBonus"; amount: number }
+  /** Outgoing attack damage grows by `pct` for every `intervalTicks` of match
+   *  time elapsed (Time's "Longevity" — attack half). Unbounded. */
+  | { type: "scalingDamageMultiplier"; pct: number; intervalTicks: number }
+  /** Incoming damage is reduced by `pct` for every `intervalTicks` of match
+   *  time elapsed (Time's "Longevity" — defense half). Floored at 0. */
+  | { type: "scalingDamageReduction"; pct: number; intervalTicks: number }
+  /** Buying a citizen has `chance` to grant `amount` extra citizen(s) for free
+   *  without advancing the price ladder (Time's "Time is money"). */
+  | { type: "bonusCitizenOnPurchase"; chance: number; amount: number }
+  /** Begin the game with this much gold (Space's "Blast off!"). */
+  | { type: "startingGold"; amount: number }
+  /** Income is multiplied by (1 + pct × kingdoms currently targeting you) —
+   *  economy scales with pressure (Space's "Vast Universe"). */
+  | { type: "incomeMultiplierPerBesieger"; pct: number }
+  /** Overrides the citizen price ladder's BASE cost (normally 25) — every hire
+   *  is priced `amount × growth^purchased` instead, so ALL citizens are cheaper,
+   *  not just the first (Love's "Warm Welcome": base 20). */
+  | { type: "citizenBaseCost"; amount: number }
+  /** Whenever ANY other kingdom heals for any reason, this kingdom also heals
+   *  for `pct` of that amount (Love's "Feel the love!"). */
+  | { type: "healShareGlobal"; pct: number }
 ) & { conditions?: any[] };
 
 /**
@@ -119,7 +148,10 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     // "We're In This Together": every Water citizen produces $1.35/s
     // (0.0675/tick) — a flat per-citizen rate above the base $1.20/s.
     { type: "incomePerCitizen", amount: 0.0675 },
+    // "Fountain of Youth": Burn wears off 40% faster, and damage over time from
+    // Burn, Poison, Father Time, and Meteor Shower is reduced by 15%.
     { type: "statusDurationReduction", statusId: "burn", pct: 0.4 },
+    { type: "dotResistance", pct: 0.15, sources: ["burn", "poison", "fatherTimeMark", "meteorShower"] },
     { type: "elementalResistance", element: "fire", pct: 0.15 },
   ],
   fire: [
@@ -150,5 +182,30 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   nature: [
     { type: "thorns", chance: 0.2, pct: 0.25 },
     { type: "startingCitizensBonus", amount: 5 },
+  ],
+  time: [
+    // "Longevity" — Time gets stronger the longer the battle runs: +5% attack
+    // every 2 minutes and +5% damage reduction every 3 minutes (unbounded
+    // attack; reduction floored at 0). Applied live from match.tick.
+    { type: "scalingDamageMultiplier", pct: 0.05, intervalTicks: 2 * 60 * TICK.RATE },
+    { type: "scalingDamageReduction", pct: 0.05, intervalTicks: 3 * 60 * TICK.RATE },
+    // "Time is money" — a 7.5% chance to receive a second citizen free
+    // on each hire, without advancing the citizen price ladder.
+    { type: "bonusCitizenOnPurchase", chance: 0.075, amount: 1 },
+  ],
+  space: [
+    // "Blast off!" — start the match with 150 gold in the bank.
+    { type: "startingGold", amount: 150 },
+    // "Vast Universe" — a bully that profits from being ganged up on: +10%
+    // income for every kingdom currently targeting Space.
+    { type: "incomeMultiplierPerBesieger", pct: 0.1 },
+  ],
+  love: [
+    // "Warm Welcome" — every citizen is cheaper: the price ladder starts at 20
+    // instead of the base 25 and climbs by the same growth (20 → 22 → 24 → …).
+    { type: "citizenBaseCost", amount: 20 },
+    // "Feel the love!" — whenever any OTHER castle heals, for any reason, Love
+    // receives 10% of that healing too.
+    { type: "healShareGlobal", pct: 0.1 },
   ],
 };

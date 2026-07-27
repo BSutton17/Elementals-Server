@@ -21,7 +21,11 @@ import type { StatusEffectDefinition } from "../engine/status.js";
 /** "Until used": Poison Apple's mark persists until an attacker springs it. */
 const UNTIL_USED = Number.MAX_SAFE_INTEGER;
 
-/** Weak Poison (Sludge): light damage over time. */
+// Poison worsens the longer it festers (+20%/s, capped at ×3) — this is what
+// separates Nature's Poison from Fire's flat, front-loaded Burn.
+const POISON_RAMP = { rampPerSecond: 0.2, rampMaxMultiplier: 3 } as const;
+
+/** Weak Poison (Sludge): light, ramping damage over time. */
 export const POISON_STATUS: StatusEffectDefinition = {
   id: "poison",
   name: "Poison",
@@ -31,23 +35,23 @@ export const POISON_STATUS: StatusEffectDefinition = {
   stackingWhileStatus: { statusId: "corroded", stacking: "stack" },
   maxStacks: 5,
   tickEffects: [
-    { type: "damage", amount: 3, perStack: true },
+    { type: "damage", amount: 3, perStack: true, ...POISON_RAMP },
   ],
 };
 
-/** Strong Poison (Gastro Acid, Poison Apple): double the tick damage. */
+/** Strong Poison (Gastro Acid, Poison Apple): heavier ramping tick damage. */
 export const POISON_STATUS_STRONG: StatusEffectDefinition = {
   ...POISON_STATUS,
   tickEffects: [
-    { type: "damage", amount: 4, perStack: true },
+    { type: "damage", amount: 4, perStack: true, ...POISON_RAMP },
   ],
 };
 
-/** Toxic Poison (Toxic Gas): strong, and it ignores all shields. */
+/** Toxic Poison (Toxic Gas): strong, ramping, and it ignores all shields. */
 export const POISON_STATUS_TOXIC: StatusEffectDefinition = {
   ...POISON_STATUS,
   tickEffects: [
-    { type: "damage", amount: 5, perStack: true, ignoreShields: true },
+    { type: "damage", amount: 5, perStack: true, ignoreShields: true, ...POISON_RAMP },
   ],
 };
 
@@ -82,19 +86,22 @@ export const POISONED_CITIZENS_STATUS: StatusEffectDefinition = {
   ],
 };
 
-/** Poison Apple's mark: the next kingdom to damage Nature is Poisoned. */
+/** Poison Apple's mark: the next kingdom to damage Nature is Poisoned — HP over
+ *  time AND their citizens (income sapped) for the same window. */
 export const POISON_APPLE_STATUS: StatusEffectDefinition = {
   id: "poisonApple",
   name: "Poison Apple",
   category: "buff",
   stacking: "replace",
   onHitRetaliate: { status: POISON_STATUS_STRONG, durationTicks: 5 * TICK.RATE },
+  onHitRetaliateExtra: [{ status: POISONED_CITIZENS_STATUS, durationTicks: 5 * TICK.RATE }],
 };
 
-/** Poison Apple's mark (Lv 2): longer Poison on the biter. */
+/** Poison Apple's mark (Lv 2): longer Poison (and citizen poison) on the biter. */
 export const POISON_APPLE_STATUS_LV2: StatusEffectDefinition = {
   ...POISON_APPLE_STATUS,
   onHitRetaliate: { status: POISON_STATUS_STRONG, durationTicks: 7 * TICK.RATE },
+  onHitRetaliateExtra: [{ status: POISONED_CITIZENS_STATUS, durationTicks: 7 * TICK.RATE }],
 };
 
 /** Toxic Gas lockout: the bearer cannot buy citizens or repair. */

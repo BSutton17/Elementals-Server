@@ -3,6 +3,19 @@ import type { MatchPlayer } from "./types.js";
 import { createPlayerState, type PlayerState } from "./playerState.js";
 import { EventBus } from "../engine/events.js";
 
+/** An open Black Hole absorbing attacks until it collapses (Space ultimate). */
+export interface BlackHoleState {
+  /** The Space player who opened it. */
+  ownerId: string;
+  /** Tick at which it collapses and dumps its pool. */
+  endTick: number;
+  /** Total damage swallowed so far. */
+  accumulated: number;
+  /** The last kingdom whose attack was absorbed — receives the dump. Null until
+   *  something has been absorbed. */
+  lastAttackerId: string | null;
+}
+
 /**
  * The central server-side game state for one active match (ticket #41): every
  * player's runtime gameplay state plus match-wide gameplay data (the current
@@ -20,6 +33,14 @@ export class GameState {
    * signals, never synced state.
    */
   readonly events = new EventBus();
+
+  /**
+   * Space's Black Hole (ultimate): while open, every offensive attack on the
+   * field is swallowed instead of landing; its damage accumulates here. When it
+   * collapses (`endTick`) the whole pool is dealt to the last kingdom whose
+   * attack it absorbed (`lastAttackerId`). Null when no black hole is open.
+   */
+  blackHole: BlackHoleState | null = null;
 
   private readonly players = new Map<string, PlayerState>();
 

@@ -15,6 +15,7 @@ export type TransactionError =
   | "INVALID_TRANSACTION"
   | "INSUFFICIENT_FUNDS"
   | "SHIELD_ACTIVE"
+  | "SHIELD_COOLDOWN" // a broken shield can't be rebought yet (break cooldown)
   | "PURCHASES_BLOCKED" // a status bars citizen/repair purchases (Toxic Gas)
   | "REPAIR_LIMIT"; // the per-match cap on purchased repairs is spent
 

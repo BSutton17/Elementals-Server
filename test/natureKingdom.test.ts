@@ -104,6 +104,25 @@ test("Sludge poisons; Poison refreshes rather than stacking on its own", () => {
   assert.equal(getStatus(b, "poison")!.stacks, 1);
 });
 
+test("Poison ramps up the longer it festers (unlike Fire's flat Burn)", () => {
+  const { match, players } = garden(["nature", "fire"]);
+  const [a, b] = players;
+  activateAbility(match, a, SLUDGE, { targetId: "p1", forceCrit: false });
+
+  // A fresh poison tick is light.
+  b.castle.hp = 10_000;
+  processStatusTicks(match.gameState!);
+  const early = 10_000 - b.castle.hp;
+
+  // Fast-forward ~3 seconds of ticking; the same poison now bites harder.
+  for (let i = 0; i < 3 * 20; i++) processStatusTicks(match.gameState!);
+  b.castle.hp = 10_000;
+  processStatusTicks(match.gameState!);
+  const late = 10_000 - b.castle.hp;
+
+  assert.ok(late > early, `poison should ramp up: early ${early}, late ${late}`);
+});
+
 // --- Acid Rain & Corroded -----------------------------------------------------------
 
 test("Corroded amplifies Poison damage and makes it stack", () => {
@@ -195,6 +214,9 @@ test("Poison Apple: the next kingdom to attack Nature is immediately Poisoned", 
   b.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
   assert.equal(b.castle.hp, 10_000 - 4); // strong poison
+
+  // The biter's citizens are poisoned too (income sapped) for the same window.
+  assert.ok(getStatus(b, "poisonedCitizens"));
 });
 
 // --- Toxic Gas ----------------------------------------------------------------------

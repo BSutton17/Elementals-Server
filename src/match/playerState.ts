@@ -18,6 +18,9 @@ export interface CastleState {
   repairs: number;
   /** Number of shields purchased this match (drives progressive shield cost). */
   shieldsPurchased: number;
+  /** Tick a shield was last broken by damage; a new shield can't be bought for
+   *  `SHIELD.BREAK_COOLDOWN_TICKS` after. Very negative = never broken. */
+  shieldBrokenAtTick: number;
 }
 
 export interface EconomyState {
@@ -69,6 +72,30 @@ export interface StatusTickEffect {
   ignoreShields?: boolean;
   /** Probability check (ticket #102). */
   chance?: number;
+  /**
+   * Fire only every N game ticks instead of every tick (default 1). e.g. a
+   * once-per-second effect uses `TICK.RATE` (Time's Father Time).
+   */
+  intervalTicks?: number;
+  /**
+   * Apply only if the BEARER has not dealt damage since this effect last
+   * evaluated — otherwise the tick is skipped and its countdown resets (Father
+   * Time's "punish hesitation": the victim avoids the hit by attacking).
+   */
+  onlyIfBearerIdleSinceLastTick?: boolean;
+  /**
+   * Ramp the magnitude up the longer the status has been active: multiplied by
+   * `1 + rampPerSecond × secondsActive` (Nature's Poison worsens over time,
+   * separating it from Fire's flat Burn). Capped by `rampMaxMultiplier`.
+   */
+  rampPerSecond?: number;
+  /** Ceiling for the `rampPerSecond` multiplier (default: uncapped). */
+  rampMaxMultiplier?: number;
+  /**
+   * Once the status passes the halfway point of its duration, use this
+   * magnitude instead of `amount` (Father Time hits harder in the back half).
+   */
+  amountAfterHalfLife?: number;
 }
 
 /**
@@ -86,8 +113,20 @@ export interface StatusEffectInstance {
   stacks: number;
   /** Recurring per-tick effects, snapshotted from the definition on apply. */
   tickEffects?: StatusTickEffect[];
+  /** Game ticks elapsed since apply, for `intervalTicks` cadence (interval
+   *  tick effects only). */
+  tickElapsed?: number;
+  /** The duration (ticks) this status was applied with, for elapsed-fraction
+   *  logic like ramping DoTs and half-life damage steps. */
+  initialDurationTicks?: number;
+  /** Tick at which an idle-gated interval effect last evaluated, so "dealt
+   *  damage since last tick" is measured over the right window. */
+  lastIdleEvalTick?: number;
   /** Whether the status has associated modifiers. */
   hasModifiers?: boolean;
+  /** The attack-journal record (id) of the activation that applied this status,
+   *  so its DoT/status damage attributes back to that attack for Blip's undo. */
+  journalId?: string;
   /**
    * While active, the bearer cannot *target* the player who applied this
    * status (`sourceId`) — other targets remain legal (tickets #87–#88,
@@ -116,6 +155,83 @@ export interface StatusEffectInstance {
   /** Applied to the next player who damages the bearer, then consumed
    *  (Epic 12, Nature's Poison Apple). */
   onHitRetaliate?: { status: StatusEffectDefinition; durationTicks: number };
+  /** Extra statuses applied to the biter with `onHitRetaliate` (Poison Apple
+   *  also poisons the biter's citizens). Snapshotted on apply. */
+  onHitRetaliateExtra?: { status: StatusEffectDefinition; durationTicks: number }[];
+  /** While active, the bearer loses income each tick instead of earning it
+   *  (Time's "Back to the Future"). Snapshotted on apply. */
+  drainsIncome?: boolean;
+  /** While active, the bearer cannot change target (Space's Supernova L2/L3
+   *  forced redirect). Snapshotted on apply. */
+  blocksTargetChange?: boolean;
+  /** The target to restore when a `blocksTargetChange` lock expires — the
+   *  bearer's selection before Supernova forced them onto the victim. `null`
+   *  means they had no target; `undefined` means no restore applies. */
+  restoreTargetId?: string | null;
+  /** While active, each incoming attack on the bearer has this chance (0–1) to
+   *  miss entirely (Space's Orion's Belt). Snapshotted on apply. */
+  incomingMissChance?: number;
+  /** Points added to the bearer's Supernova meter when an incoming attack misses
+   *  via `incomingMissChance` (Orion's Belt feeds the meter). Snapshotted. */
+  missChargesSupernova?: number;
+  /** While active, whenever the status's SOURCE (applier) takes damage, the
+   *  bearer also takes this fraction of it (Love's Cupid's Arrow — an
+   *  "infatuated" kingdom feels a share of what Love feels). Snapshotted. */
+  bearerTakesPctOfSourceDamage?: number;
+  /** While active, ANY damage the bearer takes is fully negated and converted
+   *  into healing for this fraction of the raw incoming amount (Love's "Love
+   *  Galore"). Snapshotted. */
+  negateDamageHealPct?: number;
+  /** While active, damage the bearer takes is reflected back at the attacker
+   *  at this fraction, unconditionally — no chance roll (Love's "Have some
+   *  Empathy!"). Snapshotted. */
+  thornsPct?: number;
+  /** A two-phase hidden status that reveals on stealth-window expiry or after
+   *  `revealHealThreshold` healing (Love's "Love Galore"). Snapshotted. */
+  revealsBeforeExpiry?: boolean;
+  /** Whether this status has revealed yet (runtime; false during stealth). */
+  revealed?: boolean;
+  /** Cumulative negated-damage healing so far, for the early-reveal threshold
+   *  (runtime). */
+  healAccumulated?: number;
+  /** Healing that triggers an early reveal; set on the instance when applied
+   *  (scales with the ability's upgrade tier). */
+  revealHealThreshold?: number;
+  /**
+   * The OTHER castle this status links the bearer to (Love's "BFFS!!!"):
+   * damage and statuses landing on either from any source mirror onto the
+   * other in full for the link's duration. Set on the instance when applied
+   * (not a definition field — both ends of a link get the same definition
+   * but a different partner id).
+   */
+  linkedPartnerId?: string;
+  /**
+   * Citizens borrowed from the bearer by this status's source, to be returned
+   * when it expires naturally (Love's Cupid's Arrow — "infatuated" kingdoms
+   * temporarily lend Love citizens). Set on the instance when applied.
+   */
+  citizenLoanAmount?: number;
+}
+
+/**
+ * One incoming attack (a single enemy activation) that successfully affected a
+ * player — the unit Time's Blip! reverses. Immediate damage and any attributed
+ * DoT/status damage accumulate into the refunds; the applied statuses are listed
+ * so the undo can strip them. Kept as a small bounded, most-recent-last list.
+ */
+export interface AttackRecord {
+  /** Unique id of the attacking activation (matches statuses' `journalId`). */
+  id: string;
+  sourceId: string;
+  abilityId: string;
+  /** Tick the attack landed (ordering / most-recent). */
+  tick: number;
+  /** Castle HP taken by this attack + its DoTs — healed back on undo. */
+  hpRefund: number;
+  /** Shield HP taken by this attack + its DoTs — restored on undo. */
+  shieldRefund: number;
+  /** Ids of statuses this attack applied (removed on undo if still from it). */
+  statusIds: string[];
 }
 
 export interface PlayerState {
@@ -161,6 +277,23 @@ export interface PlayerState {
    * dead castle exactly once).
    */
   eliminatedAtTick: number | null;
+  /**
+   * Tick at which this player last dealt damage with an active attack (−1 =
+   * never). Drives idle-gated effects like Father Time's Mark, which punishes
+   * every second the bearer fails to land a damaging attack.
+   */
+  lastDamageDealtTick: number;
+  /**
+   * Recent incoming attacks that affected this player (most recent last),
+   * bounded. Time's Blip! pops the last one and reverses it.
+   */
+  attackJournal: AttackRecord[];
+  /**
+   * Space's Supernova charge meter (points). Shooting Star, Saturn's Rings, and
+   * Orion's Belt misses fill it; Supernova fires at the level the meter maps to
+   * and empties it. 0 for non-Space kingdoms.
+   */
+  supernovaMeter: number;
 }
 
 /**
@@ -176,6 +309,7 @@ export function createPlayerState(
   let startingHp = config.startingCastleHp;
   let startingShield = 0;
   let startingCitizens = config.startingCitizens;
+  let startingGold = 0;
   const passives = KINGDOM_PASSIVES[input.kingdomId] ?? [];
   for (const p of passives) {
     if (p.type === "startingCastleHpMultiplier") {
@@ -189,6 +323,10 @@ export function createPlayerState(
     if (p.type === "startingCitizensBonus") {
       startingCitizens += p.amount;
     }
+    // Space's "Blast off!": start with gold in the bank.
+    if (p.type === "startingGold") {
+      startingGold += p.amount;
+    }
   }
 
   return {
@@ -201,10 +339,11 @@ export function createPlayerState(
       shield: startingShield,
       repairs: 0,
       shieldsPurchased: 0,
+      shieldBrokenAtTick: -100000, // "never" — well before any real match tick
     },
     economy: {
       citizens: startingCitizens,
-      currency: 0,
+      currency: startingGold,
       incomePerTick: 0,
       citizensPurchased: 0,
     },
@@ -219,5 +358,8 @@ export function createPlayerState(
     targetSwitchReadyTick: 0,
     eliminated: false,
     eliminatedAtTick: null,
+    lastDamageDealtTick: -1,
+    attackJournal: [],
+    supernovaMeter: 0,
   };
 }

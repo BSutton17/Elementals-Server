@@ -1,5 +1,6 @@
 import type { Match } from "../match/Match.js";
-import type { ModifierOp, PlayerState } from "../match/playerState.js";
+import type { BlackHoleState } from "../match/GameState.js";
+import type { AttackRecord, ModifierOp, PlayerState } from "../match/playerState.js";
 import { canAfford, spend } from "./money.js";
 import { validateTransaction, type TransactionResult } from "./transactions.js";
 import { isReady, setCooldown } from "./cooldowns.js";
@@ -15,6 +16,8 @@ import {
 import { resolveDamage } from "./damage.js";
 import {
   besiegedDamageMultiplier,
+  scalingAttackMultiplier,
+  scalingDamageTakenMultiplier,
   canMultiTargetAttacks,
   multiTargetLimit,
   attackRedirectChance,
@@ -24,10 +27,47 @@ import {
   onHitStatuses,
   retaliations,
   thornsProcs,
+  healShareGlobalPct,
+  dotResistanceMultiplier,
 } from "./passives.js";
 import { applyDamage, type DamageApplication } from "./combat.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
+import { SPACE } from "../data/balance.js";
+
+/**
+ * Space's Supernova level (0–3) from a meter value, using the cumulative
+ * `SUPERNOVA_LEVEL_THRESHOLDS` (ramping cost per level). Level 0 can't fire.
+ */
+export function supernovaLevel(meter: number): number {
+  const thresholds = SPACE.SUPERNOVA_LEVEL_THRESHOLDS;
+  let level = 0;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (meter >= thresholds[i]!) level = i + 1;
+  }
+  return level;
+}
+
+/** Meter value at which the Supernova is fully charged (max level). */
+export function supernovaMaxMeter(): number {
+  const thresholds = SPACE.SUPERNOVA_LEVEL_THRESHOLDS;
+  return thresholds[thresholds.length - 1]!;
+}
+
+/**
+ * The crowd-control lock Supernova (L2/L3) drops on every other kingdom: it
+ * forces their target onto the victim and freezes the selection (`blocksTarget-
+ * Change`) for the redirect's duration. The forced target and the target to
+ * restore afterward are stamped on the instance at cast time (they're per-cast,
+ * not static). Created by the engine, so it lives here rather than in ability data.
+ */
+export const SUPERNOVA_LOCK: StatusEffectDefinition = {
+  id: "supernovaLock",
+  name: "Supernova Lock",
+  category: "crowdControl",
+  stacking: "refresh",
+  blocksTargetChange: true,
+};
 import { type EffectCondition, evaluateCondition } from "./conditions.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
 
@@ -61,7 +101,12 @@ export interface EffectDefinition {
     | "economyModifier"
     | "resourceTransfer"
     | "cooldownModify"
-    | "vision";
+    | "vision"
+    | "undoLastAttack"
+    | "chargeSupernova"
+    | "supernovaBlast"
+    | "createBlackHole"
+    | "linkCastles";
   /** Who this effect applies to within the resolved targeting.
    *  `otherEnemies` = every living enemy *except* the resolved target
    *  (Earthquake's aftershock, Epic 9 — "adjacent" until maps land). */
@@ -128,6 +173,27 @@ export interface EffectDefinition {
       type: "fog" | "hiddenInventory" | "overlay" | string;
       durationTicks: number;
     };
+    /** chargeSupernova: points added to the caster's Supernova meter (Space). */
+    supernovaCharge?: number;
+    /** supernovaBlast (Space): damage indexed by the caster's CURRENT Supernova
+     *  level (index 0 = level 1, etc.); the meter is consumed on cast. */
+    supernovaDamageByLevel?: number[];
+    /** supernovaBlast: chance, per level, that the blast forces every kingdom to
+     *  target the victim (indexed like `supernovaDamageByLevel`). */
+    supernovaRedirectChanceByLevel?: number[];
+    /** supernovaBlast: how long the forced-target redirect lasts (ticks). */
+    redirectDurationTicks?: number;
+    /** createBlackHole (Space ultimate): how long the black hole stays open,
+     *  absorbing every attack, before it collapses and dumps (ticks). */
+    blackHoleDurationTicks?: number;
+    /** status: alongside applying the status, borrow this many citizens from
+     *  the recipient (capped at what they have), returned automatically when
+     *  the status expires naturally (Love's Cupid's Arrow — "infatuated"). */
+    borrowCitizens?: number;
+    /** status: healing (cumulative negated damage) that triggers an early
+     *  reveal on a `revealsBeforeExpiry` status (Love's "Love Galore"); set
+     *  onto the instance so it scales with the ability's upgrade tier. */
+    revealHealThreshold?: number;
   };
 }
 
@@ -202,7 +268,14 @@ export interface AbilityDefinition {
   unlockCost?: number;
   /** Cooldown started on successful activation (0 = none). */
   cooldownTicks: number;
-  targeting: { mode: TargetingMode };
+  /**
+   * `secondTarget` (Love's BFFS!!!): this attack requires a SECOND, distinct
+   * player-selected enemy in addition to the primary. The caller supplies both
+   * via `targetIds` ([primary, second]); the cast is rejected up-front with
+   * `SECOND_TARGET_REQUIRED` if a valid second isn't provided. The second id is
+   * handed to effects as `options.secondTargetId` (used by `linkCastles`).
+   */
+  targeting: { mode: TargetingMode; secondTarget?: boolean };
   effects: EffectDefinition[];
   /** Charge-based casting (Lightning Barrage); see ChargeSystem. */
   chargeSystem?: ChargeSystem;
@@ -386,7 +459,9 @@ export type AbilityError =
   | "INVALID_TARGET"
   | "TARGET_LIMIT" // concurrent-affected cap reached (e.g. Thick Fog)
   | "ATTACKS_BLOCKED" // a crowd-control status bars attacking (e.g. Frozen)
-  | "NO_CHARGES"; // a charge-costed ability needs at least one charge
+  | "NO_CHARGES" // a charge-costed ability needs at least one charge
+  | "NO_SUPERNOVA" // Supernova has no charge yet (meter at level 0)
+  | "SECOND_TARGET_REQUIRED"; // BFFS!!! needs a second distinct kingdom selected
 
 export interface AbilityActivation {
   ok: boolean;
@@ -421,6 +496,40 @@ export interface ActivateOptions {
    *  while the caster holds guarantee stacks — chance-gated effects always
    *  proc. Not intended to be passed by callers. */
   guaranteeChances?: boolean;
+  /** Engine-internal: the attack-journal id for THIS activation, so every
+   *  effect it lands on a recipient records under one record (Blip's undo).
+   *  Set by the pipeline, never by callers. */
+  journalId?: string;
+  /** Engine-internal: the validated SECOND target for a `secondTarget` attack
+   *  (Love's BFFS!!!). Set by the pipeline from `targetIds[1]`, read by the
+   *  `linkCastles` effect. */
+  secondTargetId?: string;
+}
+
+/** Keep each player's attack journal small — only recent attacks are undoable. */
+const MAX_ATTACK_JOURNAL = 8;
+
+/**
+ * Find-or-create the recipient's journal record for one attacking activation,
+ * so all of that activation's damage/statuses on them group under a single
+ * undoable entry (Blip). Only enemy attacks (source ≠ recipient) are journaled.
+ */
+function journalRecordFor(
+  recipient: PlayerState,
+  journalId: string,
+  sourceId: string,
+  abilityId: string,
+  tick: number,
+): AttackRecord {
+  let record = recipient.attackJournal.find((r) => r.id === journalId);
+  if (!record) {
+    record = { id: journalId, sourceId, abilityId, tick, hpRefund: 0, shieldRefund: 0, statusIds: [] };
+    recipient.attackJournal.push(record);
+    if (recipient.attackJournal.length > MAX_ATTACK_JOURNAL) {
+      recipient.attackJournal.shift();
+    }
+  }
+  return record;
 }
 
 /**
@@ -490,6 +599,15 @@ function activateAbilityInner(
   // bearer from attacking (Ice's Frozen, Blizzard). Non-attacks stay legal.
   if (ability.kind === "attack" && caster.statuses.some((s) => s.blocksAttacks)) {
     return { ok: false, error: "ATTACKS_BLOCKED" };
+  }
+
+  // Space's Supernova (level 0 = can't attack): a supernovaBlast ability needs
+  // the meter charged to at least level 1 before it can fire.
+  if (
+    effective.effects.some((e) => e.type === "supernovaBlast") &&
+    supernovaLevel(caster.supernovaMeter) < 1
+  ) {
+    return { ok: false, error: "NO_SUPERNOVA" };
   }
 
   // 3. Validate cooldown, then funds. Charge-based abilities (Lightning
@@ -670,6 +788,31 @@ function activateAbilityInner(
     }
   }
 
+  // 4a2. Second-target requirement (Love's BFFS!!!): a second, distinct,
+  // player-selected enemy must accompany the primary. Validated here — before
+  // anything is spent — so a mis-cast (only one kingdom chosen) rejects cleanly
+  // with SECOND_TARGET_REQUIRED. The validated id rides into the effects on
+  // `secondTargetId` (consumed by `linkCastles`).
+  let secondTargetId: string | undefined;
+  if (effective.targeting.secondTarget) {
+    const primaryId = targets[0]?.id;
+    const candidate = options.targetIds?.[1];
+    if (!candidate || candidate === primaryId) {
+      return { ok: false, error: "SECOND_TARGET_REQUIRED" };
+    }
+    if (candidate === caster.id) return { ok: false, error: "INVALID_TARGET" };
+    const resolvedSecond = match.hasPlayer(candidate)
+      ? match.gameState?.getPlayer(candidate)
+      : undefined;
+    if (!resolvedSecond || resolvedSecond.eliminated) {
+      return { ok: false, error: "INVALID_TARGET" };
+    }
+    if (isTargetingBlocked(caster, candidate)) {
+      return { ok: false, error: "INVALID_TARGET" };
+    }
+    secondTargetId = candidate;
+  }
+
   // 4b. Concurrent-affected cap (Air's Thick Fog, Epic 8): fail closed while
   // the cap is full — a re-cast on an already-affected target stays legal.
   if (effective.maxConcurrentAffected) {
@@ -760,7 +903,18 @@ function activateAbilityInner(
     ability.kind === "attack"
       ? caster.statuses.find((s) => s.guaranteesChanceEffects && s.stacks > 0)
       : undefined;
-  const effectOptions = focus ? { ...options, guaranteeChances: true } : options;
+  // One journal id per activation: every effect this cast lands on a recipient
+  // records under the same undoable entry (Blip). Attacks only.
+  const journalId =
+    ability.kind === "attack"
+      ? `atk:${caster.id}:${match.tick}:${match.nextSeq()}`
+      : undefined;
+  const effectOptions: ActivateOptions = {
+    ...options,
+    ...(focus ? { guaranteeChances: true } : {}),
+    ...(journalId ? { journalId } : {}),
+    ...(secondTargetId ? { secondTargetId } : {}),
+  };
 
   // Resolve targeting modifiers (ticket #109)
   const duplicateCount = Math.max(1, Math.round(computeStat(caster, "duplicateAttackCount", 1)));
@@ -782,6 +936,16 @@ function activateAbilityInner(
   for (let i = 0; i < duplicateCount; i++) {
     // Apply to each resolved target
     for (const target of targets) {
+      // Orion's Belt (Space): an attack on a shielded bearer may miss entirely
+      // — none of its effects land, and the whiff feeds the bearer's Supernova
+      // meter. Only offensive attacks against another kingdom can be dodged.
+      if (
+        effective.kind === "attack" &&
+        target.id !== caster.id &&
+        maybeMissByOrionsBelt(match, caster, target, effective.id, effectOptions)
+      ) {
+        continue;
+      }
       for (const effect of effective.effects) {
         // Aftershock-style splash (Epic 9): this effect hits every living
         // enemy except the struck target, targeting bans respected.
@@ -875,6 +1039,25 @@ function applyEffect(
   // Gameplay events (#204). Emissions are fire-and-forget and guarded on
   // bus.enabled so unmonitored matches allocate nothing here.
   const bus = match.gameState!.events;
+
+  // Space's Black Hole (ultimate): while it is open, every hostile effect aimed
+  // at another kingdom is swallowed. Damage effects pool their damage into the
+  // hole inside their own case below (they need the resolved figure); every
+  // other harmful effect (debuffs/statuses) simply never lands here. Effects on
+  // the caster itself (self-buffs) are untouched. The caster is recorded as the
+  // "last to attack the hole", which decides who takes the collapse dump.
+  const blackHole = match.gameState!.blackHole;
+  const blackHoleOpen = blackHole !== null && match.tick < blackHole.endTick;
+  if (
+    blackHoleOpen &&
+    recipient.id !== caster.id &&
+    effect.type !== "damage" &&
+    effect.type !== "supernovaBlast"
+  ) {
+    blackHole!.lastAttackerId = caster.id;
+    return;
+  }
+
   const emitDamage = (
     targetId: string,
     sourceId: string,
@@ -944,12 +1127,128 @@ function applyEffect(
           caster,
           match.gameState!.getPlayers(),
         ),
+        // Time's "Longevity": attack scales up, and the recipient's defense
+        // scales down, with match time elapsed. Water's "Fountain of Youth"
+        // also cuts damage from named DoT-ish abilities (e.g. Meteor Shower).
+        attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+        defenderScalingTakenMultiplier:
+          scalingDamageTakenMultiplier(recipient, match.tick) *
+          dotResistanceMultiplier(recipient, abilityId),
       });
-      const applied = applyDamage(recipient, resolved.amount, {
+      // Black Hole swallows the hit: pool the damage instead of landing it.
+      if (blackHoleOpen && recipient.id !== caster.id) {
+        absorbIntoBlackHole(match, blackHole!, caster.id, resolved.amount);
+        break;
+      }
+      // Love Galore (Love ultimate): incoming damage never lands — it's fully
+      // negated and converted into healing for the bearer instead. Two-phase
+      // when `revealsBeforeExpiry`: during the STEALTH phase the heal is silent
+      // and enemies see a phantom damage number (they don't know they're
+      // feeding Love); once the healing threshold is crossed it REVEALS, and
+      // thereafter every hit shows as visible healing (handled by the status's
+      // time-based reveal in `tickStatuses` too).
+      const galore = recipient.statuses.find((s) => s.negateDamageHealPct);
+      if (galore && recipient.id !== caster.id) {
+        const requested = Math.round(resolved.amount * galore.negateDamageHealPct!);
+        const healed = healCastle(recipient, requested);
+        galore.healAccumulated = (galore.healAccumulated ?? 0) + healed;
+        const stealth = galore.revealsBeforeExpiry === true && galore.revealed !== true;
+        if (stealth) {
+          // Decoy: a normal-looking damage number for everyone but the bearer.
+          if (bus.enabled) {
+            bus.emit({
+              type: "damage",
+              tick: match.tick,
+              sourceId: caster.id,
+              targetId: recipient.id,
+              amount: resolved.amount,
+              absorbedByShield: 0,
+              dealtToHp: 0,
+              overkill: 0,
+              crit: resolved.crit,
+              element: p.element,
+              cause: abilityId,
+              phantom: true,
+            });
+          }
+          // Early reveal: enough damage has secretly been turned into healing.
+          if (
+            galore.revealHealThreshold !== undefined &&
+            galore.healAccumulated >= galore.revealHealThreshold
+          ) {
+            galore.revealed = true;
+            galore.remainingTicks = galore.initialDurationTicks ?? galore.remainingTicks;
+            if (bus.enabled) {
+              bus.emit({ type: "statusRevealed", tick: match.tick, playerId: recipient.id, statusId: galore.id });
+            }
+          }
+        } else if (bus.enabled) {
+          bus.emit({ type: "heal", tick: match.tick, targetId: recipient.id, amount: healed, overheal: requested - healed, cause: "loveGalore" });
+        }
+        shareHealGlobally(match, recipient, healed);
+        break;
+      }
+      // Love's Cupid's Arrow: each "infatuated" kingdom (bearer.sourceId ===
+      // recipient.id) absorbs a REDIRECTED share of what would be Love's
+      // damage — Love only takes what's left over, not the full hit plus an
+      // extra one on top. Computed before Love's own applyDamage so the split
+      // is real, not additive.
+      let loveAmount = resolved.amount;
+      const infatuatedRedirects: { bearer: PlayerState; amount: number }[] = [];
+      if (recipient.id !== caster.id) {
+        for (const other of match.gameState!.getPlayers()) {
+          if (other.eliminated || other.id === recipient.id) continue;
+          const mark = other.statuses.find(
+            (s) => s.sourceId === recipient.id && s.bearerTakesPctOfSourceDamage,
+          );
+          if (!mark) continue;
+          const share = Math.round(resolved.amount * mark.bearerTakesPctOfSourceDamage!);
+          if (share > 0) {
+            infatuatedRedirects.push({ bearer: other, amount: share });
+            loveAmount -= share;
+          }
+        }
+        loveAmount = Math.max(0, loveAmount);
+      }
+
+      const applied = applyDamage(recipient, loveAmount, {
         ignoreShields: p.ignoreShields,
+        tick: match.tick,
       });
       damage.push(applied);
+      // Landing a damaging active attack refreshes the caster's "last dealt
+      // damage" clock — this is what resets Father Time's idle countdown.
+      if (applied.absorbedByShield + applied.dealtToHp > 0) {
+        caster.lastDamageDealtTick = match.tick;
+        // Journal this attack against the recipient so Blip can undo it.
+        if (options.journalId && recipient.id !== caster.id) {
+          const rec = journalRecordFor(recipient, options.journalId, caster.id, abilityId, match.tick);
+          rec.hpRefund += applied.dealtToHp;
+          rec.shieldRefund += applied.absorbedByShield;
+        }
+      }
       emitDamage(recipient.id, caster.id, applied, resolved.crit, abilityId);
+
+      // Love's "BFFS!!!" link: damage landing on a linked castle also lands
+      // on its partner in full (single hop — a raw applyDamage call, so the
+      // partner's own link never re-triggers a mirror-of-a-mirror). Mirrors
+      // the attack's original figure, independent of any infatuation split.
+      const bffsLink = recipient.statuses.find((s) => s.linkedPartnerId);
+      if (bffsLink) {
+        const partner = match.gameState!.getPlayer(bffsLink.linkedPartnerId!);
+        if (partner && !partner.eliminated && partner.id !== caster.id) {
+          const mirroredApplied = applyDamage(partner, resolved.amount, { tick: match.tick });
+          damage.push(mirroredApplied);
+          emitDamage(partner.id, caster.id, mirroredApplied, resolved.crit, `linked:${abilityId}`);
+        }
+      }
+
+      // Apply each infatuated kingdom's redirected share.
+      for (const r of infatuatedRedirects) {
+        const shared = applyDamage(r.bearer, r.amount, { tick: match.tick });
+        damage.push(shared);
+        emitDamage(r.bearer.id, recipient.id, shared, false, "infatuated");
+      }
 
       // Conditional lifesteal (#85): heal the caster for a ratio of the
       // damage dealt (shield + HP), gated on a target status when configured.
@@ -965,6 +1264,7 @@ function applyEffect(
         if (healed > 0 && bus.enabled) {
           bus.emit({ type: "heal", tick: match.tick, targetId: caster.id, amount: healed, overheal: requested - healed, cause: `lifesteal:${abilityId}` });
         }
+        shareHealGlobally(match, caster, healed);
       }
 
       // Distraught (Earth passive, Epic 9): dealing damage slowly rebuilds
@@ -990,7 +1290,7 @@ function applyEffect(
           const bonus = applyDamage(
             recipient,
             Math.round(resolved.amount * aftershock.pct),
-            { ignoreShields: p.ignoreShields },
+            { ignoreShields: p.ignoreShields, tick: match.tick },
           );
           damage.push(bonus);
           emitDamage(recipient.id, caster.id, bonus, false, "aftershock");
@@ -1030,6 +1330,15 @@ function applyEffect(
               durationTicks: mark.onHitRetaliate.durationTicks,
             });
             emitStatusApplied(caster.id, recipient.id, inst);
+            // Extra riders applied with the mark (Poison Apple also poisons the
+            // biter's citizens).
+            for (const extra of mark.onHitRetaliateExtra ?? []) {
+              const rider = applyStatus(caster, extra.status, {
+                sourceId: recipient.id,
+                durationTicks: extra.durationTicks,
+              });
+              emitStatusApplied(caster.id, recipient.id, rider);
+            }
             removeStatus(recipient, mark.id);
           }
         }
@@ -1039,10 +1348,20 @@ function applyEffect(
         for (const t of thornsProcs(recipient)) {
           if (procRng() < t.chance) {
             const dealt = applied.absorbedByShield + applied.dealtToHp;
-            const reflected = applyDamage(caster, Math.round(dealt * t.pct), {});
+            const reflected = applyDamage(caster, Math.round(dealt * t.pct), { tick: match.tick });
             damage.push(reflected);
             emitDamage(caster.id, recipient.id, reflected, false, "thorns");
           }
+        }
+
+        // Have some Empathy! (Love utility): unconditional reflection while
+        // active — every hit gives a fraction straight back, no chance roll.
+        const empathyPct = recipient.statuses.find((s) => s.thornsPct)?.thornsPct;
+        if (empathyPct) {
+          const dealt = applied.absorbedByShield + applied.dealtToHp;
+          const reflected = applyDamage(caster, Math.round(dealt * empathyPct), { tick: match.tick });
+          damage.push(reflected);
+          emitDamage(caster.id, recipient.id, reflected, false, "empathy");
         }
       }
       break;
@@ -1057,6 +1376,7 @@ function applyEffect(
       if (healed > 0 && bus.enabled) {
         bus.emit({ type: "heal", tick: match.tick, targetId: recipient.id, amount: healed, overheal: requested - healed, cause: abilityId });
       }
+      shareHealGlobally(match, recipient, healed);
       break;
     }
     case "shield": {
@@ -1080,7 +1400,52 @@ function applyEffect(
           durationTicks: (p.durationTicks ?? 0) + extra,
           stacks: p.stacks,
         });
+        // Journal the status against the recipient so Blip can strip it (and
+        // refund its DoT) when it undoes this attack.
+        if (options.journalId && recipient.id !== caster.id) {
+          const rec = journalRecordFor(recipient, options.journalId, caster.id, abilityId, match.tick);
+          if (!rec.statusIds.includes(inst.id)) rec.statusIds.push(inst.id);
+          inst.journalId = options.journalId;
+        }
+        // Love's "Love Galore": arm the early-reveal healing threshold so it
+        // scales with the ability's upgrade tier.
+        if (p.revealHealThreshold !== undefined) {
+          inst.revealHealThreshold = p.revealHealThreshold;
+        }
         emitStatusApplied(recipient.id, caster.id, inst);
+
+        // Love's Cupid's Arrow: alongside "infatuated", borrow citizens from
+        // the recipient — returned automatically when the status expires
+        // naturally (see tickStatuses).
+        if (p.borrowCitizens && recipient.id !== caster.id) {
+          const loaned = Math.min(p.borrowCitizens, recipient.economy.citizens);
+          if (loaned > 0) {
+            recipient.economy.citizens -= loaned;
+            caster.economy.citizens += loaned;
+            recalcIncome(recipient);
+            recalcIncome(caster);
+            inst.citizenLoanAmount = loaned;
+            if (bus.enabled) {
+              bus.emit({ type: "resourceTransfer", tick: match.tick, fromId: recipient.id, toId: caster.id, resource: "citizens", amount: loaned, cause: abilityId });
+            }
+          }
+        }
+
+        // Love's "BFFS!!!" link: any status landing on a linked castle also
+        // lands on its partner (single hop — a raw applyStatus call, so the
+        // partner's own link never re-triggers a mirror-of-a-mirror).
+        const link = recipient.statuses.find((s) => s.linkedPartnerId);
+        if (link) {
+          const partner = match.gameState!.getPlayer(link.linkedPartnerId!);
+          if (partner && !partner.eliminated && partner.id !== recipient.id) {
+            const mirrored = applyStatus(partner, p.status, {
+              sourceId: caster.id,
+              durationTicks: (p.durationTicks ?? 0) + extra,
+              stacks: p.stacks,
+            });
+            emitStatusApplied(partner.id, caster.id, mirrored);
+          }
+        }
       }
       break;
     case "economyModifier": {
@@ -1221,6 +1586,333 @@ function applyEffect(
       });
       break;
     }
+    case "undoLastAttack": {
+      // Blip! — rewind the most recent attack that affected the caster: heal
+      // back its HP damage, restore the shield it absorbed, and strip the
+      // statuses it applied (their attributed DoT is already in hpRefund).
+      const record = caster.attackJournal.pop();
+      if (!record) break; // nothing to undo — the ability simply fizzles
+      const healed = healCastle(caster, record.hpRefund);
+      caster.castle.shield += record.shieldRefund;
+      const removed: string[] = [];
+      for (const sid of record.statusIds) {
+        const inst = caster.statuses.find(
+          (s) => s.id === sid && s.journalId === record.id,
+        );
+        if (inst && removeStatus(caster, sid)) removed.push(sid);
+      }
+      shareHealGlobally(match, caster, healed);
+      if (bus.enabled) {
+        if (healed > 0) {
+          bus.emit({
+            type: "heal",
+            tick: match.tick,
+            targetId: caster.id,
+            amount: healed,
+            overheal: record.hpRefund - healed,
+            cause: "blip",
+          });
+        }
+        for (const sid of removed) {
+          bus.emit({ type: "statusExpired", tick: match.tick, playerId: caster.id, statusId: sid });
+        }
+        bus.emit({
+          type: "attackUndone",
+          tick: match.tick,
+          playerId: caster.id,
+          sourceId: record.sourceId,
+          abilityId: record.abilityId,
+          removedStatusIds: removed,
+        });
+      }
+      break;
+    }
+    case "chargeSupernova": {
+      // Space's Shooting Star / Saturn's Rings add progress to the caster's
+      // Supernova meter, capped at a full charge (max level). The meter can't
+      // fill at all until Supernova itself is unlocked — there'd be nothing to
+      // spend the charge on, and it would otherwise look "ready" the moment a
+      // fresh Space player lands their first basic attack.
+      if (!caster.unlocked.supernova) break;
+      const add = p.supernovaCharge ?? 0;
+      if (add <= 0) break;
+      const before = caster.supernovaMeter;
+      caster.supernovaMeter = Math.min(supernovaMaxMeter(), before + add);
+      if (bus.enabled && caster.supernovaMeter !== before) {
+        bus.emit({
+          type: "supernovaCharged",
+          tick: match.tick,
+          playerId: caster.id,
+          meter: caster.supernovaMeter,
+          level: supernovaLevel(caster.supernovaMeter),
+        });
+      }
+      break;
+    }
+    case "supernovaBlast": {
+      // Fires at the caster's CURRENT meter level (no level selection). L0 is
+      // gated out at validation. Damage comes from the per-level table; the
+      // meter is fully consumed on fire.
+      const level = supernovaLevel(caster.supernovaMeter);
+      if (level < 1) break; // safety — validation already blocks a dry cast
+      const dmgTable = p.supernovaDamageByLevel ?? [];
+      const baseAmount = dmgTable[level - 1] ?? 0;
+      caster.supernovaMeter = 0;
+      if (bus.enabled) {
+        bus.emit({
+          type: "supernovaFired",
+          tick: match.tick,
+          playerId: caster.id,
+          targetId: recipient.id,
+          level,
+        });
+      }
+
+      const resolved = resolveDamage(caster, recipient, baseAmount, {
+        element: p.element,
+        forceCrit: options.forceCrit,
+        rng: options.rng,
+        besiegedMultiplier: besiegedDamageMultiplier(
+          caster,
+          match.gameState!.getPlayers(),
+        ),
+        attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+        defenderScalingTakenMultiplier: scalingDamageTakenMultiplier(recipient, match.tick),
+      });
+      // Black Hole swallows even a Supernova aimed into it.
+      if (blackHoleOpen && recipient.id !== caster.id) {
+        absorbIntoBlackHole(match, blackHole!, caster.id, resolved.amount);
+        break;
+      }
+      const applied = applyDamage(recipient, resolved.amount, { tick: match.tick });
+      damage.push(applied);
+      if (applied.absorbedByShield + applied.dealtToHp > 0) {
+        caster.lastDamageDealtTick = match.tick;
+        if (options.journalId && recipient.id !== caster.id) {
+          const rec = journalRecordFor(recipient, options.journalId, caster.id, abilityId, match.tick);
+          rec.hpRefund += applied.dealtToHp;
+          rec.shieldRefund += applied.absorbedByShield;
+        }
+      }
+      emitDamage(recipient.id, caster.id, applied, resolved.crit, abilityId);
+
+      // L2/L3: chance to force every OTHER kingdom onto the victim and lock the
+      // selection for `redirectDurationTicks`. The victim itself is untouched.
+      const redirectChance = (p.supernovaRedirectChanceByLevel ?? [])[level - 1] ?? 0;
+      if (redirectChance > 0) {
+        const rng = options.rng ?? match.rng;
+        if (rng() < redirectChance) {
+          const dur = p.redirectDurationTicks ?? 0;
+          for (const other of match.gameState!.getPlayers()) {
+            if (other.eliminated || other.id === recipient.id) continue;
+            const prevTarget = other.target;
+            const lock = applyStatus(other, SUPERNOVA_LOCK, {
+              sourceId: caster.id,
+              durationTicks: dur,
+            });
+            lock.restoreTargetId = prevTarget;
+            other.target = recipient.id;
+            emitStatusApplied(other.id, caster.id, lock);
+            if (bus.enabled) {
+              bus.emit({
+                type: "targetChanged",
+                tick: match.tick,
+                playerId: other.id,
+                targetId: recipient.id,
+              });
+            }
+          }
+        }
+      }
+      break;
+    }
+    case "createBlackHole": {
+      // Space's ultimate: open a black hole over the field for its duration.
+      // While open, every offensive attack is swallowed (see the absorption
+      // gate at the top of applyEffect) and dumped on collapse (tick loop).
+      const dur = p.blackHoleDurationTicks ?? 0;
+      match.gameState!.blackHole = {
+        ownerId: caster.id,
+        endTick: match.tick + dur,
+        accumulated: 0,
+        lastAttackerId: null,
+      };
+      if (bus.enabled) {
+        bus.emit({
+          type: "blackHoleOpened",
+          tick: match.tick,
+          playerId: caster.id,
+          durationTicks: dur,
+        });
+      }
+      break;
+    }
+    case "linkCastles": {
+      // Love's "BFFS!!!": the primary target (recipient) takes damage; if
+      // another living enemy is available it takes the SAME damage too, and
+      // the two castles become linked for the duration — damage and statuses
+      // hitting either from ANY source mirror onto the other (see the
+      // "damage"/"status" cases above and the DoT-tick branch in status.ts).
+      const dealTo = (who: PlayerState): void => {
+        const hitResolved = resolveDamage(caster, who, p.amount ?? 0, {
+          element: p.element,
+          elementMultiplier: p.elementMultiplier,
+          forceCrit: options.forceCrit,
+          rng: options.rng,
+          besiegedMultiplier: besiegedDamageMultiplier(caster, match.gameState!.getPlayers()),
+          attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+          defenderScalingTakenMultiplier: scalingDamageTakenMultiplier(who, match.tick),
+        });
+        const dealtApplied = applyDamage(who, hitResolved.amount, { tick: match.tick });
+        damage.push(dealtApplied);
+        emitDamage(who.id, caster.id, dealtApplied, hitResolved.crit, abilityId);
+      };
+      dealTo(recipient);
+
+      // The SECOND linked kingdom is player-selected (validated up-front as
+      // `secondTargetId`; see the targeting.secondTarget requirement). It takes
+      // the same hit and the two castles link for the duration.
+      const second = options.secondTargetId
+        ? match.gameState!.getPlayer(options.secondTargetId)
+        : undefined;
+      if (second && !second.eliminated && second.id !== recipient.id && p.status) {
+        dealTo(second);
+
+        const durationTicks = p.durationTicks ?? 0;
+        const linkA = applyStatus(recipient, p.status, { sourceId: caster.id, durationTicks });
+        linkA.linkedPartnerId = second.id;
+        emitStatusApplied(recipient.id, caster.id, linkA);
+        const linkB = applyStatus(second, p.status, { sourceId: caster.id, durationTicks });
+        linkB.linkedPartnerId = recipient.id;
+        emitStatusApplied(second.id, caster.id, linkB);
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * Orion's Belt (Space utility): rolls whether an incoming attack on `target`
+ * misses. On a miss it feeds `target`'s Supernova meter, emits the miss/charge
+ * events, and returns true so the caller drops the whole attack. Suppressed
+ * while a Black Hole is open — that absorbs the attack instead of dodging it.
+ */
+function maybeMissByOrionsBelt(
+  match: Match,
+  caster: PlayerState,
+  target: PlayerState,
+  abilityId: string,
+  options: ActivateOptions,
+): boolean {
+  const belt = target.statuses.find(
+    (s) => (s.incomingMissChance ?? 0) > 0,
+  );
+  if (!belt) return false;
+  const hole = match.gameState!.blackHole;
+  if (hole && match.tick < hole.endTick) return false;
+
+  const rng = options.rng ?? match.rng;
+  if (rng() >= belt.incomingMissChance!) return false;
+
+  const bus = match.gameState!.events;
+  const charge = belt.missChargesSupernova ?? 0;
+  // Same rule as every other charge source: nothing fills the meter until
+  // Supernova is unlocked.
+  if (charge > 0 && target.unlocked.supernova) {
+    const before = target.supernovaMeter;
+    target.supernovaMeter = Math.min(supernovaMaxMeter(), before + charge);
+    if (bus.enabled && target.supernovaMeter !== before) {
+      bus.emit({
+        type: "supernovaCharged",
+        tick: match.tick,
+        playerId: target.id,
+        meter: target.supernovaMeter,
+        level: supernovaLevel(target.supernovaMeter),
+      });
+    }
+  }
+  if (bus.enabled) {
+    bus.emit({
+      type: "attackMissed",
+      tick: match.tick,
+      playerId: target.id,
+      attackerId: caster.id,
+      abilityId,
+      cause: "orionsBelt",
+    });
+  }
+  return true;
+}
+
+/**
+ * Feeds one swallowed attack into an open Black Hole: pools its damage and marks
+ * the attacker as the most recent to feed it — the last such attacker takes the
+ * whole pool when the hole collapses (see `collapseBlackHoles`).
+ */
+function absorbIntoBlackHole(
+  match: Match,
+  hole: BlackHoleState,
+  attackerId: string,
+  amount: number,
+): void {
+  hole.accumulated += amount;
+  hole.lastAttackerId = attackerId;
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({
+      type: "blackHoleAbsorbed",
+      tick: match.tick,
+      ownerId: hole.ownerId,
+      attackerId,
+      amount,
+    });
+  }
+}
+
+/**
+ * Collapses an open Black Hole once its duration elapses: the entire pooled
+ * damage is dealt to the last kingdom whose attack it absorbed (nobody fed it →
+ * it fizzles). Run once per tick from the game loop. Returns the collapse info
+ * for callers that want to react (tests), or null if nothing collapsed.
+ */
+export function collapseBlackHoles(match: Match): void {
+  const state = match.gameState;
+  if (!state) return;
+  const hole = state.blackHole;
+  if (!hole || match.tick < hole.endTick) return;
+
+  state.blackHole = null; // closed regardless of whether it dumps
+  const bus = state.events;
+  const victimId = hole.lastAttackerId;
+  const victim = victimId ? state.getPlayer(victimId) : undefined;
+  if (victim && !victim.eliminated && hole.accumulated > 0) {
+    const applied = applyDamage(victim, hole.accumulated, { tick: match.tick });
+    if (bus.enabled) {
+      bus.emit({
+        type: "damage",
+        tick: match.tick,
+        sourceId: hole.ownerId,
+        targetId: victim.id,
+        amount: applied.absorbedByShield + applied.dealtToHp,
+        absorbedByShield: applied.absorbedByShield,
+        dealtToHp: applied.dealtToHp,
+        overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
+        crit: false,
+        cause: "blackHole",
+      });
+      if (applied.absorbedByShield > 0 && victim.castle.shield <= 0) {
+        bus.emit({ type: "shieldDestroyed", tick: match.tick, playerId: victim.id, cause: "blackHole" });
+      }
+    }
+  }
+  if (bus.enabled) {
+    bus.emit({
+      type: "blackHoleCollapsed",
+      tick: match.tick,
+      ownerId: hole.ownerId,
+      victimId: victim && !victim.eliminated ? victim.id : null,
+      amount: hole.accumulated,
+    });
   }
 }
 
@@ -1230,4 +1922,25 @@ function healCastle(player: PlayerState, amount: number): number {
   const before = player.castle.hp;
   player.castle.hp = Math.min(player.castle.maxHp, before + amount);
   return player.castle.hp - before;
+}
+
+/**
+ * Love's "Feel the love!": whenever ANY castle heals, for any reason, every
+ * OTHER kingdom holding the generic `healShareGlobal` passive also receives a
+ * cut of it. Data-driven — no kingdom-name branch; excludes the healed player
+ * itself so the passive never re-triggers off its own bonus heal.
+ */
+export function shareHealGlobally(match: Match, healedPlayer: PlayerState, healedAmount: number): void {
+  if (healedAmount <= 0) return;
+  const bus = match.gameState!.events;
+  for (const other of match.gameState!.getPlayers()) {
+    if (other.id === healedPlayer.id || other.eliminated) continue;
+    const pct = healShareGlobalPct(other);
+    if (pct <= 0) continue;
+    const requested = Math.round(healedAmount * pct);
+    const gained = healCastle(other, requested);
+    if (gained > 0 && bus.enabled) {
+      bus.emit({ type: "heal", tick: match.tick, targetId: other.id, amount: gained, overheal: requested - gained, cause: "healShareGlobal" });
+    }
+  }
 }

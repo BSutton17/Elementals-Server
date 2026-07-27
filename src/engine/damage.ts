@@ -133,6 +133,18 @@ export interface ResolveDamageOptions {
    * passed in here. Defaults to 1 (no bonus).
    */
   besiegedMultiplier?: number;
+  /**
+   * Time-scaling OUTGOING multiplier (Time's "Longevity", attack half): grows
+   * with match time. Computed at the call site (which has match.tick) via
+   * `scalingAttackMultiplier`. Defaults to 1.
+   */
+  attackerScalingMultiplier?: number;
+  /**
+   * Time-scaling INCOMING damage-taken multiplier (Time's "Longevity", defense
+   * half): shrinks with match time. Computed at the call site via
+   * `scalingDamageTakenMultiplier` on the defender. Defaults to 1.
+   */
+  defenderScalingTakenMultiplier?: number;
 }
 
 export interface ResolvedDamage extends DamageResult {
@@ -165,13 +177,16 @@ export function resolveDamage(
   const base = Math.max(0, baseAmount);
 
   // 1. Attacker-side modifiers (buffs/debuffs/passives/temp effects), then the
-  // universal "besieged" comeback multiplier (harder-hitting while ganged up on).
+  // universal "besieged" comeback multiplier (harder-hitting while ganged up
+  // on) and any time-scaling attack multiplier (Time's "Longevity").
   const besieged = Math.max(1, options.besiegedMultiplier ?? 1);
+  const attackerScaling = Math.max(0, options.attackerScalingMultiplier ?? 1);
   const afterAttackerModifiers = Math.max(
     0,
     computeStat(attacker, "damage", base, defender, "caster", options.element) *
       damageMultiplier(attacker, defender, options.element) *
-      besieged,
+      besieged *
+      attackerScaling,
   );
 
   // 2. Elemental interaction.
@@ -212,15 +227,18 @@ export function resolveDamage(
     rng: options.rng,
   });
 
-  // 4. Defender-side modifiers (vulnerability adds/mults, resistances < 1)
-  // and kingdom elemental resistance passives (ticket #81).
+  // 4. Defender-side modifiers (vulnerability adds/mults, resistances < 1),
+  // kingdom elemental resistance passives (ticket #81), and any time-scaling
+  // damage reduction (Time's "Longevity", defense half).
+  const defenderScaling = Math.max(0, options.defenderScalingTakenMultiplier ?? 1);
   const amount = Math.max(
     0,
     roundDamage(
       // The element is passed so defender-side modifiers can gate on it
       // (e.g. Burn amplifying incoming Fire damage from its applier).
       computeStat(defender, "damageTaken", rolled.amount, attacker, "target", options.element) *
-        elementalDamageMultiplier(defender, options.element),
+        elementalDamageMultiplier(defender, options.element) *
+        defenderScaling,
     ),
   );
 

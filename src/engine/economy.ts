@@ -3,7 +3,12 @@ import type { GameState } from "../match/GameState.js";
 import type { PlayerState } from "../match/playerState.js";
 import { computeStat } from "./modifiers.js";
 import { param } from "./parameters.js";
-import { incomeRatePerCitizen, productionMultiplier } from "./passives.js";
+import {
+  besiegedIncomePerTick,
+  besiegerIncomeMultiplier,
+  incomeRatePerCitizen,
+  productionMultiplier,
+} from "./passives.js";
 import { earn, roundMoney } from "./money.js";
 
 /**
@@ -35,9 +40,27 @@ export function recalcIncome(player: PlayerState): void {
  * through the money system (ticket #51).
  */
 export function applyPassiveIncome(state: GameState): void {
-  for (const player of state.getPlayers()) {
+  const players = state.getPlayers();
+  for (const player of players) {
     if (player.eliminated) continue;
     recalcIncome(player);
+    // Time's "Back to the Future": time runs backward on this treasury — the
+    // castle LOSES its gold/sec instead of earning, floored at 0, for the
+    // ultimate's duration. Suppresses income entirely (no besieged bonus).
+    if (player.statuses.some((s) => s.drainsIncome)) {
+      player.economy.currency = Math.max(
+        0,
+        roundMoney(player.economy.currency - player.economy.incomePerTick),
+      );
+      continue;
+    }
+    // Pressure-driven income: Space's "Vast Universe" multiplies income by the
+    // number of kingdoms targeting it; the universal "Besieged" bonus adds a
+    // flat defensive top-up. Both fold into incomePerTick so the HUD reflects it.
+    player.economy.incomePerTick = roundMoney(
+      player.economy.incomePerTick * besiegerIncomeMultiplier(player, players) +
+        besiegedIncomePerTick(player, players),
+    );
     earn(player, player.economy.incomePerTick);
   }
 }

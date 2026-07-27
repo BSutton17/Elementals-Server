@@ -97,7 +97,7 @@ export const SCORCHING_SUN: AbilityDefinition = {
       type: "damage",
       target: "target",
       params: {
-        amount: 300,
+        amount: 400,
         element: "fire",
         bonusDamageIfTargetHasStatus: { statusId: "burn", extraAmount: 100 },
       },
@@ -113,7 +113,7 @@ export const SCORCHING_SUN: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ amount: 400 }],
+        effectParams: [{ amount: 500 }],
       },
     },
     {
@@ -155,7 +155,7 @@ export const FIRENADO: AbilityDefinition = {
     {
       type: "damage",
       target: "target",
-      params: { amount: 500, element: "fire" },
+      params: { amount: 600, element: "fire" },
     },
     {
       type: "status",
@@ -169,7 +169,7 @@ export const FIRENADO: AbilityDefinition = {
       level: 1,
       cost: 300,
       changes: {
-        effectParams: [{ amount: 600 }],
+        effectParams: [{ amount: 700 }],
       },
     },
     {
@@ -207,7 +207,7 @@ export const HEAT_WAVE_STATUS: StatusEffectDefinition = {
     {
       stat: "critChance",
       op: "add",
-      value: 0.05,
+      value: 0.15,
     },
     {
       stat: "critMultiplier",
@@ -224,7 +224,7 @@ export const HEAT_WAVE_STATUS_LV2: StatusEffectDefinition = {
     {
       stat: "critChance",
       op: "add",
-      value: 0.075,
+      value: 0.20,
     },
     {
       stat: "critMultiplier",
@@ -241,7 +241,7 @@ export const HEAT_WAVE_STATUS_LV3: StatusEffectDefinition = {
     {
       stat: "critChance",
       op: "add",
-      value: 0.075,
+      value: 0.20,
     },
     {
       stat: "critMultiplier",
