@@ -8,6 +8,11 @@ import {
   critChanceModifier,
   critDamageMultiplier
 } from "./passives.js";
+import {
+  perkDamageMultiplier,
+  perkDamageTakenMultiplier,
+  perkShieldDamageMultiplier,
+} from "./perks.js";
 import type { PlayerState } from "../match/playerState.js";
 
 /**
@@ -185,6 +190,8 @@ export function resolveDamage(
     0,
     computeStat(attacker, "damage", base, defender, "caster", options.element) *
       damageMultiplier(attacker, defender, options.element) *
+      // "Sharper Swords" stacks on top of every kingdom passive above.
+      perkDamageMultiplier(attacker) *
       besieged *
       attackerScaling,
   );
@@ -197,6 +204,8 @@ export function resolveDamage(
   if (!options.ignoreShields && defender.castle.shield > 0) {
     const shieldMult =
       shieldDamageMultiplier(attacker, defender, options.element) *
+      // "Sharper Axes" composes with the passive and ability-level bonuses.
+      perkShieldDamageMultiplier(attacker) *
       (options.shieldDamageMultiplier ?? 1);
     if (shieldMult !== 1) {
       const maxShieldDamage = defender.castle.shield;
@@ -238,6 +247,8 @@ export function resolveDamage(
       // (e.g. Burn amplifying incoming Fire damage from its applier).
       computeStat(defender, "damageTaken", rolled.amount, attacker, "target", options.element) *
         elementalDamageMultiplier(defender, options.element) *
+        // "Extra Guards" cuts every hit, whatever its element or source.
+        perkDamageTakenMultiplier(defender) *
         defenderScaling,
     ),
   );

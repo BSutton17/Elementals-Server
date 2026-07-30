@@ -9,6 +9,7 @@ import { type EffectCondition } from "./conditions.js";
 import { addModifier, removeModifiersFromSource, computeStat } from "./modifiers.js";
 import { applyDamage } from "./combat.js";
 import { statusDurationMultiplier, dotResistanceMultiplier } from "./passives.js";
+import { perkDamageTakenMultiplier, perkDotDamageTakenMultiplier } from "./perks.js";
 import { param } from "./parameters.js";
 import { TICK } from "../data/balance.js";
 import { recalcIncome } from "./economy.js";
@@ -558,9 +559,16 @@ export function processStatusTicks(
         // named DoT via "dotDamage:<statusId>" modifiers — e.g. Corroded
         // increasing Poison damage. Kingdom DoT-resistance passives (Water's
         // "Fountain of Youth") then cut damage from named DoTs by their pct.
+        // Perks apply here too, since a DoT tick never passes through
+        // `resolveDamage`: "Extra Medics" cuts damage-over-time specifically,
+        // and "Extra Guards" cuts all incoming damage — both, if both are held.
         const amount = Math.round(
           computeStat(player, `dotDamage:${status.id}`, base) *
-            (effect.type === "damage" ? dotResistanceMultiplier(player, status.id) : 1),
+            (effect.type === "damage"
+              ? dotResistanceMultiplier(player, status.id) *
+                perkDotDamageTakenMultiplier(player) *
+                perkDamageTakenMultiplier(player)
+              : 1),
         );
         if (effect.type === "damage") {
           const applied = applyDamage(player, amount, {

@@ -84,7 +84,7 @@ export function createGameState(
     if (p.kingdomId === null) continue;
     state.setPlayer(
       createPlayerState(
-        { id: p.id, name: p.name, kingdomId: p.kingdomId },
+        { id: p.id, name: p.name, kingdomId: p.kingdomId, perks: p.perks ?? [] },
         config,
       ),
     );

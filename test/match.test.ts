@@ -126,6 +126,7 @@ test("spectators don't gate canStart, don't count as active players, and get no 
   const play = (id: string, kingdomId: string) => {
     const p = makePlayer(id);
     p.kingdomId = kingdomId as MatchPlayer["kingdomId"];
+    p.perks = ["sharperSwords", "extraGuards"];
     p.ready = true;
     match.addPlayer(p);
     return p;

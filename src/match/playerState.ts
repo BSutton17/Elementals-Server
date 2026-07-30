@@ -1,4 +1,6 @@
 import { KINGDOM_PASSIVES, type KingdomId } from "../data/kingdoms.js";
+import type { PerkId } from "../data/perks.js";
+import { perkShieldBonusHpFor, perkStartingGold } from "../engine/perks.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { EffectCondition } from "../engine/conditions.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
@@ -238,6 +240,12 @@ export interface PlayerState {
   id: string;
   name: string;
   kingdomId: KingdomId;
+  /**
+   * The two perks chosen in the lobby — flat, always-on bonuses that stack with
+   * this kingdom's passives and abilities rather than replacing them. Read by
+   * `engine/perks.ts`; fixed for the whole match.
+   */
+  perks: PerkId[];
   castle: CastleState;
   economy: EconomyState;
   /** Active status effects. */
@@ -303,13 +311,16 @@ export interface PlayerState {
  * exist; for now every kingdom uses the shared starting values.
  */
 export function createPlayerState(
-  input: { id: string; name: string; kingdomId: KingdomId },
+  input: { id: string; name: string; kingdomId: KingdomId; perks?: PerkId[] },
   config: MatchConfig,
 ): PlayerState {
+  const perks = input.perks ?? [];
   let startingHp = config.startingCastleHp;
   let startingShield = 0;
   let startingCitizens = config.startingCitizens;
-  let startingGold = 0;
+  // Perks stack with kingdom passives: Space's "Blast off!" gold is added below
+  // on TOP of Deep Pockets, not instead of it.
+  let startingGold = perkStartingGold(perks);
   const passives = KINGDOM_PASSIVES[input.kingdomId] ?? [];
   for (const p of passives) {
     if (p.type === "startingCastleHpMultiplier") {
@@ -329,10 +340,19 @@ export function createPlayerState(
     }
   }
 
+  // "Better Construction" reinforces every shield the player gains, including
+  // one they open the match wearing (Earth's "Rock Hard Determination"). A
+  // kingdom that starts bare gets nothing here — the perk pays out on the
+  // shields they buy instead (see `buyShield`).
+  if (startingShield > 0) {
+    startingShield += perkShieldBonusHpFor(perks);
+  }
+
   return {
     id: input.id,
     name: input.name,
     kingdomId: input.kingdomId,
+    perks,
     castle: {
       hp: startingHp,
       maxHp: startingHp,

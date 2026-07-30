@@ -75,6 +75,33 @@ export const COMBAT = {
   BESIEGED_INCOME_PER_ATTACKER: 2,
 } as const;
 
+/**
+ * Perk magnitudes. Every player picks `PERKS.PER_PLAYER` perks in the lobby;
+ * each is a pure data point the engine multiplies/adds in at one place, and
+ * they stack with kingdom passives and abilities rather than replacing them
+ * (see `data/perks.ts` for the catalogue and `engine/perks.ts` for wiring).
+ */
+export const PERKS = {
+  /** Perks each player must select before they can ready up. */
+  PER_PLAYER: 2,
+  /** "Sharper Swords": outgoing ability damage. */
+  ATTACK_PCT: 0.1,
+  /** "Sharper Axes": extra outgoing damage against a shielded castle. */
+  SHIELD_ATTACK_PCT: 0.15,
+  /** "Extra Guards": all incoming damage. */
+  DAMAGE_REDUCTION_PCT: 0.1,
+  /** "Extra Medics": incoming damage-over-time (status tick) damage. */
+  DOT_REDUCTION_PCT: 0.15,
+  /** "Extra Repairs": every ability cooldown. */
+  COOLDOWN_REDUCTION_PCT: 0.15,
+  /** "Deep Pockets": gold in the bank at match start. */
+  STARTING_GOLD: 150,
+  /** "Great Merchants": discount on ability unlock prices. */
+  UNLOCK_DISCOUNT_PCT: 0.15,
+  /** "Better Construction": extra health on every shield gained. */
+  SHIELD_BONUS_HP: 250,
+} as const;
+
 /** Lobby / room defaults. */
 export const LOBBY = {
   /** Number of characters in a generated room code. */

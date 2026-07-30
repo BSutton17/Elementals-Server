@@ -8,6 +8,10 @@ import { startServer, type RunningServer } from "./helpers/server.js";
 // is synchronized to the room via state:sync.
 
 const PORT = "3207";
+
+/** A valid full perk selection — readying up requires one (see data/perks.ts). */
+const PERKS = ["sharperSwords", "extraGuards"];
+
 let server: RunningServer;
 
 before(async () => {
@@ -47,6 +51,8 @@ async function startActiveMatch(
   const joinerId = joined.data.playerId;
   await host.emitWithAck("lobby:selectKingdom", { kingdom: "fire" });
   await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
+  await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
+  await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
   await host.emitWithAck("lobby:ready", { ready: true });
   await joiner.emitWithAck("lobby:ready", { ready: true });
   await host.emitWithAck("lobby:start", {});

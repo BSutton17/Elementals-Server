@@ -9,6 +9,7 @@ import { ensureSessionId } from "./sessionHandlers.js";
 import { buildMatchSnapshot } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
 import { isKingdomId } from "../data/kingdoms.js";
+import { hasFullPerkSelection, normalizePerks, PERKS_PER_PLAYER } from "../data/perks.js";
 import { MATCH } from "../data/balance.js";
 import { logger } from "../util/logger.js";
 
@@ -60,6 +61,7 @@ export function registerLobbyHandlers(
       socketId: socket.id,
       name,
       kingdomId: null,
+      perks: [],
       ready: false,
       connected: true,
     };
@@ -243,6 +245,50 @@ export function registerLobbyHandlers(
     },
   );
 
+  // Choose the player's perks — flat match-long bonuses picked alongside the
+  // kingdom. Unlike kingdoms these are NOT exclusive: any number of players may
+  // run the same perk. The client sends the whole selection each time (0–2 ids)
+  // so toggling one off is just a shorter list; a full set is required to ready.
+  socket.on("lobby:selectPerks", (payload: { perks?: unknown }, ack: unknown) => {
+    const roomCode =
+      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId =
+      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) {
+      respond(ack, fail("INVALID_PHASE", "Not in a room"));
+      return;
+    }
+
+    const perks = normalizePerks(payload?.perks);
+    if (perks === null) {
+      respond(
+        ack,
+        fail("INVALID_PAYLOAD", `Pick up to ${PERKS_PER_PLAYER} distinct perks`),
+      );
+      return;
+    }
+
+    const match = matches.getMatch(roomCode);
+    const player = match?.getPlayer(playerId);
+    if (!match || !player) {
+      respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+      return;
+    }
+    if (match.phase !== "lobby") {
+      respond(ack, fail("INVALID_PHASE", "Cannot change perks after start"));
+      return;
+    }
+
+    player.perks = perks;
+    // Dropping below a full set un-readies the player, so they can never be
+    // carried into a match on a selection they've since taken apart.
+    if (player.ready && !hasFullPerkSelection(player.perks)) {
+      player.ready = false;
+    }
+    broadcastLobbyUpdate(io, match);
+    respond(ack, ok({ perks: player.perks }));
+  });
+
   // Toggle lobby ready state.
   socket.on("lobby:ready", (payload: { ready?: unknown }, ack: unknown) => {
     const roomCode =
@@ -267,6 +313,21 @@ export function registerLobbyHandlers(
     if (match.phase !== "lobby") {
       respond(ack, fail("INVALID_PHASE", "Match already started"));
       return;
+    }
+    // A player can only ready up once their loadout is settled: a kingdom and
+    // a full set of perks. Spectators bring neither and ready freely.
+    if (payload.ready && !player.spectator) {
+      if (player.kingdomId === null) {
+        respond(ack, fail("NOT_READY", "Select a kingdom first"));
+        return;
+      }
+      if (!hasFullPerkSelection(player.perks)) {
+        respond(
+          ack,
+          fail("NOT_READY", `Select ${PERKS_PER_PLAYER} perks first`),
+        );
+        return;
+      }
     }
 
     player.ready = payload.ready;
@@ -306,7 +367,7 @@ export function registerLobbyHandlers(
         ack,
         fail(
           "NOT_READY",
-          "All connected players must be ready with a kingdom selected",
+          `All connected players must be ready with a kingdom and ${PERKS_PER_PLAYER} perks selected`,
         ),
       );
       return;

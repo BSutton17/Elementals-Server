@@ -6,6 +6,10 @@ import { startServer, type RunningServer } from "./helpers/server.js";
 // End-to-end lobby room events against a live server.
 
 const PORT = "3201";
+
+/** A valid full perk selection — readying up requires one (see data/perks.ts). */
+const PERKS = ["sharperSwords", "extraGuards"];
+
 let server: RunningServer;
 
 before(async () => {
@@ -224,7 +228,9 @@ test("players change kingdoms freely until the match starts", async () => {
     // Joiner can now take the freed fire.
     assert.equal((await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "fire" })).ok, true);
 
-    // Ready up and start.
+    // Pick perks, ready up, and start.
+    await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
+    await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
     await host.emitWithAck("lobby:ready", { ready: true });
     await joiner.emitWithAck("lobby:ready", { ready: true });
     assert.equal((await host.emitWithAck("lobby:start", {})).ok, true);
@@ -251,6 +257,16 @@ test("lobby:ready toggles ready state and notifies the room", async () => {
     const joined = await joiner.emitWithAck("lobby:join", { name: "Bob", roomCode });
     // New players start not ready.
     assert.equal(joined.data.match.players[0].ready, false);
+
+    // Readying up requires a settled loadout — a kingdom AND a full perk set.
+    const noLoadout = await joiner.emitWithAck("lobby:ready", { ready: true });
+    assert.equal(noLoadout.ok, false);
+    assert.equal(noLoadout.error.code, "NOT_READY");
+    await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
+    const noPerks = await joiner.emitWithAck("lobby:ready", { ready: true });
+    assert.equal(noPerks.ok, false);
+    assert.equal(noPerks.error.code, "NOT_READY");
+    await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
 
     const settled = waitForUpdate(
       host,
@@ -303,16 +319,28 @@ test("lobby:start requires all connected players ready", async () => {
     assert.equal(early.ok, false);
     assert.equal(early.error.code, "NOT_READY");
 
-    // Ready but no kingdoms yet → still rejected.
+    // Without a kingdom nobody can even ready up → still rejected.
     await host.emitWithAck("lobby:ready", { ready: true });
     await joiner.emitWithAck("lobby:ready", { ready: true });
     const noKingdom = await host.emitWithAck("lobby:start", {});
     assert.equal(noKingdom.ok, false);
     assert.equal(noKingdom.error.code, "NOT_READY");
 
-    // Everyone picks a kingdom.
+    // Everyone picks a kingdom — but perks are still missing, so readying up
+    // (and therefore starting) stays blocked.
     await host.emitWithAck("lobby:selectKingdom", { kingdom: "fire" });
     await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
+    await host.emitWithAck("lobby:ready", { ready: true });
+    await joiner.emitWithAck("lobby:ready", { ready: true });
+    const noPerks = await host.emitWithAck("lobby:start", {});
+    assert.equal(noPerks.ok, false);
+    assert.equal(noPerks.error.code, "NOT_READY");
+
+    // Everyone picks their perks and readies up for real.
+    await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
+    await joiner.emitWithAck("lobby:selectPerks", { perks: ["extraMedics", "deepPockets"] });
+    await host.emitWithAck("lobby:ready", { ready: true });
+    await joiner.emitWithAck("lobby:ready", { ready: true });
 
     // A non-host cannot start.
     const byJoiner = await joiner.emitWithAck("lobby:start", {});
@@ -359,6 +387,8 @@ test("the lobby is locked once the match starts", async () => {
 
     await host.emitWithAck("lobby:selectKingdom", { kingdom: "fire" });
     await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
+    await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
+    await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
     await host.emitWithAck("lobby:ready", { ready: true });
     await joiner.emitWithAck("lobby:ready", { ready: true });
     assert.equal((await host.emitWithAck("lobby:start", {})).ok, true);

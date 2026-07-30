@@ -1,4 +1,5 @@
 import type { KingdomId } from "../data/kingdoms.js";
+import type { PerkId } from "../data/perks.js";
 
 /** Lifecycle phase of a match (see DATA_MODELS.md → Match). */
 export type MatchPhase = "lobby" | "starting" | "active" | "ended";
@@ -19,6 +20,12 @@ export interface MatchPlayer {
   name: string;
   /** Selected kingdom, or null until chosen in the lobby. */
   kingdomId: KingdomId | null;
+  /**
+   * The player's chosen perks — distinct ids, up to `PERKS_PER_PLAYER`. Empty
+   * until they start picking; a full selection is required to ready up.
+   * Optional so lightweight fixtures need not spell it out.
+   */
+  perks?: PerkId[];
   /** Lobby ready state. */
   ready: boolean;
   /** Whether the player currently has a live connection. */

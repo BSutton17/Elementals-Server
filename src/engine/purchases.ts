@@ -5,6 +5,7 @@ import type { PlayerState } from "../match/playerState.js";
 import { spend } from "./money.js";
 import { recalcIncome } from "./economy.js";
 import { bonusCitizenOnPurchase, citizenBaseCostOverride } from "./passives.js";
+import { perkShieldBonusHp, perkUnlockCostMultiplier } from "./perks.js";
 import { purchaseUpgrade, shareHealGlobally } from "./abilities.js";
 import { validateTransaction, type TransactionResult } from "./transactions.js";
 import { param } from "./parameters.js";
@@ -164,7 +165,9 @@ export function buyShield(match: Match, player: PlayerState): TransactionResult 
   if (!validation.ok) return validation;
 
   spend(player, cost);
-  const granted = param("shield.standardHp", SHIELD.STANDARD_HP);
+  // "Better Construction" reinforces the shield at no extra cost.
+  const granted =
+    param("shield.standardHp", SHIELD.STANDARD_HP) + perkShieldBonusHp(player);
   player.castle.shield += granted;
   player.castle.shieldsPurchased += 1;
 
@@ -205,9 +208,13 @@ export function unlockOrUpgradeAbility(
   if (!player.unlocked[abilityId]) {
     // Buying the ability: its explicit unlock price when set (e.g. Lightning
     // Barrage at 125g), otherwise 50% of its cast cost. No free upgrade tiers.
-    const unlockCost = param(
-      `ability.${abilityId}.unlockCost`,
-      ability.unlockCost ?? Math.ceil((ability.cost ?? 0) * 0.5),
+    // "Great Merchants" discounts that price (the upgrade tiers past it are
+    // the standard upgrade system's business and stay full price).
+    const unlockCost = Math.ceil(
+      param(
+        `ability.${abilityId}.unlockCost`,
+        ability.unlockCost ?? Math.ceil((ability.cost ?? 0) * 0.5),
+      ) * perkUnlockCostMultiplier(player),
     );
     const validation = validateTransaction(match, player, unlockCost);
     if (!validation.ok) return validation;

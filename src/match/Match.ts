@@ -1,4 +1,5 @@
 import { MATCH } from "../data/balance.js";
+import { hasFullPerkSelection } from "../data/perks.js";
 import { createGameState, type GameState } from "./GameState.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPhase, MatchPlayer } from "./types.js";
@@ -141,10 +142,11 @@ export class Match {
 
   /**
    * Whether the match may start: at least the minimum number of players are
-   * connected and every connected player is both ready AND has selected a
-   * kingdom (tickets #30, #33). Kingdoms are exclusive, so a full 8-player lobby
-   * (7 kingdoms) can never satisfy this — an accepted trade-off.
-   * Disconnected players (mid reconnection-grace) do not block the start.
+   * connected and every connected player is ready AND has selected a kingdom
+   * AND a full set of perks (tickets #30, #33). Kingdoms are exclusive, so a
+   * full 8-player lobby (7 kingdoms) can never satisfy this — an accepted
+   * trade-off. Disconnected players (mid reconnection-grace) do not block the
+   * start.
    */
   canStart(): boolean {
     // Spectators never gate the start — only connected, kingdom-playing
@@ -152,7 +154,9 @@ export class Match {
     const players = this.getPlayers().filter((p) => p.connected && !p.spectator);
     return (
       players.length >= MATCH.MIN_PLAYERS &&
-      players.every((p) => p.ready && p.kingdomId !== null)
+      players.every(
+        (p) => p.ready && p.kingdomId !== null && hasFullPerkSelection(p.perks),
+      )
     );
   }
 

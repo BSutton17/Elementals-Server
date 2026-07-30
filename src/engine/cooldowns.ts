@@ -1,4 +1,5 @@
 import { computeStat } from "./modifiers.js";
+import { perkCooldownMultiplier } from "./perks.js";
 import type { GameState } from "../match/GameState.js";
 import type { PlayerState } from "../match/playerState.js";
 
@@ -23,8 +24,11 @@ export function setCooldown(
   // Apply cooldown modifiers via computeStat (ticket #107): the global
   // "cooldown" stat, then the per-ability "cooldown:<id>" stat (Epic 10,
   // e.g. Thundering Fate zeroing Zap's cooldown for a window).
+  // "Extra Repairs" shortens every cooldown, stacking with the modifier chain
+  // and with Electricity's "Don't Blink" attack-cooldown passive.
   let effectiveTicks = Math.round(
-    computeStat(player, `cooldown:${abilityId}`, computeStat(player, "cooldown", ticks)),
+    computeStat(player, `cooldown:${abilityId}`, computeStat(player, "cooldown", ticks)) *
+      perkCooldownMultiplier(player),
   );
 
   // Cooldown reduction immunity (ticket #107)
