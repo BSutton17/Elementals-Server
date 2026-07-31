@@ -64,7 +64,7 @@ test("an active match broadcasts periodic state:sync to players", async () => {
           nextCitizenCost: number;
         };
         castle: { shield: number; nextRepairCost: number; nextShieldCost: number };
-        abilityCosts: Record<string, number>;
+        abilityPrices: Record<string, { cast: number; unlock: number | null; upgrade: number | null }>;
       }[];
     }>((resolve, reject) => {
       joiner.on("state:sync", resolve);
@@ -87,8 +87,15 @@ test("an active match broadcasts periodic state:sync to players", async () => {
       assert.equal(p.castle.shield, 0);
       assert.equal(typeof p.castle.nextRepairCost, "number");
       assert.equal(p.castle.nextShieldCost, 500); // base cost, none bought
-      // Effective ability prices ride along; empty until abilities are bought.
-      assert.deepEqual(p.abilityCosts, {});
+      // The full price table rides along — every ability of the kingdom, all
+      // locked at match start, so each carries an unlock price and no upgrade.
+      const prices = Object.values(p.abilityPrices);
+      assert.equal(prices.length, 5);
+      for (const price of prices) {
+        assert.ok(price.cast > 0);
+        assert.ok(price.unlock !== null && price.unlock > 0);
+        assert.equal(price.upgrade, null);
+      }
     }
   } finally {
     host.close();

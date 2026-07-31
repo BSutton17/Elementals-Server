@@ -21,6 +21,11 @@ export const KINGDOM_IDS = [
   "time",
   "space",
   "love",
+  // Placeholder kingdoms: fully wired and playable, kits/passives still to be
+  // designed (see `<id>Abilities.ts` and `KINGDOM_PASSIVES` below).
+  "joker",
+  "light",
+  "dark",
 ] as const;
 
 export type KingdomId = (typeof KINGDOM_IDS)[number];
@@ -142,6 +147,10 @@ export type KingdomPassive = (
  *  - "No Rose Without Thorns" — attackers have a 20% chance to receive 25%
  *    of their damage reflected.
  *  - "Gardener's Gift" — begin the game with 15 citizens instead of 10.
+ *
+ * Joker / Light / Dark (placeholders):
+ *  - Two passives each, named `<Kingdom>Passive1` / `<Kingdom>Passive2` and not
+ *    yet designed — they declare no primitives, so nothing applies today.
  */
 export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   water: [
@@ -207,5 +216,21 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     // "Feel the love!" — whenever any OTHER castle heals, for any reason, Love
     // receives 10% of that healing too.
     { type: "healShareGlobal", pct: 0.1 },
+  ],
+  // --- Placeholder kingdoms -------------------------------------------------
+  // Their two passives each are named but not designed yet, so they declare no
+  // primitives: an empty list is the honest "nothing applies" state, and the
+  // engine already treats it that way for every passive helper. Swap in real
+  // `KingdomPassive` entries here when the kit is written — the lobby's
+  // descriptions live in `Client/src/game/kingdomInfo.ts` and should change
+  // with them.
+  joker: [
+    // TODO: JokerPassive1, JokerPassive2
+  ],
+  light: [
+    // TODO: LightPassive1, LightPassive2
+  ],
+  dark: [
+    // TODO: DarkPassive1, DarkPassive2
   ],
 };

@@ -8,7 +8,14 @@ import { SLUDGE, ACID_RAIN, GASTRO_ACID, POISON_APPLE, TOXIC_GAS } from "./natur
 import { TIK_TOK, HALF_PASSED_12, FATHER_TIME, BLIP, BACK_TO_THE_FUTURE } from "./timeAbilities.js";
 import { SHOOTING_STAR, SATURNS_RINGS, SUPERNOVA, ORIONS_BELT, BLACK_HOLE } from "./spaceAbilities.js";
 import { TOUGH_LOVE, CUPIDS_ARROW, BFFS, EMPATHY, LOVE_GALORE } from "./loveAbilities.js";
+import { JOKER_ABILITIES } from "./jokerAbilities.js";
+import { LIGHT_ABILITIES } from "./lightAbilities.js";
+import { DARK_ABILITIES } from "./darkAbilities.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
+
+/** Keys a kingdom's ability list by ability id, for spreading into the map. */
+const byId = (abilities: AbilityDefinition[]): Record<string, AbilityDefinition> =>
+  Object.fromEntries(abilities.map((a) => [a.id, a]));
 
 export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   waterBall: WATER_BALL,
@@ -61,4 +68,10 @@ export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   bffs: BFFS,
   empathy: EMPATHY,
   loveGalore: LOVE_GALORE,
+  // Placeholder kingdoms — their ids are generated (`jokerAbility1`…), so they
+  // register by list rather than one named import per ability. Spell them out
+  // like the kingdoms above once the real kits replace them.
+  ...byId(JOKER_ABILITIES),
+  ...byId(LIGHT_ABILITIES),
+  ...byId(DARK_ABILITIES),
 };

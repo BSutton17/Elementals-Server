@@ -2,9 +2,9 @@ import type { Server } from "socket.io";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import type { GameplayEvent } from "../engine/events.js";
-import { citizenCost, repairCost, shieldCost } from "../engine/purchases.js";
+import { abilityUnlockCost, citizenCost, repairCost, shieldCost } from "../engine/purchases.js";
 import { resolveAbility } from "../engine/abilities.js";
-import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
+import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
 import { SHIELD } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
 
@@ -20,20 +20,65 @@ import { param } from "../engine/parameters.js";
  */
 
 /**
- * Effective cast cost per unlocked ability, with upgrade-tier price changes
- * (`cost` overrides and `costMultiplier` discounts) applied — so the HUD's
- * price tags always match what the server will actually charge. Exported for
- * tests; production callers go through `broadcastGameState`.
+ * Every price the HUD shows for one ability, resolved for the player who owns
+ * it. This is the ONLY place prices come from: `<kingdom>Abilities.ts` declares
+ * them, and the client renders whatever arrives here — it holds no cost data of
+ * its own, so a tag can never drift from what a click will actually charge.
  */
-export function abilityCosts(p: PlayerState): Record<string, number> {
-  const costs: Record<string, number> = {};
-  for (const [id, unlocked] of Object.entries(p.unlocked)) {
-    if (!unlocked) continue;
-    const def = ALL_ABILITIES[id];
-    if (!def) continue;
-    costs[id] = resolveAbility(def, p.upgrades[id] ?? 0).cost ?? 0;
+export interface AbilityPrices {
+  /** Effective cast cost at the player's current upgrade tier. */
+  cast: number;
+  /** Price to buy this ability, or null once it is unlocked. */
+  unlock: number | null;
+  /** Price of the next upgrade tier, or null while locked or fully upgraded. */
+  upgrade: number | null;
+  /** Charge-based abilities (Lightning Barrage): the charge economy at this
+   *  tier — per-charge price, damage by charges spent, and regen cadence. */
+  charges?: {
+    max: number;
+    costPerCharge: number;
+    damageByCharges: number[];
+    rechargeTicks: number;
+  };
+}
+
+/**
+ * The full price table for every ability of a player's kingdom, with upgrade
+ * tiers (`cost` overrides, `costMultiplier` discounts), balance-parameter
+ * overrides, and the player's perks all applied.
+ *
+ * Exported for tests; production callers go through `broadcastGameState`.
+ */
+export function abilityPrices(p: PlayerState): Record<string, AbilityPrices> {
+  const prices: Record<string, AbilityPrices> = {};
+  for (const def of abilitiesForKingdom(p.kingdomId)) {
+    const level = p.upgrades[def.id] ?? 0;
+    const resolved = resolveAbility(def, level);
+    const unlocked = p.unlocked[def.id] === true;
+    const nextTier = (def.upgradePath ?? []).find((t) => t.level === level + 1);
+
+    prices[def.id] = {
+      cast: resolved.cost ?? 0,
+      // Mirrors `unlockOrUpgradeAbility`: the explicit unlock price when set,
+      // otherwise half the cast cost, then the player's perk discount.
+      unlock: unlocked ? null : abilityUnlockCost(p, def),
+      upgrade:
+        unlocked && nextTier
+          ? param(`ability.${def.id}.upgrade.${nextTier.level}.cost`, nextTier.cost)
+          : null,
+      ...(resolved.chargeSystem
+        ? {
+            charges: {
+              max: resolved.chargeSystem.max,
+              costPerCharge: resolved.chargeSystem.costPerCharge,
+              damageByCharges: [...resolved.chargeSystem.damageByCharges],
+              rechargeTicks: resolved.chargeSystem.rechargeTicks,
+            },
+          }
+        : {}),
+    };
   }
-  return costs;
+  return prices;
 }
 
 export function broadcastGameState(io: Server, match: Match): void {
@@ -57,7 +102,7 @@ export function broadcastGameState(io: Server, match: Match): void {
             (state.tick - p.castle.shieldBrokenAtTick),
         ),
       },
-      abilityCosts: abilityCosts(p),
+      abilityPrices: abilityPrices(p),
     })),
     projectiles: [],
   });

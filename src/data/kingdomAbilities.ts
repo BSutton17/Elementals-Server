@@ -8,6 +8,9 @@ import { NATURE_ABILITIES } from "./natureAbilities.js";
 import { TIME_ABILITIES } from "./timeAbilities.js";
 import { SPACE_ABILITIES } from "./spaceAbilities.js";
 import { LOVE_ABILITIES } from "./loveAbilities.js";
+import { JOKER_ABILITIES } from "./jokerAbilities.js";
+import { LIGHT_ABILITIES } from "./lightAbilities.js";
+import { DARK_ABILITIES } from "./darkAbilities.js";
 import type { KingdomId } from "./kingdoms.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
@@ -27,6 +30,10 @@ export const KINGDOM_ABILITIES: Record<KingdomId, AbilityDefinition[]> = {
   time: TIME_ABILITIES,
   space: SPACE_ABILITIES,
   love: LOVE_ABILITIES,
+  // Placeholder kits — playable stand-ins until each kingdom is designed.
+  joker: JOKER_ABILITIES,
+  light: LIGHT_ABILITIES,
+  dark: DARK_ABILITIES,
 };
 
 /** The ability set for a kingdom id, or an empty list for unknown ids. */

@@ -99,7 +99,7 @@ export const PERKS = {
   /** "Great Merchants": discount on ability unlock prices. */
   UNLOCK_DISCOUNT_PCT: 0.15,
   /** "Better Construction": extra health on every shield gained. */
-  SHIELD_BONUS_HP: 250,
+  SHIELD_BONUS_HP: 500,
 } as const;
 
 /** Lobby / room defaults. */

@@ -1,5 +1,6 @@
 import { CASTLE, ECONOMY, SHIELD } from "../data/balance.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
+import type { AbilityDefinition } from "./abilities.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import { spend } from "./money.js";
@@ -188,6 +189,24 @@ export function buyShield(match: Match, player: PlayerState): TransactionResult 
 }
 
 /**
+ * What it costs this player to buy `ability`: its explicit `unlockCost` when
+ * the data sets one, otherwise 50% of its cast cost, then the player's
+ * "Great Merchants" perk discount. The single definition of the unlock price —
+ * both the purchase itself and the price the HUD is sent read it.
+ */
+export function abilityUnlockCost(
+  player: PlayerState,
+  ability: AbilityDefinition,
+): number {
+  return Math.ceil(
+    param(
+      `ability.${ability.id}.unlockCost`,
+      ability.unlockCost ?? Math.ceil((ability.cost ?? 0) * 0.5),
+    ) * perkUnlockCostMultiplier(player),
+  );
+}
+
+/**
  * Buys a locked ability, or upgrades an already-bought one.
  *
  * Every ability starts locked. Buying it costs 50% of its cast cost and makes
@@ -206,16 +225,7 @@ export function unlockOrUpgradeAbility(
   }
 
   if (!player.unlocked[abilityId]) {
-    // Buying the ability: its explicit unlock price when set (e.g. Lightning
-    // Barrage at 125g), otherwise 50% of its cast cost. No free upgrade tiers.
-    // "Great Merchants" discounts that price (the upgrade tiers past it are
-    // the standard upgrade system's business and stay full price).
-    const unlockCost = Math.ceil(
-      param(
-        `ability.${abilityId}.unlockCost`,
-        ability.unlockCost ?? Math.ceil((ability.cost ?? 0) * 0.5),
-      ) * perkUnlockCostMultiplier(player),
-    );
+    const unlockCost = abilityUnlockCost(player, ability);
     const validation = validateTransaction(match, player, unlockCost);
     if (!validation.ok) return validation;
 
