@@ -8,6 +8,7 @@ import { recalcIncome } from "./economy.js";
 import { bonusCitizenOnPurchase, citizenBaseCostOverride } from "./passives.js";
 import { perkShieldBonusHp, perkUnlockCostMultiplier } from "./perks.js";
 import { purchaseUpgrade, shareHealGlobally } from "./abilities.js";
+import { removeStatus, settleYinYang } from "./status.js";
 import { validateTransaction, type TransactionResult } from "./transactions.js";
 import { param } from "./parameters.js";
 
@@ -37,6 +38,62 @@ function purchasesBlocked(player: PlayerState): boolean {
   return player.statuses.some((s) => s.blocksPurchases);
 }
 
+/**
+ * A status the bearer can buy their way out of, with its current price (Light's
+ * Fireflies). The most expensive one when several are held, so the shop always
+ * quotes the debt that actually matters. Null when there is nothing to dispel.
+ */
+export function dispellableStatus(
+  player: PlayerState,
+): { statusId: string; cost: number } | null {
+  let worst: { statusId: string; cost: number } | null = null;
+  for (const s of player.statuses) {
+    if (s.dispelCost === undefined) continue;
+    if (!worst || s.dispelCost > worst.cost) {
+      worst = { statusId: s.id, cost: s.dispelCost };
+    }
+  }
+  return worst;
+}
+
+/**
+ * Pays a status off: the bearer spends its snapshotted price and the status is
+ * removed immediately (Light's Fireflies). Rejected when there is nothing to
+ * dispel or the funds fall short.
+ */
+export function dispelStatus(
+  match: Match,
+  player: PlayerState,
+): TransactionResult & { statusId?: string } {
+  const owed = dispellableStatus(player);
+  if (!owed) return { ok: false, error: "NOTHING_TO_DISPEL" };
+
+  const validation = validateTransaction(match, player, owed.cost);
+  if (!validation.ok) return validation;
+
+  spend(player, owed.cost);
+  removeStatus(player, owed.statusId);
+
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({
+      type: "purchase",
+      tick: match.tick,
+      playerId: player.id,
+      kind: "dispel",
+      itemId: owed.statusId,
+      cost: owed.cost,
+    });
+    bus.emit({
+      type: "statusExpired",
+      tick: match.tick,
+      playerId: player.id,
+      statusId: owed.statusId,
+    });
+  }
+  return { ok: true, statusId: owed.statusId };
+}
+
 /** Purchases one additional citizen for the player at its current scaled cost. */
 export function buyCitizen(match: Match, player: PlayerState): TransactionResult {
   if (purchasesBlocked(player)) {
@@ -59,6 +116,14 @@ export function buyCitizen(match: Match, player: PlayerState): TransactionResult
   player.economy.citizens += gained;
   // Citizen count changed — refresh income immediately (ticket #55).
   recalcIncome(player);
+
+  // Dark's Yin and Yang: hiring settles any outstanding wager on the spot —
+  // in full if Dark called "yin" (buying is what it was punishing), at half if
+  // it called "yang" and you read it right. Either way the wager is spent.
+  for (const wager of player.statuses.filter((s) => s.wagerMode)) {
+    settleYinYang(match.gameState!, player, wager, true);
+    removeStatus(player, wager.id);
+  }
 
   // Gameplay events (#204).
   const bus = match.gameState!.events;
@@ -154,6 +219,11 @@ export function shieldCost(player: PlayerState): number {
 export function buyShield(match: Match, player: PlayerState): TransactionResult {
   if (player.castle.shield > 0) {
     return { ok: false, error: "SHIELD_ACTIVE" };
+  }
+  // Light's Fireflies: a shield keeps the swarm off, but once it has landed
+  // you can't buy your way behind one — the only exit is paying the ransom.
+  if (player.statuses.some((s) => s.blocksBearerShield)) {
+    return { ok: false, error: "SHIELD_BLOCKED" };
   }
   // A freshly-broken shield can't be replaced instantly — wait out the cooldown.
   const cooldown = param("shield.breakCooldownTicks", SHIELD.BREAK_COOLDOWN_TICKS);

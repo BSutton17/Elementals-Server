@@ -2,8 +2,14 @@ import type { Server } from "socket.io";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import type { GameplayEvent } from "../engine/events.js";
-import { abilityUnlockCost, citizenCost, repairCost, shieldCost } from "../engine/purchases.js";
-import { resolveAbility } from "../engine/abilities.js";
+import {
+  abilityUnlockCost,
+  citizenCost,
+  dispellableStatus,
+  repairCost,
+  shieldCost,
+} from "../engine/purchases.js";
+import { abilityUpgradeCost, resolveAbility } from "../engine/abilities.js";
 import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
 import { SHIELD } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
@@ -63,9 +69,7 @@ export function abilityPrices(p: PlayerState): Record<string, AbilityPrices> {
       // otherwise half the cast cost, then the player's perk discount.
       unlock: unlocked ? null : abilityUnlockCost(p, def),
       upgrade:
-        unlocked && nextTier
-          ? param(`ability.${def.id}.upgrade.${nextTier.level}.cost`, nextTier.cost)
-          : null,
+        unlocked && nextTier ? abilityUpgradeCost(p, def, nextTier) : null,
       ...(resolved.chargeSystem
         ? {
             charges: {
@@ -103,6 +107,9 @@ export function broadcastGameState(io: Server, match: Match): void {
         ),
       },
       abilityPrices: abilityPrices(p),
+      // What it currently costs this player to buy their way out of a status
+      // (Light's Fireflies), or null when they hold nothing dispellable.
+      dispel: dispellableStatus(p),
     })),
     projectiles: [],
   });

@@ -205,9 +205,10 @@ export const HEAT_WAVE_STATUS: StatusEffectDefinition = {
   stacking: "refresh",
   modifiers: [
     {
+      // Takes the crit chance to 15% — added on top of the 5% shared base.
       stat: "critChance",
       op: "add",
-      value: 0.15,
+      value: 0.10,
     },
     {
       stat: "critMultiplier",
@@ -222,9 +223,10 @@ export const HEAT_WAVE_STATUS_LV2: StatusEffectDefinition = {
   ...HEAT_WAVE_STATUS,
   modifiers: [
     {
+      // Upgraded: 20% total crit chance (5% base + 15%).
       stat: "critChance",
       op: "add",
-      value: 0.20,
+      value: 0.15,
     },
     {
       stat: "critMultiplier",
@@ -239,9 +241,10 @@ export const HEAT_WAVE_STATUS_LV3: StatusEffectDefinition = {
   ...HEAT_WAVE_STATUS,
   modifiers: [
     {
+      // Upgraded: 20% total crit chance (5% base + 15%).
       stat: "critChance",
       op: "add",
-      value: 0.20,
+      value: 0.15,
     },
     {
       stat: "critMultiplier",

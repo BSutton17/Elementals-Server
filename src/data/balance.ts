@@ -100,6 +100,19 @@ export const PERKS = {
   UNLOCK_DISCOUNT_PCT: 0.15,
   /** "Better Construction": extra health on every shield gained. */
   SHIELD_BONUS_HP: 500,
+
+  // --- Boosted magnitudes (Dark's "Black Magic") ---------------------------
+  // Dark runs every perk it picked at these values instead of the base ones
+  // above. Each `*_BOOSTED` entry MUST stay paired with its base entry; the
+  // perk engine picks between the two and nothing else reads them.
+  ATTACK_PCT_BOOSTED: 0.15,
+  SHIELD_ATTACK_PCT_BOOSTED: 0.2,
+  DAMAGE_REDUCTION_PCT_BOOSTED: 0.15,
+  DOT_REDUCTION_PCT_BOOSTED: 0.2,
+  COOLDOWN_REDUCTION_PCT_BOOSTED: 0.2,
+  STARTING_GOLD_BOOSTED: 200,
+  UNLOCK_DISCOUNT_PCT_BOOSTED: 0.2,
+  SHIELD_BONUS_HP_BOOSTED: 750,
 } as const;
 
 /** Lobby / room defaults. */
@@ -155,6 +168,16 @@ export const SPACE = {
    * (250 total). The last entry doubles as the full-charge cap.
    */
   SUPERNOVA_LEVEL_THRESHOLDS: [50, 150, 250],
+} as const;
+
+/** Dark kingdom — the Unlimited Rage meter. */
+export const DARK = {
+  /**
+   * Total damage Dark must absorb for Unlimited Rage to reach full charge.
+   * The meter fills by exactly the damage taken, so a big hit is worth
+   * proportionally more than a poke — but the total is all that matters.
+   */
+  RAGE_FULL: 2500,
 } as const;
 
 /** Targeting rules. */

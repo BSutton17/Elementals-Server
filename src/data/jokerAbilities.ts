@@ -3,43 +3,62 @@ import type { AbilityDefinition } from "../engine/abilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
 
 /**
- * Joker Kingdom ability set — PLACEHOLDER DATA.
+ * Joker Kingdom ability set. Joker gambles: most of its kit rolls dice, and its
+ * own basic attack is the one lever it has on those odds.
  *
- * The kit's identity is not designed yet. Everything here is a deliberately
- * plain, working stand-in on the shared frameworks so the kingdom is fully
- * playable end to end (selectable, castable, upgradable, synced) while its real
- * abilities are written. Replace the names, magnitudes, and effects in place —
- * nothing outside this file needs to change when the real kit lands, except the
- * matching client metadata in `Client/src/game/abilities.ts`.
+ *  - Ace of Spades (basic) — a plain hit that also pulls every 2 and 3 out of
+ *    the Blackjack deck for a few seconds, raising the floor on the next draw.
+ *  - Blackjack (med) — draws one card from a real 54-card deck and hits for
+ *    what it is worth, from a lousy 2 to a joker.
+ *  - Roulette (heavy) — a European wheel the victim must bet on before their
+ *    gold production restarts. No bet is safe; green is a 1-in-37 jackpot.
+ *  - Lucky Draw (utility) — one of five faces, every cast.
  *
- * The shape follows every other kingdom: basic attack (Q), medium attack (E),
- * heavy attack (F), self utility (R), and an ultimate (Space), each with a
- * three-step upgrade path (damage → cooldown/cost → damage).
+ *  - Slot Machine (ultimate) — every other kingdom is handed a machine and
+ *    their gold production stops until they pull the lever. What the reels do
+ *    to them is mostly bad and occasionally spectacular.
  *
- * Passives are `KINGDOM_PASSIVES.joker` (also placeholders).
+ * The kit is complete.
+ *
+ * Passives are `KINGDOM_PASSIVES.joker` ("Beginners luck", "Why so serious?").
+ * Magnitudes are initial, tunable defaults.
  */
 
-/** Placeholder self-buff granted by JokerAbility4. */
-export const JOKER_UTILITY_STATUS: StatusEffectDefinition = {
-  id: "jokerAbility4",
-  name: "JokerAbility4",
+/**
+ * "Stacked Deck" — Ace of Spades' rider. While it holds, every 2 and 3 is
+ * missing from Joker's Blackjack deck, so the worst two draws are off the
+ * table and the expected card is worth noticeably more.
+ */
+export const STACKED_DECK_STATUS: StatusEffectDefinition = {
+  id: "stackedDeck",
+  name: "Stacked Deck",
   category: "buff",
   stacking: "refresh",
-  // A modest flat damage-reduction buff — a real effect so the utility slot is
-  // exercised, with nothing kingdom-defining about it.
-  modifiers: [{ stat: "damageTaken", op: "mult", value: 0.85 }],
+  strippedCardRanks: [2, 3],
 };
 
-/** JokerAbility1 (basic): the reliable "Q". */
-export const JOKER_ABILITY_1: AbilityDefinition = {
-  id: "jokerAbility1",
-  name: "JokerAbility1",
+/** How long the 2s and 3s stay out of the deck. */
+export const STACKED_DECK_DURATION = 5 * TICK.RATE; // 5 s
+
+/**
+ * Ace of Spades (basic): the reliable "Q", and Joker's only way to influence
+ * its own luck — casting it strips the deck's two worst cards for 5 seconds,
+ * so the follow-up Blackjack draws from a better one.
+ */
+export const ACE_OF_SPADES: AbilityDefinition = {
+  id: "aceOfSpades",
+  name: "Ace of Spades",
   kind: "attack",
-  cost: 100,
-  cooldownTicks: 3 * TICK.RATE, // 3 s
+  cost: 150,
+  cooldownTicks: 4 * TICK.RATE, // 4s
   targeting: { mode: "singleEnemy" },
   effects: [
     { type: "damage", target: "target", params: { amount: 250, element: "joker" } },
+    {
+      type: "status",
+      target: "self",
+      params: { status: STACKED_DECK_STATUS, durationTicks: STACKED_DECK_DURATION },
+    },
   ],
   upgradePath: [
     { level: 1, cost: 150, changes: { effectParams: [{ amount: 300 }] } },
@@ -51,106 +70,236 @@ export const JOKER_ABILITY_1: AbilityDefinition = {
         costMultiplier: 0.85,
       },
     },
-    { level: 3, cost: 400, changes: { effectParams: [{ amount: 400 }] } },
+    // Lv4: the deck stays stacked longer, widening the follow-up window.
+    {
+      level: 3,
+      cost: 400,
+      changes: {
+        effectParams: [
+          null,
+          { status: STACKED_DECK_STATUS, durationTicks: 8 * TICK.RATE },
+        ],
+      },
+    },
   ],
 };
 
-/** JokerAbility2 (medium attack). */
-export const JOKER_ABILITY_2: AbilityDefinition = {
-  id: "jokerAbility2",
-  name: "JokerAbility2",
+/**
+ * How long the reveal cinematic runs before the card REACHES the victim: the
+ * summon, the fly-in (during which the card turns over), the 3 s showcase, and
+ * the throw. The damage is held for exactly this long so it lands on the frame
+ * the card arrives and never a moment sooner.
+ *
+ * The client's `STAGE_START.impact` is the same instant — a test pins the two
+ * together, so retuning a stage there will fail loudly rather than silently
+ * hurting the victim mid-showcase.
+ */
+export const BLACKJACK_IMPACT_DELAY = Math.round(4.75 * TICK.RATE); // 4.75 s
+
+/**
+ * Blackjack (med): draw one card and hit for it. A real 54-card deck — four
+ * each of Ace through King plus two jokers — so the spread is the deck's own:
+ * a 2 is a wasted cast at 150, a joker is 1000, and everything in between is
+ * rank × 75 (an Ace counts as 1 — the worst draw at 75 — and face cards are a
+ * flat 750). See `engine/blackjack.ts`.
+ */
+export const BLACKJACK: AbilityDefinition = {
+  id: "blackjack",
+  name: "Blackjack",
   kind: "attack",
   cost: 250,
-  cooldownTicks: 10 * TICK.RATE, // 10 s
+  cooldownTicks: 15 * TICK.RATE, // 8 s
   targeting: { mode: "singleEnemy" },
   effects: [
-    { type: "damage", target: "target", params: { amount: 400, element: "joker" } },
-  ],
-  upgradePath: [
-    { level: 1, cost: 200, changes: { effectParams: [{ amount: 500 }] } },
     {
-      level: 2,
-      cost: 300,
-      changes: {
-        cooldownTicks: Math.round(10 * TICK.RATE * 0.9),
-        costMultiplier: 0.85,
+      type: "blackjackDraw",
+      target: "target",
+      params: {
+        element: "joker",
+        cardDamageMultiplier: 1,
+        // The card's cinematic runs before it lands, and the victim must not
+        // be hurt until it physically reaches them. Kept in step with the
+        // client's `BLACKJACK_TOTAL_MS`.
+        delayTicks: BLACKJACK_IMPACT_DELAY,
       },
     },
-    { level: 3, cost: 400, changes: { effectParams: [{ amount: 600 }] } },
-  ],
-};
-
-/** JokerAbility3 (heavy attack). */
-export const JOKER_ABILITY_3: AbilityDefinition = {
-  id: "jokerAbility3",
-  name: "JokerAbility3",
-  kind: "attack",
-  cost: 500,
-  cooldownTicks: 20 * TICK.RATE, // 20 s
-  targeting: { mode: "singleEnemy" },
-  effects: [
-    { type: "damage", target: "target", params: { amount: 750, element: "joker" } },
   ],
   upgradePath: [
-    { level: 1, cost: 500, changes: { effectParams: [{ amount: 850 }] } },
-    {
-      level: 2,
-      cost: 600,
-      changes: {
-        cooldownTicks: Math.round(20 * TICK.RATE * 0.85),
-        costMultiplier: 0.85,
-      },
-    },
-    { level: 3, cost: 800, changes: { effectParams: [{ amount: 1000 }] } },
-  ],
-};
-
-/** JokerAbility4 (utility): a self buff. */
-export const JOKER_ABILITY_4: AbilityDefinition = {
-  id: "jokerAbility4",
-  name: "JokerAbility4",
-  kind: "utility",
-  cost: 150,
-  cooldownTicks: 20 * TICK.RATE, // 20 s
-  targeting: { mode: "self" },
-  effects: [
-    {
-      type: "status",
-      target: "self",
-      params: { status: JOKER_UTILITY_STATUS, durationTicks: 10 * TICK.RATE }, // 10 s
-    },
-  ],
-  upgradePath: [
-    { level: 1, cost: 200, changes: { effectParams: [{ durationTicks: 15 * TICK.RATE }] } },
+    // The whole deck scales at once rather than restating its table.
+    { level: 1, cost: 250, changes: { effectParams: [{ cardDamageMultiplier: 1.2 }] } },
     {
       level: 2,
       cost: 350,
       changes: {
-        cooldownTicks: Math.round(20 * TICK.RATE * 0.85),
+        cooldownTicks: Math.round(8 * TICK.RATE * 0.9),
+        costMultiplier: 0.85,
+      },
+    },
+    { level: 3, cost: 500, changes: { effectParams: [{ cardDamageMultiplier: 1.45 }] } },
+  ],
+};
+
+/** Lucky Draw's ongoing faces — each lasts the ability's duration. */
+export const LUCKY_ATTACK_STATUS: StatusEffectDefinition = {
+  id: "luckyAttack",
+  name: "Lucky Draw — Sharpened",
+  category: "buff",
+  stacking: "refresh",
+  modifiers: [{ stat: "damage", op: "mult", value: 1.1 }],
+};
+
+export const LUCKY_ARMOR_STATUS: StatusEffectDefinition = {
+  id: "luckyArmor",
+  name: "Lucky Draw — Guarded",
+  category: "buff",
+  stacking: "refresh",
+  modifiers: [{ stat: "damageTaken", op: "mult", value: 0.9 }],
+};
+
+export const LUCKY_GOLD_STATUS: StatusEffectDefinition = {
+  id: "luckyGold",
+  name: "Lucky Draw — Flush",
+  category: "buff",
+  stacking: "refresh",
+  modifiers: [{ stat: "income", op: "mult", value: 1.1 }],
+};
+
+/** How long a Lucky Draw buff lasts. */
+export const LUCKY_DRAW_DURATION = 20 * TICK.RATE; // 20 s
+
+/**
+ * Lucky Draw always lands something — the gamble is WHICH of the five faces,
+ * each equally likely at 20%.
+ */
+export const LUCKY_DRAW_CHANCE = 1;
+
+/**
+ * Lucky Draw (utility): pull the lever and take what comes. One of five faces
+ * every time, each a 1-in-5 — a damage buff, a damage reduction, a gold boost,
+ * a free 1000 shield, or 750 health back. Always worth casting; never worth
+ * counting on for anything in particular.
+ */
+export const LUCKY_DRAW: AbilityDefinition = {
+  id: "luckyDraw",
+  name: "Lucky Draw",
+  kind: "utility",
+  cost: 200,
+  cooldownTicks: 30 * TICK.RATE, // 10 s
+  targeting: { mode: "self" },
+  effects: [
+    {
+      type: "luckyDraw",
+      target: "self",
+      params: {
+        durationTicks: LUCKY_DRAW_DURATION,
+        luckyDraw: {
+          chance: LUCKY_DRAW_CHANCE,
+          outcomes: [
+            { kind: "status", status: LUCKY_ATTACK_STATUS },
+            { kind: "status", status: LUCKY_ARMOR_STATUS },
+            { kind: "status", status: LUCKY_GOLD_STATUS },
+            { kind: "shield", amount: 1000 },
+            { kind: "heal", amount: 750 },
+          ],
+        },
+      },
+    },
+  ],
+  upgradePath: [
+    // Lv2: the buff faces last longer (20 s -> 30 s); the odds are already
+    // certain, so there is nothing to improve there.
+    {
+      level: 1,
+      cost: 200,
+      changes: {
+        effectParams: [
+          {
+            durationTicks: 30 * TICK.RATE,
+            luckyDraw: {
+              chance: 1,
+              outcomes: [
+                { kind: "status", status: LUCKY_ATTACK_STATUS },
+                { kind: "status", status: LUCKY_ARMOR_STATUS },
+                { kind: "status", status: LUCKY_GOLD_STATUS },
+                { kind: "shield", amount: 1000 },
+                { kind: "heal", amount: 750 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      level: 2,
+      cost: 350,
+      changes: {
+        cooldownTicks: Math.round(10 * TICK.RATE * 0.85),
         costMultiplier: 0.85,
       },
     },
   ],
 };
 
-/** JokerAbility5 (ultimate). */
-export const JOKER_ABILITY_5: AbilityDefinition = {
-  id: "jokerAbility5",
-  name: "JokerAbility5",
-  kind: "ultimate",
-  cost: 800,
-  cooldownTicks: 90 * TICK.RATE, // 90 s
+/**
+ * Roulette (heavy attack): wheel a EUROPEAN table — 37 pockets, one green zero
+ * — in front of the victim and stop their gold production until they call a
+ * colour. Every bet costs them something:
+ *
+ *  - red or black, called right → half damage;
+ *  - red or black, called wrong → full damage;
+ *  - green, called right (1 in 37) → a large heal instead;
+ *  - green, called wrong → half again as much damage.
+ *
+ * The wheel and payouts live in `engine/roulette.ts`.
+ */
+export const ROULETTE: AbilityDefinition = {
+  id: "roulette",
+  name: "Roulette",
+  kind: "attack",
+  cost: 450,
+  cooldownTicks: 30 * TICK.RATE, // 22 s
   targeting: { mode: "singleEnemy" },
-  effects: [
-    { type: "damage", target: "target", params: { amount: 1500, element: "joker" } },
-  ],
+  effects: [{ type: "roulette", target: "target", params: {} }],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 1800 }] } },
+    { level: 1, cost: 400, changes: { costMultiplier: 0.9 } },
     {
       level: 2,
-      cost: 1500,
+      cost: 550,
       changes: {
-        cooldownTicks: Math.round(90 * TICK.RATE * 0.85),
+        cooldownTicks: Math.round(22 * TICK.RATE * 0.85),
+        costMultiplier: 0.85,
+      },
+    },
+  ],
+};
+
+/**
+ * Slot Machine (ultimate): a machine drops in front of every other kingdom and
+ * their gold production stops until they pull the lever. The spin is mostly
+ * bad — a no-match is the single likeliest result and hits hard — but the rare
+ * jackpots are worth having, so the victim is stuck choosing between lost
+ * income and whatever the reels decide. The payout table lives in
+ * `engine/slotMachine.ts`.
+ */
+export const SLOT_MACHINE: AbilityDefinition = {
+  id: "slotMachine",
+  name: "Slot Machine",
+  kind: "ultimate",
+  cost: 750,
+  cooldownTicks: 120 * TICK.RATE, // 120 s
+  targeting: { mode: "allEnemies" },
+  effects: [{ type: "slotMachine", target: "target", params: {} }],
+  upgradePath: [
+    {
+      level: 1,
+      cost: 1200,
+      changes: { costMultiplier: 0.9 },
+    },
+    {
+      level: 2,
+      cost: 1600,
+      changes: {
+        cooldownTicks: Math.round(120 * TICK.RATE * 0.85),
         costMultiplier: 0.85,
       },
     },
@@ -159,9 +308,9 @@ export const JOKER_ABILITY_5: AbilityDefinition = {
 
 /** The Joker kingdom's activatable ability set. */
 export const JOKER_ABILITIES: AbilityDefinition[] = [
-  JOKER_ABILITY_1,
-  JOKER_ABILITY_2,
-  JOKER_ABILITY_3,
-  JOKER_ABILITY_4,
-  JOKER_ABILITY_5,
+  ACE_OF_SPADES,
+  BLACKJACK,
+  ROULETTE,
+  LUCKY_DRAW,
+  SLOT_MACHINE,
 ];

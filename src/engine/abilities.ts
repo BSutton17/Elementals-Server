@@ -29,11 +29,16 @@ import {
   thornsProcs,
   healShareGlobalPct,
   dotResistanceMultiplier,
+  splitsMultiTargetDamage,
+  attackInflictedStatuses,
+  cooldownReductionOnCast,
+  upgradeCostMultiplier,
+  shieldedMissChance,
 } from "./passives.js";
 import { applyDamage, type DamageApplication } from "./combat.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
-import { SPACE } from "../data/balance.js";
+import { DARK, SPACE } from "../data/balance.js";
 
 /**
  * Space's Supernova level (0–3) from a meter value, using the cumulative
@@ -70,6 +75,8 @@ export const SUPERNOVA_LOCK: StatusEffectDefinition = {
 };
 import { type EffectCondition, evaluateCondition } from "./conditions.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
+import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
+import { drawBlackjackCard } from "./blackjack.js";
 
 /**
  * The shared ability framework (tickets #71–#73), per ABILITY_SYSTEM.md: one
@@ -89,6 +96,15 @@ export type AbilityKind = "attack" | "utility" | "ultimate" | "passive";
 
 export type TargetingMode = "self" | "singleEnemy" | "allEnemies" | "noTarget";
 
+/**
+ * One face of Joker's Lucky Draw. A `status` outcome is an ongoing buff for the
+ * ability's duration; `shield` and `heal` land once and are done.
+ */
+export type LuckyOutcome =
+  | { kind: "status"; status: StatusEffectDefinition }
+  | { kind: "shield"; amount: number }
+  | { kind: "heal"; amount: number };
+
 /** One generic effect primitive; the engine applies each in order. */
 export interface EffectDefinition {
   type:
@@ -106,11 +122,21 @@ export interface EffectDefinition {
     | "chargeSupernova"
     | "supernovaBlast"
     | "createBlackHole"
-    | "linkCastles";
+    | "linkCastles"
+    | "amplifyDispelCost"
+    | "delayedStrike"
+    | "rageBlast"
+    | "yinYangWager"
+    | "blackjackDraw"
+    | "luckyDraw"
+    | "slotMachine"
+    | "roulette";
   /** Who this effect applies to within the resolved targeting.
    *  `otherEnemies` = every living enemy *except* the resolved target
-   *  (Earthquake's aftershock, Epic 9 — "adjacent" until maps land). */
-  target: "self" | "target" | "otherEnemies";
+   *  (Earthquake's aftershock, Epic 9 — "adjacent" until maps land).
+   *  `allPlayers` = EVERY living kingdom, the caster included (Light's Flash
+   *  Bang goes off in your own hand too). */
+  target: "self" | "target" | "otherEnemies" | "allPlayers";
   /** Conditional effects (ticket #101). */
   conditions?: EffectCondition[];
   /** Probability check (ticket #102). */
@@ -156,6 +182,42 @@ export interface EffectDefinition {
     citizensFlat?: number;
     /** damage: extra damage when the recipient bears a named status. */
     bonusDamageIfTargetHasStatus?: { statusId: string; extraAmount: number };
+    /**
+     * amplifyDispelCost: multiply what the recipient owes to shake off a named
+     * status (Light's Illumination inflating the Fireflies buy-off price). A
+     * no-op unless they already carry it — it never applies the status itself.
+     */
+    amplifyDispelCost?: { statusId: string; multiplier: number };
+    /**
+     * delayedStrike (Light's "Light Show"): a field-wide hit that lands
+     * `delayTicks` later, publicly telegraphed so everyone has time to react.
+     * On landing, every kingdom but the caster is checked: a shielded one loses
+     * its shield outright (whatever its health) and takes nothing, while an
+     * unshielded one takes `amount`.
+     */
+    delayTicks?: number;
+    breaksShields?: boolean;
+    /**
+     * yinYangWager (Dark): the wager laid on the victim. `amount` is what a
+     * WRONG guess costs them; `halfAmount` what a right one still costs. The
+     * side being punished comes from the caster's `options.choice`.
+     */
+    halfAmount?: number;
+    /**
+     * blackjackDraw (Joker): multiplies the drawn card's damage, so upgrade
+     * tiers scale the whole deck at once rather than restating its table.
+     * Defaults to 1.
+     */
+    cardDamageMultiplier?: number;
+    /**
+     * luckyDraw (Joker): `chance` (0–1) that ANY of `outcomes` fires; on a hit
+     * exactly ONE is chosen uniformly. Nothing happens on a miss — that is the
+     * gamble. Ongoing outcomes last `durationTicks`.
+     */
+    luckyDraw?: {
+      chance: number;
+      outcomes: readonly LuckyOutcome[];
+    };
     /** resourceTransfer: transfer currency/citizens from recipient to caster (ticket #106) */
     resourceTransfer?: {
       type: "currency" | "citizens";
@@ -275,7 +337,16 @@ export interface AbilityDefinition {
    * `SECOND_TARGET_REQUIRED` if a valid second isn't provided. The second id is
    * handed to effects as `options.secondTargetId` (used by `linkCastles`).
    */
-  targeting: { mode: TargetingMode; secondTarget?: boolean };
+  targeting: {
+    mode: TargetingMode;
+    secondTarget?: boolean;
+    /**
+     * The cast must name one of these (Dark's Yin and Yang: the caster picks
+     * which behaviour they are punishing). Validated before anything is spent;
+     * the chosen value rides into the effects on `options.choice`.
+     */
+    choices?: readonly string[];
+  };
   effects: EffectDefinition[];
   /** Charge-based casting (Lightning Barrage); see ChargeSystem. */
   chargeSystem?: ChargeSystem;
@@ -298,6 +369,16 @@ export interface AbilityDefinition {
   bounce?: { requiresCasterStatus: string; chance: number; maxLandings: number };
   /** Ordered upgrade tiers (ticket #75); omitted = not upgradeable. */
   upgradePath?: UpgradeTier[];
+}
+
+/**
+ * The id of a player's kingdom's BASIC attack — slot 1 of its kit, by the
+ * convention every kingdom's ability list follows (basic, medium, heavy,
+ * utility, ultimate). Used by locks that spare it (Dark's Never-ending
+ * nightmare). Empty string for an unknown kingdom, which matches no ability.
+ */
+export function basicAttackIdFor(player: PlayerState): string {
+  return abilitiesForKingdom(player.kingdomId)[0]?.id ?? "";
 }
 
 /** The player's current upgrade level for an ability (0 = base). */
@@ -410,6 +491,23 @@ function applyParameterOverrides(resolved: AbilityDefinition): void {
  * player's level increments. Applies from the *next* activation — an already
  * armed cooldown is not retroactively changed.
  */
+/**
+ * What a specific upgrade tier costs this player: its declared price, then
+ * Light's "Bright idea" discount. The single definition of an upgrade price —
+ * both the purchase and the price table the HUD is sent read it, so a tag can
+ * never disagree with the charge.
+ */
+export function abilityUpgradeCost(
+  player: PlayerState,
+  ability: AbilityDefinition,
+  tier: UpgradeTier,
+): number {
+  return Math.ceil(
+    param(`ability.${ability.id}.upgrade.${tier.level}.cost`, tier.cost) *
+      upgradeCostMultiplier(player),
+  );
+}
+
 export function purchaseUpgrade(
   match: Match,
   player: PlayerState,
@@ -419,10 +517,7 @@ export function purchaseUpgrade(
   const next = (ability.upgradePath ?? []).find((t) => t.level === current + 1);
   if (!next) return { ok: false, error: "INVALID_TRANSACTION" }; // maxed / none
 
-  const tierCost = param(
-    `ability.${ability.id}.upgrade.${next.level}.cost`,
-    next.cost,
-  );
+  const tierCost = abilityUpgradeCost(player, ability, next);
   const validation = validateTransaction(match, player, tierCost);
   if (!validation.ok) return validation;
 
@@ -461,6 +556,9 @@ export type AbilityError =
   | "ATTACKS_BLOCKED" // a crowd-control status bars attacking (e.g. Frozen)
   | "NO_CHARGES" // a charge-costed ability needs at least one charge
   | "NO_SUPERNOVA" // Supernova has no charge yet (meter at level 0)
+  | "NOT_ENRAGED" // Unlimited Rage is not fully charged yet
+  | "BASIC_ATTACKS_ONLY" // Never-ending nightmare bars everything but the basic
+  | "CHOICE_REQUIRED" // Yin and Yang needs the caster to pick a side
   | "SECOND_TARGET_REQUIRED"; // BFFS!!! needs a second distinct kingdom selected
 
 export interface AbilityActivation {
@@ -504,6 +602,8 @@ export interface ActivateOptions {
    *  (Love's BFFS!!!). Set by the pipeline from `targetIds[1]`, read by the
    *  `linkCastles` effect. */
   secondTargetId?: string;
+  /** The caster's pick for an ability that demands one (`targeting.choices`). */
+  choice?: string;
 }
 
 /** Keep each player's attack journal small — only recent attacks are undoable. */
@@ -601,6 +701,17 @@ function activateAbilityInner(
     return { ok: false, error: "ATTACKS_BLOCKED" };
   }
 
+  // Dark's Never-ending nightmare: nothing but your kingdom's basic attack.
+  // Everything offensive is refused — the rest of the kit and the ultimate
+  // alike — while utilities stay legal, so the victim can still defend.
+  if (
+    (ability.kind === "attack" || ability.kind === "ultimate") &&
+    caster.statuses.some((s) => s.basicAttacksOnly) &&
+    ability.id !== basicAttackIdFor(caster)
+  ) {
+    return { ok: false, error: "BASIC_ATTACKS_ONLY" };
+  }
+
   // Space's Supernova (level 0 = can't attack): a supernovaBlast ability needs
   // the meter charged to at least level 1 before it can fire.
   if (
@@ -608,6 +719,15 @@ function activateAbilityInner(
     supernovaLevel(caster.supernovaMeter) < 1
   ) {
     return { ok: false, error: "NO_SUPERNOVA" };
+  }
+
+  // Dark's Unlimited Rage: all or nothing — it cannot be cast at all until the
+  // meter is completely full.
+  if (
+    effective.effects.some((e) => e.type === "rageBlast") &&
+    caster.rageMeter < param("dark.rageFull", DARK.RAGE_FULL)
+  ) {
+    return { ok: false, error: "NOT_ENRAGED" };
   }
 
   // 3. Validate cooldown, then funds. Charge-based abilities (Lightning
@@ -813,6 +933,15 @@ function activateAbilityInner(
     secondTargetId = candidate;
   }
 
+  // 4a3. Caster's choice (Dark's Yin and Yang): the cast must name one of the
+  // ability's declared options. Validated before anything is spent, so a
+  // malformed or missing pick rejects cleanly.
+  if (effective.targeting.choices) {
+    if (!options.choice || !effective.targeting.choices.includes(options.choice)) {
+      return { ok: false, error: "CHOICE_REQUIRED" };
+    }
+  }
+
   // 4b. Concurrent-affected cap (Air's Thick Fog, Epic 8): fail closed while
   // the cap is full — a re-cast on an already-affected target stays legal.
   if (effective.maxConcurrentAffected) {
@@ -869,6 +998,50 @@ function activateAbilityInner(
       : effective.cooldownTicks;
   setCooldown(caster, effective.id, cooldownTicks);
 
+  // Dark's Never-ending nightmare: this attack burns one of the victim's
+  // allowance. Counted here, once the cast is committed, so a rejected cast
+  // never shortens the sentence — and the lock lifts the moment it runs out.
+  if (ability.kind === "attack") {
+    for (const nightmare of caster.statuses.filter((s) => s.basicAttacksOnly)) {
+      nightmare.basicAttacksRemaining = (nightmare.basicAttacksRemaining ?? 1) - 1;
+      if (nightmare.basicAttacksRemaining <= 0) {
+        removeStatus(caster, nightmare.id);
+        if (match.gameState!.events.enabled) {
+          match.gameState!.events.emit({
+            type: "statusExpired",
+            tick: match.tick,
+            playerId: caster.id,
+            statusId: nightmare.id,
+          });
+        }
+      }
+    }
+  }
+
+  // Light's "Speed of light": casting anything hurries every OTHER ability
+  // along. Applied AFTER this ability's own cooldown is armed, and skipping
+  // that ability, so a cast never shortens the cooldown it just started.
+  const hurry = cooldownReductionOnCast(caster);
+  if (hurry > 0) {
+    for (const otherId of Object.keys(caster.cooldowns)) {
+      if (otherId === effective.id) continue;
+      const remaining = caster.cooldowns[otherId]! - hurry;
+      if (remaining <= 0) {
+        delete caster.cooldowns[otherId];
+        if (match.gameState!.events.enabled) {
+          match.gameState!.events.emit({
+            type: "cooldownReady",
+            tick: match.tick,
+            playerId: caster.id,
+            abilityId: otherId,
+          });
+        }
+      } else {
+        caster.cooldowns[otherId] = remaining;
+      }
+    }
+  }
+
   // Arm charge regeneration: spending k charges starts staggered independent
   // countdowns (1×, 2×, … k× rechargeTicks), so one charge returns every
   // rechargeTicks and unspent charges stay castable immediately.
@@ -914,6 +1087,7 @@ function activateAbilityInner(
     ...(focus ? { guaranteeChances: true } : {}),
     ...(journalId ? { journalId } : {}),
     ...(secondTargetId ? { secondTargetId } : {}),
+    ...(options.choice ? { choice: options.choice } : {}),
   };
 
   // Resolve targeting modifiers (ticket #109)
@@ -927,22 +1101,25 @@ function activateAbilityInner(
   // Non-damage effects (status, heal, …) still apply in full to each target.
   // A bounce chain deals full damage per landing (each is its own gust), so it
   // never spreads; otherwise Embrace of Winds divides across the kingdoms hit.
-  const damageSpread = bounced
-    ? 1
-    : effective.targeting.mode === "singleEnemy"
-      ? Math.max(1, targets.length)
-      : 1;
+  // Dark's Infinitum tenebrae grants multi-target WITHOUT the spread: every
+  // kingdom struck takes the attack in full.
+  const damageSpread =
+    bounced || !splitsMultiTargetDamage(caster)
+      ? 1
+      : effective.targeting.mode === "singleEnemy"
+        ? Math.max(1, targets.length)
+        : 1;
 
   for (let i = 0; i < duplicateCount; i++) {
     // Apply to each resolved target
     for (const target of targets) {
-      // Orion's Belt (Space): an attack on a shielded bearer may miss entirely
-      // — none of its effects land, and the whiff feeds the bearer's Supernova
-      // meter. Only offensive attacks against another kingdom can be dodged.
+      // An attack may miss entirely — none of its effects land (Orion's Belt
+      // feeding the bearer's Supernova meter, or Joker's shielded luck). Only
+      // offensive attacks against another kingdom can be dodged.
       if (
         effective.kind === "attack" &&
         target.id !== caster.id &&
-        maybeMissByOrionsBelt(match, caster, target, effective.id, effectOptions)
+        maybeMissAttack(match, caster, target, effective.id, effectOptions)
       ) {
         continue;
       }
@@ -959,6 +1136,15 @@ function activateAbilityInner(
           );
           for (const other of others) {
             applyEffect(match, effective.id, caster, other, other, effect, effectOptions, damage);
+          }
+          continue;
+        }
+        // Field-wide effects hit every living kingdom, the caster included —
+        // no targeting bans, because this is not aimed at anyone (Flash Bang).
+        if (effect.target === "allPlayers") {
+          for (const everyone of match.gameState!.getPlayers()) {
+            if (everyone.eliminated) continue;
+            applyEffect(match, effective.id, caster, everyone, everyone, effect, effectOptions, damage);
           }
           continue;
         }
@@ -1311,6 +1497,16 @@ function applyEffect(
             emitStatusApplied(recipient.id, caster.id, inst);
           }
         }
+        // Status-granted on-hit riders (Dark's Infinitum tenebrae darkening
+        // every screen it touches). Unlike the passive procs above these are
+        // certain — the buff was paid for, so it does not also roll dice.
+        for (const rider of attackInflictedStatuses(caster)) {
+          const inst = applyStatus(recipient, rider.status, {
+            sourceId: caster.id,
+            durationTicks: rider.durationTicks,
+          });
+          emitStatusApplied(recipient.id, caster.id, inst);
+        }
         for (const proc of retaliations(recipient)) {
           if (procRng() < proc.chance) {
             const inst = applyStatus(caster, proc.status, {
@@ -1389,6 +1585,27 @@ function applyEffect(
     }
     case "status":
       if (p.status) {
+        // A shield can repel a status outright: Light's Fireflies never settle
+        // on a shielded castle, so a defended kingdom is never put to the
+        // ransom. The ability's damage has already landed regardless.
+        //
+        // This is announced rather than silent — without it the caster sees an
+        // ability apparently do nothing, and the defender never learns their
+        // shield is what saved them.
+        if (p.status.repelledByShield && recipient.castle.shield > 0) {
+          if (bus.enabled) {
+            bus.emit({
+              type: "statusRepelled",
+              tick: match.tick,
+              playerId: recipient.id,
+              sourceId: caster.id,
+              statusId: p.status.id,
+              abilityId,
+              cause: "shield",
+            });
+          }
+          break;
+        }
         // Conditional duration bonus (#86): e.g. Flood lasts longer against
         // Current-affected targets. Checked before application so an ability
         // applying the prerequisite itself must order its effects accordingly.
@@ -1747,6 +1964,274 @@ function applyEffect(
       }
       break;
     }
+    case "slotMachine": {
+      // Joker's ultimate: hand the recipient a machine. Nothing is rolled here
+      // — the spin happens when THEY pull the lever (`spinSlotMachine`), and
+      // until they do their gold production is frozen (see `applyPassiveIncome`).
+      // Re-casting on someone who already owes a spin doesn't stack.
+      if (recipient.id === caster.id || recipient.pendingSpin) break;
+      recipient.pendingSpin = { sourceId: caster.id, abilityId, atTick: match.tick };
+      recipient.economy.incomePerTick = 0;
+      if (bus.enabled) {
+        bus.emit({
+          type: "slotMachineOpened",
+          tick: match.tick,
+          playerId: recipient.id,
+          sourceId: caster.id,
+          abilityId,
+        });
+      }
+      break;
+    }
+
+    case "roulette": {
+      // Joker's Roulette: wheel the table out. Nothing spins here — the wheel
+      // turns when THEY call a colour (`placeRouletteBet`), and until then
+      // their gold production is frozen (see `applyPassiveIncome`).
+      if (recipient.id === caster.id || recipient.pendingBet) break;
+      recipient.pendingBet = { sourceId: caster.id, abilityId, atTick: match.tick };
+      recipient.economy.incomePerTick = 0;
+      if (bus.enabled) {
+        bus.emit({
+          type: "rouletteOpened",
+          tick: match.tick,
+          playerId: recipient.id,
+          sourceId: caster.id,
+          abilityId,
+        });
+      }
+      break;
+    }
+
+    case "blackjackDraw": {
+      // Joker's Blackjack: pull one card and hit for whatever it is worth. The
+      // draw is uniform over a real 54-card deck (see `blackjack.ts`), so Ace
+      // of Spades stripping the 2s and 3s genuinely improves the odds rather
+      // than nudging a number. The rolled damage then runs the ordinary
+      // pipeline, so crits, buffs, and resistances all apply on top.
+      const rng = options.rng ?? match.rng;
+      const card = drawBlackjackCard(caster, rng);
+      const cardAmount = Math.round(
+        card.damage * (p.cardDamageMultiplier ?? 1),
+      );
+      if (bus.enabled) {
+        bus.emit({
+          type: "cardDrawn",
+          tick: match.tick,
+          playerId: caster.id,
+          abilityId,
+          card: card.label,
+          damage: cardAmount,
+        });
+      }
+      const drawn = resolveDamage(caster, recipient, cardAmount, {
+        element: p.element,
+        elementMultiplier: p.elementMultiplier,
+        forceCrit: options.forceCrit,
+        rng: options.rng,
+        besiegedMultiplier: besiegedDamageMultiplier(caster, match.gameState!.getPlayers()),
+        attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+        defenderScalingTakenMultiplier: scalingDamageTakenMultiplier(recipient, match.tick),
+      });
+
+      // The card has to physically reach the victim before it hurts them: the
+      // whole cinematic (summon, reveal, throw) plays out first. The damage is
+      // RESOLVED now — so it reflects the buffs in play at the moment of the
+      // draw — but only lands when the card does.
+      if (p.delayTicks) {
+        match.gameState!.pendingStrikes.push({
+          ownerId: caster.id,
+          targetId: recipient.id,
+          abilityId,
+          resolveTick: match.tick + p.delayTicks,
+          amount: drawn.amount,
+          element: p.element,
+          breaksShields: false,
+        });
+        break;
+      }
+
+      const drawnApplied = applyDamage(recipient, drawn.amount, { tick: match.tick });
+      damage.push(drawnApplied);
+      emitDamage(recipient.id, caster.id, drawnApplied, drawn.crit, abilityId);
+      break;
+    }
+
+    case "luckyDraw": {
+      // Joker's Lucky Draw: one roll to see if anything happens at all, then a
+      // second to pick which. Most casts are a wasted coin — that is the
+      // ability. Both rolls go through the match RNG so a seeded replay is
+      // identical (#203).
+      const spec = p.luckyDraw;
+      if (!spec || spec.outcomes.length === 0) break;
+      const rng = options.rng ?? match.rng;
+      if (rng() >= spec.chance) {
+        if (bus.enabled) {
+          bus.emit({
+            type: "luckyDraw",
+            tick: match.tick,
+            playerId: caster.id,
+            abilityId,
+            outcome: null,
+          });
+        }
+        break;
+      }
+      const pick =
+        spec.outcomes[
+          Math.min(spec.outcomes.length - 1, Math.floor(rng() * spec.outcomes.length))
+        ]!;
+
+      let label = "";
+      if (pick.kind === "status") {
+        label = pick.status.id;
+        const lucky = applyStatus(recipient, pick.status, {
+          sourceId: caster.id,
+          durationTicks: p.durationTicks ?? 0,
+        });
+        emitStatusApplied(recipient.id, caster.id, lucky);
+      } else if (pick.kind === "shield") {
+        label = "shield";
+        recipient.castle.shield += Math.max(0, Math.round(pick.amount));
+        if (bus.enabled) {
+          bus.emit({
+            type: "shieldGained",
+            tick: match.tick,
+            playerId: recipient.id,
+            amount: pick.amount,
+            total: recipient.castle.shield,
+            cause: abilityId,
+          });
+        }
+      } else {
+        label = "heal";
+        const healed = healCastle(recipient, Math.round(pick.amount));
+        if (healed > 0 && bus.enabled) {
+          bus.emit({
+            type: "heal",
+            tick: match.tick,
+            targetId: recipient.id,
+            amount: healed,
+            overheal: pick.amount - healed,
+            cause: abilityId,
+          });
+        }
+        shareHealGlobally(match, recipient, healed);
+      }
+      if (bus.enabled) {
+        bus.emit({
+          type: "luckyDraw",
+          tick: match.tick,
+          playerId: caster.id,
+          abilityId,
+          outcome: label,
+        });
+      }
+      break;
+    }
+
+    case "rageBlast": {
+      // Dark's Unlimited Rage: everything that has been done to Dark, returned
+      // at once. Gated on a full meter up in validation; the meter empties here
+      // so the charge is spent whether or not the hit lands well.
+      caster.rageMeter = 0;
+      if (bus.enabled) {
+        bus.emit({
+          type: "rageSpent",
+          tick: match.tick,
+          playerId: caster.id,
+          abilityId,
+        });
+      }
+      const raged = resolveDamage(caster, recipient, p.amount ?? 0, {
+        element: p.element,
+        elementMultiplier: p.elementMultiplier,
+        forceCrit: options.forceCrit,
+        rng: options.rng,
+        besiegedMultiplier: besiegedDamageMultiplier(caster, match.gameState!.getPlayers()),
+        attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+        defenderScalingTakenMultiplier: scalingDamageTakenMultiplier(recipient, match.tick),
+      });
+      const ragedApplied = applyDamage(recipient, raged.amount, { tick: match.tick });
+      damage.push(ragedApplied);
+      emitDamage(recipient.id, caster.id, ragedApplied, raged.crit, abilityId);
+      // …and the victim is left in the dark, literally.
+      if (p.status) {
+        const blinded = applyStatus(recipient, p.status, {
+          sourceId: caster.id,
+          durationTicks: p.durationTicks ?? 0,
+        });
+        emitStatusApplied(recipient.id, caster.id, blinded);
+      }
+      break;
+    }
+
+    case "yinYangWager": {
+      // Dark's Yin and Yang: lay the wager. Which behaviour is punished comes
+      // from the caster's pick, validated at cast time. The victim is damaged
+      // either way — the only question is how much, and that is settled either
+      // when they buy a citizen or when the wager runs out (see `settleYinYang`).
+      if (!p.status) break;
+      const wager = applyStatus(recipient, p.status, {
+        sourceId: caster.id,
+        durationTicks: p.durationTicks ?? 0,
+      });
+      wager.wagerMode = options.choice === "yang" ? "yang" : "yin";
+      wager.wagerAmount = p.amount ?? 0;
+      wager.wagerHalfAmount = p.halfAmount ?? Math.round((p.amount ?? 0) / 2);
+      emitStatusApplied(recipient.id, caster.id, wager);
+      break;
+    }
+
+    case "delayedStrike": {
+      // Schedule it and announce it — the warning is half the ability. The hit
+      // itself is dealt by `resolvePendingStrikes` from the game loop.
+      const resolveTick = match.tick + Math.max(0, p.delayTicks ?? 0);
+      match.gameState!.pendingStrikes.push({
+        ownerId: caster.id,
+        abilityId,
+        resolveTick,
+        amount: p.amount ?? 0,
+        element: p.element,
+        breaksShields: p.breaksShields === true,
+      });
+      if (bus.enabled) {
+        bus.emit({
+          type: "strikeIncoming",
+          tick: match.tick,
+          ownerId: caster.id,
+          abilityId,
+          resolveTick,
+        });
+      }
+      break;
+    }
+
+    case "amplifyDispelCost": {
+      // Light's Illumination: make an outstanding ransom worse. Strictly a
+      // multiplier on a debt the recipient ALREADY owes — it never creates the
+      // status, so illuminating a kingdom with no swarm on it does nothing.
+      const spec = p.amplifyDispelCost;
+      if (!spec) break;
+      const held = recipient.statuses.find(
+        (s) => s.id === spec.statusId && s.dispelCost !== undefined,
+      );
+      if (!held) break;
+      const before = held.dispelCost!;
+      held.dispelCost = Math.max(0, Math.round(before * spec.multiplier));
+      if (bus.enabled && held.dispelCost !== before) {
+        bus.emit({
+          type: "dispelCostChanged",
+          tick: match.tick,
+          playerId: recipient.id,
+          statusId: spec.statusId,
+          cost: held.dispelCost,
+          cause: abilityId,
+        });
+      }
+      break;
+    }
+
     case "linkCastles": {
       // Love's "BFFS!!!": the primary target (recipient) takes damage; if
       // another living enemy is available it takes the SAME damage too, and
@@ -1792,10 +2277,52 @@ function applyEffect(
 }
 
 /**
+ * Rolls whether an incoming attack on `target` misses entirely. Two sources
+ * feed it, and the first that fires wins:
+ *
+ *  - Orion's Belt (Space utility): a status-borne dodge chance that also feeds
+ *    the bearer's Supernova meter on a whiff.
+ *  - "Why so serious?" (Joker passive): a flat chance while Joker is shielded.
+ *
+ * Returns true so the caller drops the whole attack. Both are suppressed while
+ * a Black Hole is open — that absorbs the attack rather than dodging it.
+ */
+function maybeMissAttack(
+  match: Match,
+  caster: PlayerState,
+  target: PlayerState,
+  abilityId: string,
+  options: ActivateOptions,
+): boolean {
+  const hole = match.gameState!.blackHole;
+  if (hole && match.tick < hole.endTick) return false;
+  const rng = options.rng ?? match.rng;
+
+  // Joker's shield-borne luck. Rolled first and independently of Orion's Belt,
+  // so a kingdom that somehow had both would get both chances.
+  const jokerChance = shieldedMissChance(target);
+  if (jokerChance > 0 && rng() < jokerChance) {
+    const bus = match.gameState!.events;
+    if (bus.enabled) {
+      bus.emit({
+        type: "attackMissed",
+        tick: match.tick,
+        playerId: target.id,
+        attackerId: caster.id,
+        abilityId,
+        cause: "whySoSerious",
+      });
+    }
+    return true;
+  }
+
+  return maybeMissByOrionsBelt(match, caster, target, abilityId, options, rng);
+}
+
+/**
  * Orion's Belt (Space utility): rolls whether an incoming attack on `target`
  * misses. On a miss it feeds `target`'s Supernova meter, emits the miss/charge
- * events, and returns true so the caller drops the whole attack. Suppressed
- * while a Black Hole is open — that absorbs the attack instead of dodging it.
+ * events, and returns true so the caller drops the whole attack.
  */
 function maybeMissByOrionsBelt(
   match: Match,
@@ -1803,15 +2330,13 @@ function maybeMissByOrionsBelt(
   target: PlayerState,
   abilityId: string,
   options: ActivateOptions,
+  rng: () => number,
 ): boolean {
+  void options;
   const belt = target.statuses.find(
     (s) => (s.incomingMissChance ?? 0) > 0,
   );
   if (!belt) return false;
-  const hole = match.gameState!.blackHole;
-  if (hole && match.tick < hole.endTick) return false;
-
-  const rng = options.rng ?? match.rng;
   if (rng() >= belt.incomingMissChance!) return false;
 
   const bus = match.gameState!.events;
@@ -1875,6 +2400,73 @@ function absorbIntoBlackHole(
  * it fizzles). Run once per tick from the game loop. Returns the collapse info
  * for callers that want to react (tests), or null if nothing collapsed.
  */
+/**
+ * Lands every telegraphed strike whose moment has come (Light's "Light Show").
+ * Run once per tick from the game loop, before death detection so a lethal one
+ * resolves the same tick.
+ *
+ * Each kingdom but the caster is judged on one thing — whether it is behind a
+ * shield right now:
+ *  - shielded: the shield is annihilated whatever its health, and it eats the
+ *    strike whole. No damage carries into castle HP.
+ *  - unshielded: it takes the full hit.
+ *
+ * The damage is flat and deliberately skips the modifier pipeline: this is a
+ * fixed toll for having been caught in the open, not an attack to be resisted.
+ */
+export function resolvePendingStrikes(match: Match): void {
+  const state = match.gameState;
+  if (!state) return;
+  const due = state.pendingStrikes.filter((s) => match.tick >= s.resolveTick);
+  if (due.length === 0) return;
+  // Drop the resolved ones first, so nothing can land twice.
+  for (const strike of due) {
+    const at = state.pendingStrikes.indexOf(strike);
+    if (at >= 0) state.pendingStrikes.splice(at, 1);
+  }
+
+  const bus = state.events;
+  for (const strike of due) {
+    for (const victim of state.getPlayers()) {
+      if (victim.id === strike.ownerId || victim.eliminated) continue;
+      // A targeted strike waits for exactly one kingdom; a field-wide one has
+      // no `targetId` and sweeps everybody.
+      if (strike.targetId && victim.id !== strike.targetId) continue;
+
+      if (strike.breaksShields && victim.castle.shield > 0) {
+        victim.castle.shield = 0;
+        victim.castle.shieldBrokenAtTick = match.tick;
+        if (bus.enabled) {
+          bus.emit({
+            type: "shieldDestroyed",
+            tick: match.tick,
+            playerId: victim.id,
+            cause: strike.abilityId,
+          });
+        }
+        continue; // the shield absorbed it all — nothing carries over
+      }
+
+      const applied = applyDamage(victim, strike.amount, { tick: match.tick });
+      if (bus.enabled) {
+        bus.emit({
+          type: "damage",
+          tick: match.tick,
+          sourceId: strike.ownerId,
+          targetId: victim.id,
+          amount: applied.absorbedByShield + applied.dealtToHp,
+          absorbedByShield: applied.absorbedByShield,
+          dealtToHp: applied.dealtToHp,
+          overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
+          crit: false,
+          element: strike.element,
+          cause: strike.abilityId,
+        });
+      }
+    }
+  }
+}
+
 export function collapseBlackHoles(match: Match): void {
   const state = match.gameState;
   if (!state) return;
@@ -1917,7 +2509,7 @@ export function collapseBlackHoles(match: Match): void {
 }
 
 /** Restores castle HP, clamped to max. Returns the HP actually restored. */
-function healCastle(player: PlayerState, amount: number): number {
+export function healCastle(player: PlayerState, amount: number): number {
   if (amount <= 0) return 0;
   const before = player.castle.hp;
   player.castle.hp = Math.min(player.castle.maxHp, before + amount);

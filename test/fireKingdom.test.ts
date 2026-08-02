@@ -185,7 +185,7 @@ test("Heat Wave applies stats and refreshes duration without stacking", () => {
   const chance = a.modifiers.find((m) => m.stat === "critChance" && m.sourceId === "status:heatWave");
   const mult = a.modifiers.find((m) => m.stat === "critMultiplier" && m.sourceId === "status:heatWave");
   assert.ok(chance);
-  assert.equal(chance.value, 0.15);
+  assert.equal(chance.value, 0.10); // 5% base + 10% = 15% total crit chance
   assert.ok(mult);
   assert.equal(mult.value, 0.10);
 
@@ -295,22 +295,24 @@ test("Firenado upgrades modify damage, burn chance, cooldown, and burn duration"
 });
 
 test("Heat Wave upgrades swap status modifiers for Crit Chance and Crit Damage", () => {
-  // Lv 1 (Default): +5% Crit Chance, +10% Crit Damage
+  // Crit-chance modifiers ADD to the 5% shared base, so the totals below are
+  // 15% / 20% / 20%.
+  // Lv 1 (Default): 15% total Crit Chance, +10% Crit Damage
   const lv1 = resolveAbility(HEAT_WAVE, 0);
   const status1 = lv1.effects[0].params.status!;
-  assert.equal(status1.modifiers?.[0].value, 0.15);
+  assert.equal(status1.modifiers?.[0].value, 0.10);
   assert.equal(status1.modifiers?.[1].value, 0.10);
 
-  // Lv 2: Increase Crit Chance
+  // Lv 2: Increase Crit Chance (20% total)
   const lv2 = resolveAbility(HEAT_WAVE, 1);
   const status2 = lv2.effects[0].params.status!;
-  assert.equal(status2.modifiers?.[0].value, 0.20);
+  assert.equal(status2.modifiers?.[0].value, 0.15);
   assert.equal(status2.modifiers?.[1].value, 0.10);
 
   // Lv 3: Increase Crit Damage
   const lv3 = resolveAbility(HEAT_WAVE, 2);
   const status3 = lv3.effects[0].params.status!;
-  assert.equal(status3.modifiers?.[0].value, 0.20);
+  assert.equal(status3.modifiers?.[0].value, 0.15);
   assert.equal(status3.modifiers?.[1].value, 0.15);
 });
 

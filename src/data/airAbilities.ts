@@ -57,8 +57,9 @@ export const DUST_BUNNIES_STATUS: StatusEffectDefinition = {
   stacking: "refresh",
   tickEffects: [
     {
+      // 10 per tick across the 210-tick duration below = 2100 to every kingdom.
       type: "damage",
-      amount: 8,
+      amount: 10,
     },
   ],
 };
@@ -68,8 +69,9 @@ export const DUST_BUNNIES_STATUS_LV2: StatusEffectDefinition = {
   ...DUST_BUNNIES_STATUS,
   tickEffects: [
     {
+      // Same +50% step the tier always had: 3150 over the full duration.
       type: "damage",
-      amount: 12,
+      amount: 15,
     },
   ],
 };
@@ -80,7 +82,7 @@ export const A_LIGHT_BREEZE: AbilityDefinition = {
   id: "aLightBreeze",
   name: "A Light Breeze",
   kind: "attack",
-  cost: 125,
+  cost: 100,
   cooldownTicks: 5 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   // Bird's Eye View turns a multi-target Breeze into a bouncing gust: full
@@ -126,7 +128,7 @@ export const HURRICANE: AbilityDefinition = {
   id: "hurricane",
   name: "Hurricane",
   kind: "attack",
-  cost: 350,
+  cost: 300,
   cooldownTicks: 10 * TICK.RATE, // 10 s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -237,7 +239,7 @@ export const BIRDS_EYE_VIEW: AbilityDefinition = {
   id: "birdsEyeView",
   name: "Bird's Eye View",
   kind: "utility",
-  cost: 150,
+  cost: 100,
   cooldownTicks: 20 * TICK.RATE, // 20 s
   targeting: { mode: "self" },
   effects: [
@@ -272,14 +274,15 @@ export const DUST_BUNNIES: AbilityDefinition = {
   id: "dustBunnies",
   name: "Dust Bunnies",
   kind: "ultimate",
-  cost: 800,
+  cost: 700,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [
     {
       type: "status",
       target: "target",
-      params: { status: DUST_BUNNIES_STATUS, durationTicks: 10 * TICK.RATE }, // 10 s
+      // 10.5 s — 210 ticks, so the DoT totals exactly 2100 per kingdom.
+      params: { status: DUST_BUNNIES_STATUS, durationTicks: 10.5 * TICK.RATE },
     },
   ],
   upgradePath: [
@@ -287,7 +290,7 @@ export const DUST_BUNNIES: AbilityDefinition = {
       level: 1,
       cost: 1000,
       changes: {
-        effectParams: [{ status: DUST_BUNNIES_STATUS_LV2 }], // 8 -> 12 per tick
+        effectParams: [{ status: DUST_BUNNIES_STATUS_LV2 }], // 10 -> 15 per tick
       },
     },
     {

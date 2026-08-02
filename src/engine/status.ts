@@ -128,6 +128,57 @@ export interface StatusEffectDefinition {
    */
   missChargesSupernova?: number;
   /**
+   * While active, these card ranks are missing from the bearer's Blackjack
+   * deck (Joker's Ace of Spades stripping the 2s and 3s). Ranks are the
+   * numeric card values — see `drawBlackjackCard`.
+   */
+  strippedCardRanks?: readonly number[];
+  /**
+   * While active, the bearer may only cast their kingdom's BASIC attack —
+   * every other attack and their ultimate are refused (Dark's Never-ending
+   * nightmare). Utilities stay legal. Each attack they do manage burns one of
+   * `basicAttackLimit`; the status lifts when they run out.
+   */
+  basicAttacksOnly?: boolean;
+  /** How many attacks the `basicAttacksOnly` lock lasts for. */
+  basicAttackLimit?: number;
+  /**
+   * While active, the bearer's attacks may name up to this many enemies at
+   * once — a temporary grant of what Air's "Embrace of Winds" passive gives
+   * permanently (Dark's Infinitum tenebrae).
+   */
+  grantsMultiTarget?: number;
+  /**
+   * With a multi-target grant, damage is NOT divided across the kingdoms
+   * struck — each takes the attack in full (Infinitum tenebrae, unlike Air).
+   */
+  noDamageSpread?: boolean;
+  /**
+   * While active, every attack the bearer lands also inflicts this status on
+   * the victim (Infinitum tenebrae darkening every screen it touches).
+   */
+  attackInflicts?: { status: StatusEffectDefinition; durationTicks: number };
+  /**
+   * The bearer can pay gold to remove this status early (Light's Fireflies).
+   * The price is `dispelCostPerCitizen × the bearer's citizen count` at the
+   * moment it lands, snapshotted onto the instance — a bigger kingdom is a
+   * juicier target and pays more to shake it off. Without this the status can
+   * only be waited out.
+   */
+  dispelCostPerCitizen?: number;
+  /**
+   * An active shield repels this status outright — it never attaches to a
+   * shielded castle (Light's Fireflies).
+   */
+  repelledByShield?: boolean;
+  /**
+   * While the bearer carries this status they cannot buy a shield (Light's
+   * Fireflies). Paired with `repelledByShield` this makes the swarm a trap you
+   * must pay your way out of: a shield keeps it off, but once it lands you can
+   * no longer buy one to escape it.
+   */
+  blocksBearerShield?: boolean;
+  /**
    * While active, whenever the STATUS'S SOURCE (the applier) takes damage,
    * the bearer also takes this fraction of it (Love's Cupid's Arrow —
    * "infatuated" kingdoms feel a share of what Love feels).
@@ -191,6 +242,50 @@ export interface RemovedStatus {
   status: StatusEffectInstance;
 }
 
+/**
+ * Settles a Dark "Yin and Yang" wager on the bearer, once. `bought` says which
+ * way they went during the window.
+ *
+ * The wager punishes one behaviour and merely taxes the other, so there is no
+ * clean escape — reading Dark right only halves the bill:
+ *  - yin  punishes BUYING       → full if `bought`, half otherwise
+ *  - yang punishes NOT BUYING   → full if not `bought`, half otherwise
+ *
+ * Damage is flat: this is a rigged bet being collected, not an attack to be
+ * resisted. Callers are responsible for removing the status.
+ */
+export function settleYinYang(
+  state: GameState,
+  bearer: PlayerState,
+  wager: StatusEffectInstance,
+  bought: boolean,
+): number {
+  if (!wager.wagerMode) return 0;
+  const guessedWrong = wager.wagerMode === "yin" ? bought : !bought;
+  const amount = guessedWrong
+    ? (wager.wagerAmount ?? 0)
+    : (wager.wagerHalfAmount ?? 0);
+  if (amount <= 0) return 0;
+
+  const applied = applyDamage(bearer, amount, { tick: state.tick });
+  const bus = state.events;
+  if (bus.enabled) {
+    bus.emit({
+      type: "damage",
+      tick: state.tick,
+      sourceId: wager.sourceId,
+      targetId: bearer.id,
+      amount: applied.absorbedByShield + applied.dealtToHp,
+      absorbedByShield: applied.absorbedByShield,
+      dealtToHp: applied.dealtToHp,
+      overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
+      crit: false,
+      cause: `yinYang:${wager.wagerMode}:${guessedWrong ? "wrong" : "right"}`,
+    });
+  }
+  return applied.absorbedByShield + applied.dealtToHp;
+}
+
 /** Applies a status to a player, resolving re-application via its stacking rule. */
 export function applyStatus(
   player: PlayerState,
@@ -244,6 +339,23 @@ export function applyStatus(
       negateDamageHealPct: definition.negateDamageHealPct,
       thornsPct: definition.thornsPct,
       revealsBeforeExpiry: definition.revealsBeforeExpiry,
+      blocksBearerShield: definition.blocksBearerShield,
+      strippedCardRanks: definition.strippedCardRanks,
+      basicAttacksOnly: definition.basicAttacksOnly,
+      basicAttacksRemaining: definition.basicAttackLimit,
+      grantsMultiTarget: definition.grantsMultiTarget,
+      noDamageSpread: definition.noDamageSpread,
+      attackInflicts: definition.attackInflicts,
+      // The buy-off price is fixed the moment it lands, scaled by how big the
+      // bearer is right now — shedding citizens afterwards doesn't make it
+      // cheaper, and hiring more doesn't make it dearer.
+      dispelCost:
+        definition.dispelCostPerCitizen === undefined
+          ? undefined
+          : Math.max(
+              0,
+              Math.round(definition.dispelCostPerCitizen * player.economy.citizens),
+            ),
       hasModifiers: (definition.modifiers ?? []).length > 0,
     };
     player.statuses.push(instance);
@@ -441,6 +553,12 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
             }
           }
         }
+      }
+      // Dark's Yin and Yang running out unbought: the wager settles on the
+      // "didn't buy" side. Yang was betting on exactly this, so it lands in
+      // full; Yin misread them, and they get away with half.
+      if (status.wagerMode) {
+        settleYinYang(state, player, status, false);
       }
       // Space's Supernova lock expiring: return the bearer to the target they
       // had before they were forced onto the victim (#redirect).

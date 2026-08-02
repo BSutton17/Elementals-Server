@@ -43,6 +43,13 @@ export function applyPassiveIncome(state: GameState): void {
   const players = state.getPlayers();
   for (const player of players) {
     if (player.eliminated) continue;
+    // Joker's casino: production stops dead until the machine in front of this
+    // player is dealt with — the lever pulled, or the bet placed. Not a
+    // modifier but a hard stop, so stalling costs the full rate.
+    if (player.pendingSpin || player.pendingBet) {
+      player.economy.incomePerTick = 0;
+      continue;
+    }
     recalcIncome(player);
     // Time's "Back to the Future": time runs backward on this treasury — the
     // castle LOSES its gold/sec instead of earning, floored at 0, for the

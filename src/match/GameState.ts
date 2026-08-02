@@ -17,6 +17,36 @@ export interface BlackHoleState {
 }
 
 /**
+ * A telegraphed field-wide strike that lands some ticks after it was cast
+ * (Light's "Light Show"). Everyone can see it coming — that warning window is
+ * the point: it is time to go buy a shield.
+ */
+export interface PendingStrike {
+  /** The player who called it down; never hit by their own strike. */
+  ownerId: string;
+  /** The ability that scheduled it (for events and VFX). */
+  abilityId: string;
+  /** Tick at which it lands. */
+  resolveTick: number;
+  /** Damage dealt to each kingdom that is UNSHIELDED when it lands. */
+  amount: number;
+  element?: string;
+  /**
+   * Shields are annihilated outright when it lands, whatever their remaining
+   * health, and absorb the strike completely — a shielded kingdom loses the
+   * shield and takes NO damage, with nothing carrying over to castle HP.
+   */
+  breaksShields: boolean;
+  /**
+   * When set, ONLY this kingdom is struck rather than the whole field — a
+   * single delayed hit whose damage was already resolved at cast time and is
+   * simply waiting for its projectile to arrive (Joker's Blackjack, whose card
+   * must physically reach the victim before it hurts them).
+   */
+  targetId?: string;
+}
+
+/**
  * The central server-side game state for one active match (ticket #41): every
  * player's runtime gameplay state plus match-wide gameplay data (the current
  * tick and in-flight projectiles). Gameplay systems (economy, combat, abilities)
@@ -41,6 +71,13 @@ export class GameState {
    * attack it absorbed (`lastAttackerId`). Null when no black hole is open.
    */
   blackHole: BlackHoleState | null = null;
+
+  /**
+   * Telegraphed strikes waiting to land (Light's "Light Show"). Resolved once
+   * per tick by `resolvePendingStrikes`, before death detection so a fatal one
+   * settles the same tick.
+   */
+  readonly pendingStrikes: PendingStrike[] = [];
 
   private readonly players = new Map<string, PlayerState>();
 

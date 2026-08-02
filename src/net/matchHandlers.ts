@@ -6,11 +6,14 @@ import {
   buyCitizen,
   buyShield,
   citizenCost,
+  dispelStatus,
   repairCastle,
   repairCost,
   unlockOrUpgradeAbility,
 } from "../engine/purchases.js";
 import { activateAbility } from "../engine/abilities.js";
+import { spinSlotMachine } from "../engine/slotMachine.js";
+import { isBetColor, placeRouletteBet } from "../engine/roulette.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
 import { selectTarget } from "../engine/targeting.js";
 import type { TransactionResult } from "../engine/transactions.js";
@@ -43,6 +46,7 @@ export function registerMatchHandlers(
         targetId?: unknown;
         targetIds?: unknown;
         chargesToUse?: unknown;
+        choice?: unknown;
       },
       ack: unknown,
     ) => {
@@ -86,11 +90,16 @@ export function registerMatchHandlers(
         Number.isFinite(payload.chargesToUse)
           ? Math.floor(payload.chargesToUse)
           : undefined;
+      // The caster's pick for an ability that demands one (Dark's Yin and
+      // Yang). Validated against the ability's declared options server-side.
+      const choice =
+        typeof payload?.choice === "string" ? payload.choice : undefined;
 
       const result = activateAbility(match, player, ability, {
         targetId,
         targetIds,
         chargesToUse,
+        choice,
       });
       if (!result.ok) {
         respond(ack, fail(result.error ?? "INVALID_TRANSACTION", "Cast failed"));
@@ -108,6 +117,89 @@ export function registerMatchHandlers(
       );
     },
   );
+
+  // Pull the lever on Joker's Slot Machine. Server-authoritative: it rolls the
+  // reels, applies the verdict, and frees the player's gold production. The ack
+  // carries the symbols so the client can spin its reels onto the real result.
+  socket.on("match:spin", (_payload: unknown, ack: unknown) => {
+    const roomCode =
+      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId =
+      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) {
+      respond(ack, fail("INVALID_PHASE", "Not in a match"));
+      return;
+    }
+
+    const match = matches.getMatch(roomCode);
+    const player = match?.gameState?.getPlayer(playerId);
+    if (!match || !player) {
+      respond(ack, fail("ROOM_NOT_FOUND", "No active match"));
+      return;
+    }
+
+    const spin = spinSlotMachine(match, player);
+    if (!spin) {
+      respond(ack, fail("INVALID_TRANSACTION", "No spin is owed"));
+      return;
+    }
+
+    broadcastGameState(io, match);
+    respond(
+      ack,
+      ok({
+        symbols: spin.symbols,
+        result: player.lastSpin?.outcome ?? "",
+        revealTick: player.lastSpin?.revealTick ?? match.tick,
+      }),
+    );
+  });
+
+  // Call a colour on Joker's Roulette. Server-authoritative: it spins the
+  // wheel, settles the bet, and frees the player's gold production. The ack
+  // carries the winning pocket so the client can land its ball on it.
+  socket.on("match:bet", (payload: { bet?: unknown }, ack: unknown) => {
+    const roomCode =
+      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId =
+      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) {
+      respond(ack, fail("INVALID_PHASE", "Not in a match"));
+      return;
+    }
+
+    const bet = payload?.bet;
+    if (!isBetColor(bet)) {
+      respond(ack, fail("INVALID_PAYLOAD", "Bet must be red, black, or green"));
+      return;
+    }
+
+    const match = matches.getMatch(roomCode);
+    const player = match?.gameState?.getPlayer(playerId);
+    if (!match || !player) {
+      respond(ack, fail("ROOM_NOT_FOUND", "No active match"));
+      return;
+    }
+
+    const result = placeRouletteBet(match, player, bet);
+    if (!result) {
+      respond(ack, fail("INVALID_TRANSACTION", "No bet is owed"));
+      return;
+    }
+
+    broadcastGameState(io, match);
+    respond(
+      ack,
+      ok({
+        pocket: result.pocket,
+        color: result.color,
+        bet: result.bet,
+        won: result.won,
+        result: player.lastBet?.outcome ?? "",
+        revealTick: player.lastBet?.revealTick ?? match.tick,
+      }),
+    );
+  });
 
   socket.on("match:buy", (payload: { purchaseId?: unknown }, ack: unknown) => {
     const roomCode =
@@ -152,6 +244,13 @@ export function registerMatchHandlers(
         result = buyShield(match, player);
         data = {
           shield: player.castle.shield,
+          currency: player.economy.currency,
+        };
+        break;
+      // Pay off a status you can buy your way out of (Light's Fireflies).
+      case "dispel":
+        result = dispelStatus(match, player);
+        data = {
           currency: player.economy.currency,
         };
         break;

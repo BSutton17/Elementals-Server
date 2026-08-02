@@ -154,6 +154,41 @@ export interface StatusEffectInstance {
   /** While active, the bearer cannot buy citizens or repair (Epic 12,
    *  Nature's Toxic Gas). */
   blocksPurchases?: boolean;
+  /**
+   * Gold the bearer must pay to shake this status off early (Light's
+   * Fireflies). Snapshotted on apply from the definition's
+   * `dispelCostPerCitizen` × their citizen count; Illumination can inflate it
+   * afterwards. Absent = the status cannot be bought off.
+   */
+  dispelCost?: number;
+  /** While active, the BEARER cannot buy a shield (Light's Fireflies). */
+  blocksBearerShield?: boolean;
+  /** While active, these card ranks are missing from the bearer's Blackjack
+   *  deck (Joker's Ace of Spades). Snapshotted on apply. */
+  strippedCardRanks?: readonly number[];
+  /** While active, the bearer may only cast their kingdom's basic attack
+   *  (Dark's Never-ending nightmare). Snapshotted on apply. */
+  basicAttacksOnly?: boolean;
+  /** Attacks the `basicAttacksOnly` lock still has left; it lifts at 0. */
+  basicAttacksRemaining?: number;
+  /** While active, the bearer's attacks may name up to this many enemies
+   *  (Dark's Infinitum tenebrae). Snapshotted on apply. */
+  grantsMultiTarget?: number;
+  /** With that grant, damage is NOT split across the kingdoms struck. */
+  noDamageSpread?: boolean;
+  /** While active, every attack the bearer lands also inflicts this status on
+   *  the victim (Infinitum tenebrae). Snapshotted on apply. */
+  attackInflicts?: { status: StatusEffectDefinition; durationTicks: number };
+  /**
+   * Dark's Yin and Yang wager. `wagerMode` is the behaviour the CASTER bet on
+   * and is punishing: "yin" punishes buying a citizen, "yang" punishes failing
+   * to. The wager settles the moment the bearer buys (during the window) or
+   * when it expires unbought — costing `wagerAmount` if they guessed wrong and
+   * `wagerHalfAmount` if they guessed right. There is no clean escape.
+   */
+  wagerMode?: "yin" | "yang";
+  wagerAmount?: number;
+  wagerHalfAmount?: number;
   /** Applied to the next player who damages the bearer, then consumed
    *  (Epic 12, Nature's Poison Apple). */
   onHitRetaliate?: { status: StatusEffectDefinition; durationTicks: number };
@@ -302,6 +337,49 @@ export interface PlayerState {
    * and empties it. 0 for non-Space kingdoms.
    */
   supernovaMeter: number;
+  /**
+   * Dark's Unlimited Rage charge, in damage absorbed. Every hit this player
+   * takes adds its own size, so the meter is a running total of punishment
+   * received; Unlimited Rage cannot be cast below `DARK.RAGE_FULL` and empties
+   * it on use. Tracked for every kingdom (it costs one addition per hit) but
+   * only ever read by Dark.
+   */
+  rageMeter: number;
+  /**
+   * Joker's Slot Machine: this player has been handed a machine and owes a
+   * spin. Their gold production is frozen until they pull the lever — there is
+   * no way to decline, only to stall. Null when nothing is owed.
+   */
+  pendingSpin: { sourceId: string; abilityId: string; atTick: number } | null;
+  /**
+   * Joker's Roulette: a wheel is in front of this player and they owe a bet.
+   * Same deal as the slot machine — gold production is frozen until they call
+   * a colour. `atTick` orders the two, so whichever arrived first is the one
+   * the client puts on screen and the other waits its turn.
+   */
+  pendingBet: { sourceId: string; abilityId: string; atTick: number } | null;
+  /** The most recent wheel, held back until `revealTick` like `lastSpin`. */
+  lastBet: {
+    pocket: number;
+    color: string;
+    bet: string;
+    /** The verdict as told to the bettor ("you missed, 750 damage"). */
+    outcome: string;
+    /** The same verdict as told about them, for every other screen. */
+    publicOutcome: string;
+    revealTick: number;
+  } | null;
+  /**
+   * The most recent spin's reels and verdict. `revealTick` is when the result
+   * becomes public: the effect already applied server-side, but every screen
+   * (the spinner's reels and Joker's overhead readout) holds until then so the
+   * reveal lands at the same moment for everyone.
+   */
+  lastSpin: {
+    symbols: readonly string[];
+    outcome: string;
+    revealTick: number;
+  } | null;
 }
 
 /**
@@ -315,13 +393,16 @@ export function createPlayerState(
   config: MatchConfig,
 ): PlayerState {
   const perks = input.perks ?? [];
+  const passives = KINGDOM_PASSIVES[input.kingdomId] ?? [];
+  // Dark's "Black Magic" runs every perk at its boosted magnitude, including
+  // the two that pay out at match start.
+  const boostedPerks = passives.some((p) => p.type === "boostedPerks");
   let startingHp = config.startingCastleHp;
   let startingShield = 0;
   let startingCitizens = config.startingCitizens;
   // Perks stack with kingdom passives: Space's "Blast off!" gold is added below
   // on TOP of Deep Pockets, not instead of it.
-  let startingGold = perkStartingGold(perks);
-  const passives = KINGDOM_PASSIVES[input.kingdomId] ?? [];
+  let startingGold = perkStartingGold(perks, boostedPerks);
   for (const p of passives) {
     if (p.type === "startingCastleHpMultiplier") {
       startingHp = Math.round(startingHp * p.pct);
@@ -345,7 +426,7 @@ export function createPlayerState(
   // kingdom that starts bare gets nothing here — the perk pays out on the
   // shields they buy instead (see `buyShield`).
   if (startingShield > 0) {
-    startingShield += perkShieldBonusHpFor(perks);
+    startingShield += perkShieldBonusHpFor(perks, boostedPerks);
   }
 
   return {
@@ -381,5 +462,10 @@ export function createPlayerState(
     lastDamageDealtTick: -1,
     attackJournal: [],
     supernovaMeter: 0,
+    rageMeter: 0,
+    pendingSpin: null,
+    lastSpin: null,
+    pendingBet: null,
+    lastBet: null,
   };
 }

@@ -11,13 +11,25 @@ import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
 import { ALL_ABILITIES } from "../src/data/abilitiesRegistry.js";
 import type { MatchPlayer } from "../src/match/types.js";
 
-// Joker, Light, and Dark ship with placeholder kits. Their real abilities are
-// still to be designed, but the wiring must already be complete: selectable in
-// the lobby, a full ability set that resolves through the registry, prices the
-// HUD can render, and a castable path that lands damage. These tests pin the
-// wiring — not the (deliberately generic) magnitudes, which will all change.
+// Joker, Light, and Dark were added as placeholders. Their passives are all
+// real (newKingdomPassives.test.ts) and all three kits are now fully designed
+// — see the per-kingdom test files for the real behaviour.
+//
+// Whatever the design state, the WIRING must be complete for all three:
+// selectable in the lobby, a full ability set that resolves through the
+// registry, prices the HUD can render, and a castable path that lands damage.
+// These tests pin that wiring — not the magnitudes, which will all change.
 
+/** The kingdoms added as placeholders — all fully WIRED, whatever the state of
+ *  their kit design. */
 const PLACEHOLDER_KINGDOMS = ["joker", "light", "dark"] as const;
+
+/**
+ * The slots still filled by generic stand-ins, as `[kingdom, abilityId]`. All
+ * three kits are now fully designed, so this is empty — add an entry back if a
+ * future kingdom ships with placeholder abilities again.
+ */
+const PLACEHOLDER_SLOTS: readonly (readonly [string, string])[] = [];
 
 const matchPlayer = (id: string, kingdomId: string): MatchPlayer => ({
   id,
@@ -46,10 +58,10 @@ for (const kingdom of PLACEHOLDER_KINGDOMS) {
   test(`${kingdom} is a selectable kingdom with declared passives`, () => {
     assert.ok(isKingdomId(kingdom));
     assert.ok((KINGDOM_IDS as readonly string[]).includes(kingdom));
-    // Its passive list exists (empty until the kingdom is designed) — the
-    // engine's passive helpers all read through it, so a missing key would
-    // break every one of them.
-    assert.deepEqual(KINGDOM_PASSIVES[kingdom], []);
+    // Its passives are designed and wired (behaviour is pinned in
+    // newKingdomPassives.test.ts) — only the ABILITY kit below is a
+    // placeholder. Every kingdom carries exactly two.
+    assert.equal(KINGDOM_PASSIVES[kingdom].length, 2);
   });
 
   test(`${kingdom} has a full five-ability kit, all registered`, () => {
@@ -97,15 +109,21 @@ for (const kingdom of PLACEHOLDER_KINGDOMS) {
     assert.ok(b.castle.hp < hpBefore, "the basic attack dealt no damage");
   });
 
-  test(`${kingdom}'s utility applies its self buff`, () => {
-    const { match, a } = activeMatch(kingdom);
-    const utility = abilitiesForKingdom(kingdom).find((x) => x.kind === "utility")!;
-    earn(a, 100_000);
-    assert.equal(unlockOrUpgradeAbility(match, a, utility.id).ok, true);
+}
 
-    const result = activateAbility(match, a, utility, { forceCrit: false });
-    assert.equal(result.ok, true, `${utility.id} failed: ${JSON.stringify(result)}`);
-    assert.ok(a.statuses.some((s) => s.id === utility.id), "no self buff applied");
+for (const [kingdom, abilityId] of PLACEHOLDER_SLOTS) {
+  test(`${kingdom}'s ${abilityId} placeholder still casts and lands`, () => {
+    const { match, a, b } = activeMatch(kingdom);
+    const ability = abilitiesForKingdom(kingdom).find((x) => x.id === abilityId);
+    assert.ok(ability, `${abilityId} is no longer in ${kingdom}'s kit — update PLACEHOLDER_SLOTS`);
+    earn(a, 100_000);
+    assert.equal(unlockOrUpgradeAbility(match, a, ability!.id).ok, true);
+
+    a.target = b.id;
+    const hpBefore = b.castle.hp;
+    const result = activateAbility(match, a, ability!, { forceCrit: false });
+    assert.equal(result.ok, true, `${abilityId} failed: ${JSON.stringify(result)}`);
+    assert.ok(b.castle.hp < hpBefore, `${abilityId} dealt no damage`);
   });
 }
 

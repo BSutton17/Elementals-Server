@@ -1,4 +1,4 @@
-import { CASTLE, CITIZENS, TICK } from "../data/balance.js";
+import { CASTLE, CITIZENS, DARK, TICK } from "../data/balance.js";
 import type { Match } from "./Match.js";
 import { param } from "../engine/parameters.js";
 
@@ -12,6 +12,13 @@ export interface MatchConfig {
   tickRate: number;
   startingCitizens: number;
   startingCastleHp: number;
+  /**
+   * Damage Dark must absorb to fill the Unlimited Rage meter. Sent so the
+   * client's meter reads the real cap instead of keeping its own copy — a
+   * duplicated constant here is exactly how the HUD ended up advertising a
+   * number the engine had stopped using.
+   */
+  rageFull: number;
 }
 
 /** Builds the config snapshot for a match from the current balance values. */
@@ -22,5 +29,6 @@ export function createMatchConfig(match: Match): MatchConfig {
     tickRate: TICK.RATE,
     startingCitizens: param("citizens.startingCount", CITIZENS.STARTING_COUNT),
     startingCastleHp: param("castle.startingHp", CASTLE.STARTING_HP),
+    rageFull: DARK.RAGE_FULL,
   };
 }

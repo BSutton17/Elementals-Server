@@ -87,6 +87,21 @@ export type GameplayEvent =
     }
   | { type: "statusExpired"; tick: number; playerId: string; statusId: string }
   | {
+      // A status was turned away before it could land — Light's Fireflies
+      // bouncing off a shield. Announced rather than silent: without it the
+      // caster sees an ability apparently do nothing, and the defender never
+      // learns their shield is what saved them.
+      type: "statusRepelled";
+      tick: number;
+      /** The kingdom that shrugged it off. */
+      playerId: string;
+      sourceId: string;
+      statusId: string;
+      abilityId: string;
+      /** What repelled it — currently always "shield". */
+      cause: string;
+    }
+  | {
       // A two-phase hidden status revealed itself (Love's "Love Galore"): its
       // stealth window ended or its healing threshold was crossed. The client
       // starts the reveal aura and switches from phantom damage to visible
@@ -124,8 +139,9 @@ export type GameplayEvent =
       type: "purchase";
       tick: number;
       playerId: string;
-      kind: "citizen" | "repair" | "shield" | "unlock" | "upgrade";
-      /** The ability id for unlock/upgrade purchases. */
+      kind: "citizen" | "repair" | "shield" | "unlock" | "upgrade" | "dispel";
+      /** The ability id for unlock/upgrade purchases; the status id for a
+       *  dispel. */
       itemId?: string;
       cost: number;
     }
@@ -197,6 +213,92 @@ export type GameplayEvent =
       playerId: string;
       attackerId: string;
       abilityId: string;
+      cause: string;
+    }
+  /** Joker's Slot Machine landed in front of `playerId`; their gold production
+   *  is frozen until they pull the lever. */
+  | {
+      type: "slotMachineOpened";
+      tick: number;
+      playerId: string;
+      sourceId: string;
+      abilityId: string;
+    }
+  /** A player pulled the lever. The effect has already applied; `revealTick` is
+   *  when the reels stop and the result becomes public on every screen. */
+  | {
+      type: "slotSpun";
+      tick: number;
+      playerId: string;
+      symbols: string[];
+      result: string;
+      revealTick: number;
+    }
+  /** Joker's Roulette wheel landed in front of `playerId`; their gold
+   *  production is frozen until they call a colour. */
+  | {
+      type: "rouletteOpened";
+      tick: number;
+      playerId: string;
+      sourceId: string;
+      abilityId: string;
+    }
+  /** A bet was placed and the wheel resolved. The effect has already applied;
+   *  `revealTick` is when the ball settles publicly on every screen. */
+  | {
+      type: "rouletteSettled";
+      tick: number;
+      playerId: string;
+      pocket: number;
+      color: string;
+      bet: string;
+      result: string;
+      revealTick: number;
+    }
+  /** Joker drew a Blackjack card; `card` is its label ("7", "Queen", "Joker")
+   *  and `damage` the pre-pipeline hit it rolled. */
+  | {
+      type: "cardDrawn";
+      tick: number;
+      playerId: string;
+      abilityId: string;
+      card: string;
+      damage: number;
+    }
+  /** Joker gambled on Lucky Draw. `outcome` names what came up, or is null
+   *  when the roll missed and nothing happened at all. */
+  | {
+      type: "luckyDraw";
+      tick: number;
+      playerId: string;
+      abilityId: string;
+      outcome: string | null;
+    }
+  /** Dark spent a full Unlimited Rage meter (it empties on cast). */
+  | {
+      type: "rageSpent";
+      tick: number;
+      playerId: string;
+      abilityId: string;
+    }
+  /** A field-wide strike has been called down and will land at `resolveTick`
+   *  (Light's "Light Show"). Public by design — the warning window is when
+   *  everyone scrambles for a shield. */
+  | {
+      type: "strikeIncoming";
+      tick: number;
+      ownerId: string;
+      abilityId: string;
+      resolveTick: number;
+    }
+  /** The gold price to shake off a status changed (Light's Illumination
+   *  inflating the Fireflies ransom); `cost` is the new outstanding price. */
+  | {
+      type: "dispelCostChanged";
+      tick: number;
+      playerId: string;
+      statusId: string;
+      cost: number;
       cause: string;
     }
   /** Space's Black Hole opened over the field (`playerId` = its owner); for

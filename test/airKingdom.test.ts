@@ -17,6 +17,7 @@ import {
   THICK_FOG,
   BIRDS_EYE_VIEW,
   DUST_BUNNIES,
+  DUST_BUNNIES_STATUS,
 } from "../src/data/airAbilities.js";
 import { FIREBALL } from "../src/data/fireAbilities.js";
 
@@ -401,8 +402,15 @@ test("Dust Bunnies afflicts every opposing kingdom with damage over time", () =>
   b.castle.hp = 10_000;
   c.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 8);
-  assert.equal(c.castle.hp, 10_000 - 8);
+  assert.equal(b.castle.hp, 10_000 - 10);
+  assert.equal(c.castle.hp, 10_000 - 10);
+});
+
+test("Dust Bunnies totals 2100 damage to every kingdom over its full duration", () => {
+  const base = resolveAbility(DUST_BUNNIES, 0);
+  const durationTicks = base.effects[0]!.params.durationTicks!;
+  const perTick = DUST_BUNNIES_STATUS.tickEffects![0]!.amount;
+  assert.equal(perTick * durationTicks, 2100);
 });
 
 test("Dust Bunnies Lv2 increases the damage over time", () => {
@@ -414,8 +422,8 @@ test("Dust Bunnies Lv2 increases the damage over time", () => {
   b.castle.hp = 10_000;
   c.castle.hp = 10_000;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, 10_000 - 12);
-  assert.equal(c.castle.hp, 10_000 - 12);
+  assert.equal(b.castle.hp, 10_000 - 15);
+  assert.equal(c.castle.hp, 10_000 - 15);
 });
 
 // --- Air Ability Upgrades ------------------------------------------------------------

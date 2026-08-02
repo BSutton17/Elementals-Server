@@ -3,43 +3,90 @@ import type { AbilityDefinition } from "../engine/abilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
 
 /**
- * Light Kingdom ability set — PLACEHOLDER DATA.
+ * Light Kingdom ability set. The three ATTACKS are designed and interlock
+ * around one idea — Light plants a swarm on an enemy and then farms it:
  *
- * The kit's identity is not designed yet. Everything here is a deliberately
- * plain, working stand-in on the shared frameworks so the kingdom is fully
- * playable end to end (selectable, castable, upgradable, synced) while its real
- * abilities are written. Replace the names, magnitudes, and effects in place —
- * nothing outside this file needs to change when the real kit lands, except the
- * matching client metadata in `Client/src/game/abilities.ts`.
+ *  - Light Beam (basic) — the reliable "Q", which hits noticeably harder while
+ *    the target is infested.
+ *  - Fireflies (med) — plants the swarm. The victim must BUY it off, at a price
+ *    scaled to how many citizens they have; a shielded castle repels it
+ *    outright. While the swarm is deployed Light cannot buy a shield of its
+ *    own, so the pressure runs both ways.
+ *  - Illumination (heavy) — heavy damage that also inflates an OUTSTANDING
+ *    ransom by 25%. It never plants the swarm, so it is only worth its slot
+ *    once Fireflies has landed.
  *
- * The shape follows every other kingdom: basic attack (Q), medium attack (E),
- * heavy attack (F), self utility (R), and an ultimate (Space), each with a
- * three-step upgrade path (damage → cooldown/cost → damage).
+ *  - Flash Bang (utility) — stretches every cooldown ALREADY running, on every
+ *    kingdom including Light's own.
+ *  - Light Show (ultimate) — a public 3 second warning, then it comes down on
+ *    everyone: shielded castles lose the shield, exposed ones eat the hit.
  *
- * Passives are `KINGDOM_PASSIVES.light` (also placeholders).
+ * The kit is complete.
+ *
+ * Passives are `KINGDOM_PASSIVES.light` ("Speed of light", "Bright idea").
+ * Magnitudes are initial, tunable defaults.
  */
 
-/** Placeholder self-buff granted by LightAbility4. */
-export const LIGHT_UTILITY_STATUS: StatusEffectDefinition = {
-  id: "lightAbility4",
-  name: "LightAbility4",
-  category: "buff",
+/**
+ * "Fireflies" — the swarm Light plants on an enemy castle. It carries no damage
+ * of its own; the pressure is entirely economic and positional:
+ *  - the bearer can pay `dispelCostPerCitizen × their citizens` to shoo it away
+ *    (see `dispelStatus`), so a fat kingdom pays more;
+ *  - it never settles on a shielded castle (`repelledByShield`);
+ *  - once it HAS settled, the bearer can no longer buy a shield
+ *    (`blocksBearerShield`) — so a shield is prevention, never a cure, and
+ *    paying the ransom is the only way out;
+ *  - Light Beam hits harder against whoever is carrying it.
+ *
+ * It does not tick down in any meaningful sense — the duration below is far
+ * longer than a match, so in practice it sits there until it is paid off.
+ */
+export const FIREFLIES_STATUS: StatusEffectDefinition = {
+  id: "fireflies",
+  name: "Fireflies",
+  category: "debuff",
   stacking: "refresh",
-  // A modest flat damage-reduction buff — a real effect so the utility slot is
-  // exercised, with nothing kingdom-defining about it.
-  modifiers: [{ stat: "damageTaken", op: "mult", value: 0.85 }],
+  dispelCostPerCitizen: 10,
+  repelledByShield: true,
+  blocksBearerShield: true,
 };
 
-/** LightAbility1 (basic): the reliable "Q". */
-export const LIGHT_ABILITY_1: AbilityDefinition = {
-  id: "lightAbility1",
-  name: "LightAbility1",
+/** Effectively "until dispelled" — longer than any match will run. */
+export const FIREFLIES_DURATION = 3600 * TICK.RATE; // 1 h
+
+/** Extra damage Light Beam deals to a target carrying the swarm. */
+const LIGHT_BEAM_INFESTED_BONUS = 150;
+
+/**
+ * Extra damage Illumination deals to a kingdom that is already swarmed. Light's
+ * heavy is built around the same idea as its basic: the glare has something to
+ * catch on. Larger than Light Beam's bonus because the whole ability is
+ * conditional on the swarm being there — the ransom inflation does nothing
+ * without one either.
+ */
+const ILLUMINATION_INFESTED_BONUS = 350;
+
+/** Light Beam (basic): the reliable "Q", worth more once the swarm is out. */
+export const LIGHT_BEAM: AbilityDefinition = {
+  id: "lightBeam",
+  name: "Light Beam",
   kind: "attack",
   cost: 100,
   cooldownTicks: 3 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   effects: [
-    { type: "damage", target: "target", params: { amount: 250, element: "light" } },
+    {
+      type: "damage",
+      target: "target",
+      params: {
+        amount: 250,
+        element: "light",
+        bonusDamageIfTargetHasStatus: {
+          statusId: FIREFLIES_STATUS.id,
+          extraAmount: LIGHT_BEAM_INFESTED_BONUS,
+        },
+      },
+    },
   ],
   upgradePath: [
     { level: 1, cost: 150, changes: { effectParams: [{ amount: 300 }] } },
@@ -51,48 +98,124 @@ export const LIGHT_ABILITY_1: AbilityDefinition = {
         costMultiplier: 0.85,
       },
     },
-    { level: 3, cost: 400, changes: { effectParams: [{ amount: 400 }] } },
+    // Lv4: the swarm bonus grows rather than the base hit — leaning the kit
+    // further into "plant it, then farm it".
+    {
+      level: 3,
+      cost: 400,
+      changes: {
+        effectParams: [
+          {
+            bonusDamageIfTargetHasStatus: {
+              statusId: FIREFLIES_STATUS.id,
+              extraAmount: 250,
+            },
+          },
+        ],
+      },
+    },
   ],
 };
 
-/** LightAbility2 (medium attack). */
-export const LIGHT_ABILITY_2: AbilityDefinition = {
-  id: "lightAbility2",
-  name: "LightAbility2",
+/**
+ * Fireflies (med): moderate damage that plants the swarm. A shielded castle
+ * shrugs the swarm off (the damage still lands); an unshielded one is stuck
+ * paying to be rid of it.
+ */
+export const FIREFLIES: AbilityDefinition = {
+  id: "fireflies",
+  name: "Fireflies",
   kind: "attack",
   cost: 250,
-  cooldownTicks: 10 * TICK.RATE, // 10 s
+  cooldownTicks: 15 * TICK.RATE, // 15 s
   targeting: { mode: "singleEnemy" },
   effects: [
-    { type: "damage", target: "target", params: { amount: 400, element: "light" } },
+    { type: "damage", target: "target", params: { amount: 300, element: "light" } },
+    {
+      type: "status",
+      target: "target",
+      params: { status: FIREFLIES_STATUS, durationTicks: FIREFLIES_DURATION },
+    },
   ],
   upgradePath: [
-    { level: 1, cost: 200, changes: { effectParams: [{ amount: 500 }] } },
+    { level: 1, cost: 200, changes: { effectParams: [{ amount: 400 }] } },
     {
       level: 2,
       cost: 300,
       changes: {
-        cooldownTicks: Math.round(10 * TICK.RATE * 0.9),
+        cooldownTicks: Math.round(15 * TICK.RATE * 0.9),
         costMultiplier: 0.85,
       },
     },
-    { level: 3, cost: 400, changes: { effectParams: [{ amount: 600 }] } },
+    // Lv4: a denser swarm — 15 gold per citizen to be rid of instead of 10.
+    {
+      level: 3,
+      cost: 400,
+      changes: {
+        effectParams: [
+          null,
+          {
+            status: { ...FIREFLIES_STATUS, dispelCostPerCitizen: 15 },
+            durationTicks: FIREFLIES_DURATION,
+          },
+        ],
+      },
+    },
   ],
 };
 
-/** LightAbility3 (heavy attack). */
-export const LIGHT_ABILITY_3: AbilityDefinition = {
-  id: "lightAbility3",
-  name: "LightAbility3",
+/**
+ * Illumination (heavy): heavy damage, and the glare drives an ALREADY-PRESENT
+ * swarm into a frenzy — the victim's outstanding ransom goes up 25%. Casting it
+ * on a kingdom with no swarm is just the damage.
+ */
+export const ILLUMINATION: AbilityDefinition = {
+  id: "illumination",
+  name: "Illumination",
   kind: "attack",
   cost: 500,
   cooldownTicks: 20 * TICK.RATE, // 20 s
   targeting: { mode: "singleEnemy" },
   effects: [
-    { type: "damage", target: "target", params: { amount: 750, element: "light" } },
+    {
+      type: "damage",
+      target: "target",
+      params: {
+        amount: 500,
+        element: "light",
+        // Lit up: a swarmed castle takes considerably more, on top of having
+        // its ransom inflated below.
+        bonusDamageIfTargetHasStatus: {
+          statusId: FIREFLIES_STATUS.id,
+          extraAmount: ILLUMINATION_INFESTED_BONUS,
+        },
+      },
+    },
+    {
+      type: "amplifyDispelCost",
+      target: "target",
+      params: {
+        amplifyDispelCost: { statusId: FIREFLIES_STATUS.id, multiplier: 1.25 },
+      },
+    },
   ],
   upgradePath: [
-    { level: 1, cost: 500, changes: { effectParams: [{ amount: 850 }] } },
+    // Lv2: the base hit and the swarm bonus both grow.
+    {
+      level: 1,
+      cost: 500,
+      changes: {
+        effectParams: [
+          {
+            amount: 650,
+            bonusDamageIfTargetHasStatus: {
+              statusId: FIREFLIES_STATUS.id,
+              extraAmount: 450,
+            },
+          },
+        ],
+      },
+    },
     {
       level: 2,
       cost: 600,
@@ -101,51 +224,104 @@ export const LIGHT_ABILITY_3: AbilityDefinition = {
         costMultiplier: 0.85,
       },
     },
-    { level: 3, cost: 800, changes: { effectParams: [{ amount: 1000 }] } },
+    // Lv4: the glare bites harder on the ransom (1.25× → 1.5×).
+    {
+      level: 3,
+      cost: 800,
+      changes: {
+        effectParams: [
+          null,
+          { amplifyDispelCost: { statusId: FIREFLIES_STATUS.id, multiplier: 1.5 } },
+        ],
+      },
+    },
   ],
 };
 
-/** LightAbility4 (utility): a self buff. */
-export const LIGHT_ABILITY_4: AbilityDefinition = {
-  id: "lightAbility4",
-  name: "LightAbility4",
+/**
+ * Flash Bang (utility): a blinding pop that stretches every cooldown ALREADY
+ * running, on every kingdom — the caster included. Abilities sitting ready are
+ * untouched, so it punishes a field that has just spent its kit and does
+ * nothing against one holding everything in reserve. Light pays the same tax it
+ * levies, though "Speed of light" claws its own back with every cast.
+ */
+export const FLASH_BANG: AbilityDefinition = {
+  id: "flashBang",
+  name: "Flash Bang",
   kind: "utility",
   cost: 150,
-  cooldownTicks: 20 * TICK.RATE, // 20 s
+  cooldownTicks: 25 * TICK.RATE, // 25 s
   targeting: { mode: "self" },
   effects: [
     {
-      type: "status",
-      target: "self",
-      params: { status: LIGHT_UTILITY_STATUS, durationTicks: 10 * TICK.RATE }, // 10 s
+      type: "cooldownModify",
+      target: "allPlayers",
+      params: { cooldownModify: { op: "multiply", value: 1.2, target: "all" } },
     },
   ],
   upgradePath: [
-    { level: 1, cost: 200, changes: { effectParams: [{ durationTicks: 15 * TICK.RATE }] } },
+    // Lv2: a harsher stretch (20% -> 30%).
+    {
+      level: 1,
+      cost: 250,
+      changes: {
+        effectParams: [
+          { cooldownModify: { op: "multiply", value: 1.3, target: "all" } },
+        ],
+      },
+    },
     {
       level: 2,
       cost: 350,
       changes: {
-        cooldownTicks: Math.round(20 * TICK.RATE * 0.85),
+        cooldownTicks: Math.round(25 * TICK.RATE * 0.85),
         costMultiplier: 0.85,
       },
     },
   ],
 };
 
-/** LightAbility5 (ultimate). */
-export const LIGHT_ABILITY_5: AbilityDefinition = {
-  id: "lightAbility5",
-  name: "LightAbility5",
+/**
+ * How long the Light Show hangs overhead before it lands.
+ *
+ * The countdown the field SEES is 3 seconds, but the strike resolves a quarter
+ * of a second later. That gap is deliberate grace: a player slamming the shield
+ * button as the counter hits zero should make it, rather than losing to the
+ * round-trip. Nobody is told about the extra beat — it only ever helps.
+ */
+export const LIGHT_SHOW_DELAY = Math.round(3.25 * TICK.RATE); // 3.25 s
+
+/**
+ * Light Show (ultimate): the sky lights up and, three seconds later, comes
+ * down on everyone. The delay is PUBLIC — that window is the whole ability, and
+ * it is a race for the shop.
+ *
+ * When it lands, each kingdom is judged on one thing: whether it is behind a
+ * shield. A shielded castle loses that shield outright, however much health it
+ * had left, and takes nothing — no carry-over. A castle caught in the open eats
+ * the whole hit. So the shield is not a damage sponge here, it is a ticket.
+ */
+export const LIGHT_SHOW: AbilityDefinition = {
+  id: "lightShow",
+  name: "Light Show",
   kind: "ultimate",
-  cost: 800,
-  cooldownTicks: 90 * TICK.RATE, // 90 s
-  targeting: { mode: "singleEnemy" },
+  cost: 500,
+  cooldownTicks: 45 * TICK.RATE, // 60 s
+  targeting: { mode: "self" },
   effects: [
-    { type: "damage", target: "target", params: { amount: 1500, element: "light" } },
+    {
+      type: "delayedStrike",
+      target: "self",
+      params: {
+        amount: 2750,
+        element: "light",
+        delayTicks: LIGHT_SHOW_DELAY,
+        breaksShields: true,
+      },
+    },
   ],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 1800 }] } },
+    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 3200 }] } },
     {
       level: 2,
       cost: 1500,
@@ -159,9 +335,9 @@ export const LIGHT_ABILITY_5: AbilityDefinition = {
 
 /** The Light kingdom's activatable ability set. */
 export const LIGHT_ABILITIES: AbilityDefinition[] = [
-  LIGHT_ABILITY_1,
-  LIGHT_ABILITY_2,
-  LIGHT_ABILITY_3,
-  LIGHT_ABILITY_4,
-  LIGHT_ABILITY_5,
+  LIGHT_BEAM,
+  FIREFLIES,
+  ILLUMINATION,
+  FLASH_BANG,
+  LIGHT_SHOW,
 ];

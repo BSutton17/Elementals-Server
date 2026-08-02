@@ -17,6 +17,8 @@ export type TransactionError =
   | "SHIELD_ACTIVE"
   | "SHIELD_COOLDOWN" // a broken shield can't be rebought yet (break cooldown)
   | "PURCHASES_BLOCKED" // a status bars citizen/repair purchases (Toxic Gas)
+  | "SHIELD_BLOCKED" // your own deployed swarm bars a shield (Light's Fireflies)
+  | "NOTHING_TO_DISPEL" // no buy-off-able status is currently held
   | "REPAIR_LIMIT"; // the per-match cap on purchased repairs is spent
 
 export interface TransactionResult {

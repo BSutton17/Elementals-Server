@@ -1,6 +1,7 @@
 import { KINGDOM_PASSIVES, type KingdomPassive } from "../data/kingdoms.js";
 import { COMBAT, TICK } from "../data/balance.js";
 import type { PlayerState } from "../match/playerState.js";
+import type { StatusEffectDefinition } from "./status.js";
 import { evaluateCondition } from "./conditions.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 
@@ -275,21 +276,91 @@ export function shieldDamageMultiplier(
   return mult;
 }
 
-/** Whether this player's attacks may be cast with multiple explicit targets
- *  (Air's "Embrace of Winds", Epic 8). */
-export function canMultiTargetAttacks(player: PlayerState): boolean {
-  return kingdomPassives(player).some((p) => p.type === "multiTargetAttacks");
+/**
+ * Ticks knocked off the remaining cooldown of every OTHER ability whenever this
+ * player casts one (Light's "Speed of light"). 0 for kingdoms without it.
+ */
+export function cooldownReductionOnCast(player: PlayerState): number {
+  let ticks = 0;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "cooldownReductionOnCast") ticks += p.ticks;
+  }
+  return Math.max(0, ticks);
 }
 
-/** Maximum enemies one of this player's attacks may strike at once (Air's
- *  "Embrace of Winds": 3 base, 5 upgraded). 1 for kingdoms without the passive.
- *  Tunable through the passive's maxTargets field (kingdomPassives applies the
- *  active parameter set). */
-export function multiTargetLimit(player: PlayerState): number {
+/**
+ * Multiplier on ability UPGRADE tier prices (Light's "Bright idea"; 1 = normal).
+ * Unlock prices are the "Great Merchants" perk's business, not this.
+ */
+export function upgradeCostMultiplier(player: PlayerState): number {
+  let mult = 1;
   for (const p of kingdomPassives(player)) {
-    if (p.type === "multiTargetAttacks") return Math.max(1, Math.round(p.maxTargets));
+    if (p.type === "upgradeCostReduction") mult *= Math.max(0, 1 - p.pct);
   }
-  return 1;
+  return mult;
+}
+
+/** Whether this player's perks run at their boosted magnitudes (Dark's
+ *  "Black Magic"). */
+export function hasBoostedPerks(player: PlayerState): boolean {
+  return kingdomPassives(player).some((p) => p.type === "boostedPerks");
+}
+
+/**
+ * Chance (0–1) that an incoming attack misses this player outright BECAUSE
+ * they are currently shielded (Joker's "Why so serious?"). 0 when unshielded,
+ * or for kingdoms without the passive — so the roll is skipped entirely.
+ */
+export function shieldedMissChance(player: PlayerState): number {
+  if (player.castle.shield <= 0) return 0;
+  let pct = 0;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "shieldedMissChance") pct += p.pct;
+  }
+  return Math.min(1, Math.max(0, pct));
+}
+
+/** Whether this player's attacks may be cast with multiple explicit targets —
+ *  permanently via a passive (Air's "Embrace of Winds") or temporarily via a
+ *  status (Dark's Infinitum tenebrae). */
+export function canMultiTargetAttacks(player: PlayerState): boolean {
+  return multiTargetLimit(player) > 1;
+}
+
+/** Maximum enemies one of this player's attacks may strike at once. Air's
+ *  "Embrace of Winds" grants 3 (5 upgraded) permanently; a status may grant its
+ *  own. The most generous source wins. 1 when nothing grants it. */
+export function multiTargetLimit(player: PlayerState): number {
+  let limit = 1;
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "multiTargetAttacks") {
+      limit = Math.max(limit, Math.round(p.maxTargets));
+    }
+  }
+  for (const s of player.statuses) {
+    if (s.grantsMultiTarget) {
+      limit = Math.max(limit, Math.round(s.grantsMultiTarget));
+    }
+  }
+  return Math.max(1, limit);
+}
+
+/** Whether a multi-target attack from this player divides its damage across the
+ *  kingdoms struck. Air spreads; Dark's Infinitum tenebrae does not. */
+export function splitsMultiTargetDamage(player: PlayerState): boolean {
+  return !player.statuses.some((s) => s.noDamageSpread);
+}
+
+/** Statuses the bearer's attacks currently inflict on their victims, granted by
+ *  an active status rather than a passive (Dark's Infinitum tenebrae). */
+export function attackInflictedStatuses(
+  player: PlayerState,
+): { status: StatusEffectDefinition; durationTicks: number }[] {
+  const out: { status: StatusEffectDefinition; durationTicks: number }[] = [];
+  for (const s of player.statuses) {
+    if (s.attackInflicts) out.push(s.attackInflicts);
+  }
+  return out;
 }
 
 /** Chance (0–1) that an attack on this player is redirected to another

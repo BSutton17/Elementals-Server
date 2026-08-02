@@ -1,3 +1,4 @@
+import { DARK } from "../data/balance.js";
 import type { PlayerState } from "../match/playerState.js";
 
 /**
@@ -75,6 +76,15 @@ export function applyDamage(
   // 2. Remaining damage hits castle HP (#66), clamped at 0.
   const dealtToHp = Math.min(target.castle.hp, remaining);
   target.castle.hp -= dealtToHp;
+
+  // Rage (Dark's Unlimited Rage) charges off punishment taken, whatever its
+  // source — attacks, DoT ticks, a Black Hole dump. This is the one place all
+  // damage funnels through, so charging here catches every one of them without
+  // each system having to remember. Tracked for everyone; only Dark reads it.
+  const taken = absorbedByShield + dealtToHp;
+  if (taken > 0) {
+    target.rageMeter = Math.min(DARK.RAGE_FULL, target.rageMeter + taken);
+  }
 
   const eliminated = target.castle.hp <= 0;
   if (eliminated) {

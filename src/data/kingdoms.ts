@@ -1,5 +1,6 @@
 import { TICK } from "./balance.js";
 import { FROZEN_STATUS, FROZEN_DURATION, FROSTBITE_STATUS } from "./iceAbilities.js";
+import { DARKENED_STATUS, DARKENED_DURATION } from "./darkAbilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
 
 /**
@@ -111,6 +112,19 @@ export type KingdomPassive = (
   /** Whenever ANY other kingdom heals for any reason, this kingdom also heals
    *  for `pct` of that amount (Love's "Feel the love!"). */
   | { type: "healShareGlobal"; pct: number }
+  /** Casting any ability knocks `ticks` off the remaining cooldown of every
+   *  OTHER ability (Light's "Speed of light"). The cast ability's own fresh
+   *  cooldown is never shortened by its own cast. */
+  | { type: "cooldownReductionOnCast"; ticks: number }
+  /** Ability upgrade tiers cost `pct` less (Light's "Bright idea"). Unlock
+   *  prices are unaffected — that is the perk's job. */
+  | { type: "upgradeCostReduction"; pct: number }
+  /** Every perk this player picked uses its BOOSTED magnitude instead of its
+   *  base one (Dark's "Black Magic"). See `PERKS` in balance.ts. */
+  | { type: "boostedPerks" }
+  /** While this kingdom's castle has an ACTIVE SHIELD, incoming attacks have
+   *  `pct` chance to miss entirely (Joker's "Why so serious?"). */
+  | { type: "shieldedMissChance"; pct: number }
 ) & { conditions?: any[] };
 
 /**
@@ -148,9 +162,18 @@ export type KingdomPassive = (
  *    of their damage reflected.
  *  - "Gardener's Gift" — begin the game with 15 citizens instead of 10.
  *
- * Joker / Light / Dark (placeholders):
- *  - Two passives each, named `<Kingdom>Passive1` / `<Kingdom>Passive2` and not
- *    yet designed — they declare no primitives, so nothing applies today.
+ * Joker (Epic 13):
+ *  - "Beginners luck" — +5% crit chance, doubling the 5% base.
+ *  - "Why so serious?" — incoming attacks have a 5% chance to miss while
+ *    Joker is shielded.
+ *
+ * Light (Epic 13):
+ *  - "Speed of light" — every cast takes 1s off all of Light's OTHER cooldowns.
+ *  - "Bright idea" — ability upgrades cost 20% less.
+ *
+ * Dark (Epic 13):
+ *  - "Night terrors" — attackers have a 20% chance to be blinded for 4s.
+ *  - "Black Magic" — Dark's perks are boosted to their stronger tier.
  */
 export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   water: [
@@ -225,12 +248,26 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   // descriptions live in `Client/src/game/kingdomInfo.ts` and should change
   // with them.
   joker: [
-    // TODO: JokerPassive1, JokerPassive2
+    // "Beginners luck" — every attack crits twice as often as normal: the
+    // passive ADDS to the shared base chance (5% + 5% = 10%).
+    { type: "critChanceModifier", pct: 0.05 },
+    // "Why so serious?" — while Joker is wearing a shield, incoming attacks
+    // have a 5% chance to whiff entirely.
+    { type: "shieldedMissChance", pct: 0.05 },
   ],
   light: [
-    // TODO: LightPassive1, LightPassive2
+    // "Speed of light" — every cast shaves 1.5 s off the remaining cooldown of
+    // each of Light's OTHER abilities.
+    { type: "cooldownReductionOnCast", ticks: 1.5 * TICK.RATE },
+    // "Bright idea" — ability upgrade tiers cost 20% less.
+    { type: "upgradeCostReduction", pct: 0.2 },
   ],
   dark: [
-    // TODO: DarkPassive1, DarkPassive2
+    // "Night terrors" — attacking Dark risks a blackout: the attacker's own
+    // screen goes dark for a few seconds.
+    { type: "retaliation", chance: 0.2, durationTicks: DARKENED_DURATION, status: DARKENED_STATUS },
+    // "Black Magic" — whichever two perks Dark picked run at their boosted
+    // magnitudes (see `PERKS.*_BOOSTED`).
+    { type: "boostedPerks" },
   ],
 };
