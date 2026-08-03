@@ -246,7 +246,7 @@ test("Illumination cast BEFORE Fireflies does not inflate the later ransom", () 
 
 // --- Flash Bang: stretching what is already running ------------------------
 
-test("Flash Bang stretches ACTIVE cooldowns on every kingdom, caster included", () => {
+test("Flash Bang stretches ACTIVE cooldowns on every OPPOSING kingdom", () => {
   const { match, a, b } = lightMatch();
   earn(a, 100_000);
   assert.equal(unlockOrUpgradeAbility(match, a, FLASH_BANG.id).ok, true);
@@ -258,11 +258,10 @@ test("Flash Bang stretches ACTIVE cooldowns on every kingdom, caster included", 
 
   assert.equal(cast(match, a, FLASH_BANG).ok, true);
 
-  // The caster is NOT spared — but the two Light effects compose in cast
-  // order: "Speed of light" fires when the cast is paid for (100 → 70), then
-  // Flash Bang's own effect stretches what's left (70 × 1.2 = 84). So Light
-  // eats its own flash, just softened by its passive.
-  assert.equal(getCooldown(a, LIGHT_BEAM.id), 84);
+  // Light is SPARED its own flash — it is the one kingdom that knows to look
+  // away. Its cooldown still moves, but only because "Speed of light" fires
+  // when the cast is paid for (100 → 70); the flash itself never touches it.
+  assert.equal(getCooldown(a, LIGHT_BEAM.id), 70);
   // Everyone else takes it raw.
   assert.equal(getCooldown(b, "waterBall"), 240);
   assert.equal(getCooldown(b, "waterfall"), 0); // still ready, still untouched
@@ -424,4 +423,21 @@ test("Light Show grants a quarter second of grace past the visible countdown", (
   resolvePendingStrikes(match);
   assert.equal(b.castle.shield, 0, "the late shield wasn't consumed");
   assert.equal(b.castle.hp, b.castle.maxHp, "the late shield didn't protect them");
+});
+
+test("Flash Bang never stretches Light's own cooldowns, passive aside", () => {
+  // Pinned separately from the composition test above, because the two Light
+  // effects landing in cast order makes "the caster was spared" easy to read
+  // wrongly. Here Light has no other ability on cooldown to be reduced, so any
+  // movement at all would be the flash hitting its own caster.
+  const { match, a, b } = lightMatch();
+  earn(a, 100_000);
+  assert.equal(unlockOrUpgradeAbility(match, a, FLASH_BANG.id).ok, true);
+  setCooldown(b, "waterBall", 200);
+
+  assert.equal(cast(match, a, FLASH_BANG).ok, true);
+  // Light Beam was never on cooldown, so there is nothing to stretch OR reduce.
+  assert.equal(getCooldown(a, LIGHT_BEAM.id), 0);
+  // The opposition still takes it in full.
+  assert.equal(getCooldown(b, "waterBall"), 240);
 });

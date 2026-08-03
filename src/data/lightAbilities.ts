@@ -240,10 +240,12 @@ export const ILLUMINATION: AbilityDefinition = {
 
 /**
  * Flash Bang (utility): a blinding pop that stretches every cooldown ALREADY
- * running, on every kingdom — the caster included. Abilities sitting ready are
- * untouched, so it punishes a field that has just spent its kit and does
- * nothing against one holding everything in reserve. Light pays the same tax it
- * levies, though "Speed of light" claws its own back with every cast.
+ * running, on every OPPOSING kingdom. Abilities sitting ready are untouched, so
+ * it punishes a field that has just spent its kit and does nothing against one
+ * holding everything in reserve.
+ *
+ * Light is spared: it is the kingdom setting the thing off, so it is the one
+ * player in the match who knows to look away.
  */
 export const FLASH_BANG: AbilityDefinition = {
   id: "flashBang",
@@ -255,7 +257,7 @@ export const FLASH_BANG: AbilityDefinition = {
   effects: [
     {
       type: "cooldownModify",
-      target: "allPlayers",
+      target: "allEnemies",
       params: { cooldownModify: { op: "multiply", value: 1.2, target: "all" } },
     },
   ],

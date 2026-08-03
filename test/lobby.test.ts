@@ -745,3 +745,78 @@ test("a room cannot exceed the maximum of eight players", async () => {
     for (const s of sockets) s.close();
   }
 });
+
+// --- Host-only room rules ----------------------------------------------------
+
+test("the host can let eliminated players keep watching health bars", async () => {
+  const host = connect();
+  const joiner = connect();
+  try {
+    await waitConnected(host);
+    await waitConnected(joiner);
+    const created = await host.emitWithAck("lobby:create", { name: "Alice" });
+    const roomCode = created.data.match.roomCode;
+    await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
+
+    // Off by default: knowing the whole board is opt-in.
+    assert.equal(created.data.match.eliminatedSeeAllHealth, false);
+
+    const broadcast = waitForUpdate(joiner, (m) => m.eliminatedSeeAllHealth === true);
+    const res = await host.emitWithAck("lobby:setRules", {
+      eliminatedSeeAllHealth: true,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.data.eliminatedSeeAllHealth, true);
+
+    // Everyone in the room learns the rule, not just the host who set it.
+    const seen = await broadcast;
+    assert.equal(seen.eliminatedSeeAllHealth, true);
+  } finally {
+    host.close();
+    joiner.close();
+  }
+});
+
+test("only the host can change the rules, and only before the match starts", async () => {
+  const host = connect();
+  const joiner = connect();
+  try {
+    await waitConnected(host);
+    await waitConnected(joiner);
+    const created = await host.emitWithAck("lobby:create", { name: "Alice" });
+    const roomCode = created.data.match.roomCode;
+    await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
+
+    const notHost = await joiner.emitWithAck("lobby:setRules", {
+      eliminatedSeeAllHealth: true,
+    });
+    assert.equal(notHost.ok, false);
+    assert.equal(notHost.error.code, "NOT_HOST");
+
+    const badInput = await host.emitWithAck("lobby:setRules", {
+      eliminatedSeeAllHealth: "yes",
+    });
+    assert.equal(badInput.ok, false);
+    assert.equal(badInput.error.code, "INVALID_INPUT");
+
+    // Once the match is running the rule is locked — changing what players can
+    // see mid-game would move the goalposts under them.
+    await host.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
+    await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
+    await host.emitWithAck("lobby:ready", { ready: true });
+    await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "fire" });
+    await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
+    await joiner.emitWithAck("lobby:ready", { ready: true });
+    const started = await host.emitWithAck("lobby:start", {});
+    assert.equal(started.ok, true);
+
+    const tooLate = await host.emitWithAck("lobby:setRules", {
+      eliminatedSeeAllHealth: true,
+    });
+    assert.equal(tooLate.ok, false);
+    assert.equal(tooLate.error.code, "INVALID_PHASE");
+  } finally {
+    host.close();
+    joiner.close();
+  }
+});

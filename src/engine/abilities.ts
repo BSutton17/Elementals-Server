@@ -134,9 +134,12 @@ export interface EffectDefinition {
   /** Who this effect applies to within the resolved targeting.
    *  `otherEnemies` = every living enemy *except* the resolved target
    *  (Earthquake's aftershock, Epic 9 — "adjacent" until maps land).
-   *  `allPlayers` = EVERY living kingdom, the caster included (Light's Flash
-   *  Bang goes off in your own hand too). */
-  target: "self" | "target" | "otherEnemies" | "allPlayers";
+   *  `allPlayers` = EVERY living kingdom, the caster included.
+   *  `allEnemies` = every living kingdom EXCEPT the caster (Light's Flash
+   *  Bang). Both ignore targeting bans, because neither is aimed at anyone —
+   *  which is what separates them from `otherEnemies`, a splash off a struck
+   *  target that does respect them. */
+  target: "self" | "target" | "otherEnemies" | "allPlayers" | "allEnemies";
   /** Conditional effects (ticket #101). */
   conditions?: EffectCondition[];
   /** Probability check (ticket #102). */
@@ -1148,11 +1151,15 @@ function activateAbilityInner(
           }
           continue;
         }
-        // Field-wide effects hit every living kingdom, the caster included —
-        // no targeting bans, because this is not aimed at anyone (Flash Bang).
-        if (effect.target === "allPlayers") {
+        // Field-wide effects hit every living kingdom — no targeting bans,
+        // because these are not aimed at anyone. `allPlayers` includes the
+        // caster; `allEnemies` spares them (Light's Flash Bang goes off in
+        // their hand, so Light is the one kingdom expecting it).
+        if (effect.target === "allPlayers" || effect.target === "allEnemies") {
+          const sparesCaster = effect.target === "allEnemies";
           for (const everyone of match.gameState!.getPlayers()) {
             if (everyone.eliminated) continue;
+            if (sparesCaster && everyone.id === caster.id) continue;
             applyEffect(match, effective.id, caster, everyone, everyone, effect, effectOptions, damage);
           }
           continue;

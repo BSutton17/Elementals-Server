@@ -29,6 +29,14 @@ export class Match {
   readonly roomCode: string;
   readonly createdAt: number;
   readonly maxPlayers: number;
+  /**
+   * Host setting: once you are eliminated, you can see every surviving
+   * kingdom's health. Off by default — knowing the whole board is a real
+   * advantage to hand a player who can no longer be punished for it, and in a
+   * room of friends it is also a channel for coaching whoever is still alive.
+   * The host turns it on for the games where watching matters more.
+   */
+  eliminatedSeeAllHealth = false;
 
   /** Current lifecycle phase. */
   phase: MatchPhase = "lobby";
@@ -169,6 +177,7 @@ export class Match {
     playerCount: number;
     maxPlayers: number;
     maxActivePlayers: number;
+    eliminatedSeeAllHealth: boolean;
     tick: number;
     winnerId: string | null;
     config: MatchConfig | null;
@@ -182,6 +191,7 @@ export class Match {
       playerCount: this.playerCount,
       maxPlayers: this.maxPlayers,
       maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
+      eliminatedSeeAllHealth: this.eliminatedSeeAllHealth,
       tick: this.tick,
       winnerId: this.winnerId,
       config: this.config,

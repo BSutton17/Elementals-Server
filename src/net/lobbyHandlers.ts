@@ -339,6 +339,43 @@ export function registerLobbyHandlers(
   // ready and the minimum player count is met (ticket #30). Full gameplay
   // initialization (active phase, tick loop, player state) is a later ticket;
   // this transitions the lobby to the "starting" phase.
+  /**
+   * Host-only room setting: whether an eliminated player keeps seeing every
+   * surviving kingdom's health. Lobby phase only — flipping it mid-match would
+   * change what players can see out from under them.
+   */
+  socket.on("lobby:setRules", (payload: { eliminatedSeeAllHealth?: unknown }, ack: unknown) => {
+    const roomCode =
+      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId =
+      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) {
+      respond(ack, fail("INVALID_PHASE", "Not in a room"));
+      return;
+    }
+    const match = matches.getMatch(roomCode);
+    if (!match) {
+      respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+      return;
+    }
+    if (!match.isHost(playerId)) {
+      respond(ack, fail("NOT_HOST", "Only the host can change the rules"));
+      return;
+    }
+    if (match.phase !== "lobby") {
+      respond(ack, fail("INVALID_PHASE", "The match has already started"));
+      return;
+    }
+    if (typeof payload?.eliminatedSeeAllHealth !== "boolean") {
+      respond(ack, fail("INVALID_INPUT", "eliminatedSeeAllHealth must be a boolean"));
+      return;
+    }
+
+    match.eliminatedSeeAllHealth = payload.eliminatedSeeAllHealth;
+    broadcastLobbyUpdate(io, match);
+    respond(ack, ok({ eliminatedSeeAllHealth: match.eliminatedSeeAllHealth }));
+  });
+
   socket.on("lobby:start", (_payload: unknown, ack: unknown) => {
     const roomCode =
       typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;

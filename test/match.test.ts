@@ -114,6 +114,8 @@ test("serializes to a plain client-facing view", () => {
     playerCount: 1,
     maxPlayers: MATCH.MAX_PLAYERS,
     maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
+    // Host rule, off until the host turns it on.
+    eliminatedSeeAllHealth: false,
     tick: 0,
     winnerId: null,
     config: null,
