@@ -8,6 +8,7 @@ import type { StatusEffectDefinition } from "../engine/status.js";
  *
  *  - Ace of Spades (basic) — a plain hit that also pulls every 2 and 3 out of
  *    the Blackjack deck for a few seconds, raising the floor on the next draw.
+ *    It never strips aces, which are now among the deck's best cards.
  *  - Blackjack (med) — draws one card from a real 54-card deck and hits for
  *    what it is worth, from a lousy 2 to a joker.
  *  - Roulette (heavy) — a European wheel the victim must bet on before their
@@ -49,7 +50,7 @@ export const ACE_OF_SPADES: AbilityDefinition = {
   id: "aceOfSpades",
   name: "Ace of Spades",
   kind: "attack",
-  cost: 150,
+  cost: 125,
   cooldownTicks: 4 * TICK.RATE, // 4s
   targeting: { mode: "singleEnemy" },
   effects: [
@@ -85,6 +86,45 @@ export const ACE_OF_SPADES: AbilityDefinition = {
 };
 
 /**
+ * Blackjack's SUIT riders. The rank decides how hard the card hits; the suit
+ * decides what it leaves behind, so every draw is two rolls at once. Diamonds
+ * are the exception — they have no status, they simply hit 10% harder (see
+ * `DIAMOND_DAMAGE_MULTIPLIER` in engine/blackjack.ts).
+ *
+ * Jokers are suitless and therefore carry no rider: the deck's best card is
+ * pure, undiluted damage.
+ */
+export const SPADE_STATUS: StatusEffectDefinition = {
+  id: "blackjackSpade",
+  name: "Spade — Blunted",
+  category: "debuff",
+  stacking: "refresh",
+  modifiers: [{ stat: "damage", op: "mult", value: 0.9 }],
+};
+
+export const CLUB_STATUS: StatusEffectDefinition = {
+  id: "blackjackClub",
+  name: "Club — Skimmed",
+  category: "debuff",
+  stacking: "refresh",
+  modifiers: [{ stat: "income", op: "mult", value: 0.85 }],
+};
+
+export const HEART_STATUS: StatusEffectDefinition = {
+  id: "blackjackHeart",
+  name: "Heart — Exposed",
+  category: "debuff",
+  stacking: "refresh",
+  // Their guard drops: everything lands 15% harder while it holds.
+  modifiers: [{ stat: "damageTaken", op: "mult", value: 1.15 }],
+};
+
+/** How long each suit's rider lasts. */
+export const SPADE_DURATION = 15 * TICK.RATE; // 15 s
+export const CLUB_DURATION = 10 * TICK.RATE; // 10 s
+export const HEART_DURATION = 15 * TICK.RATE; // 15 s
+
+/**
  * How long the reveal cinematic runs before the card REACHES the victim: the
  * summon, the fly-in (during which the card turns over), the 3 s showcase, and
  * the throw. The damage is held for exactly this long so it lands on the frame
@@ -99,9 +139,9 @@ export const BLACKJACK_IMPACT_DELAY = Math.round(4.75 * TICK.RATE); // 4.75 s
 /**
  * Blackjack (med): draw one card and hit for it. A real 54-card deck — four
  * each of Ace through King plus two jokers — so the spread is the deck's own:
- * a 2 is a wasted cast at 150, a joker is 1000, and everything in between is
- * rank × 75 (an Ace counts as 1 — the worst draw at 75 — and face cards are a
- * flat 750). See `engine/blackjack.ts`.
+ * a 2 is a poor cast at 150, a joker is 1000, and everything in between is
+ * rank × 75 (an Ace counts as 11 — 825, second only to a joker — and face
+ * cards are a flat 750). See `engine/blackjack.ts`.
  */
 export const BLACKJACK: AbilityDefinition = {
   id: "blackjack",
@@ -117,6 +157,13 @@ export const BLACKJACK: AbilityDefinition = {
       params: {
         element: "joker",
         cardDamageMultiplier: 1,
+        // The suit riders, applied when the card lands. Diamonds are absent on
+        // purpose — their bonus is baked into the card's damage instead.
+        suitStatuses: {
+          spades: { status: SPADE_STATUS, durationTicks: SPADE_DURATION },
+          clubs: { status: CLUB_STATUS, durationTicks: CLUB_DURATION },
+          hearts: { status: HEART_STATUS, durationTicks: HEART_DURATION },
+        },
         // The card's cinematic runs before it lands, and the victim must not
         // be hurt until it physically reaches them. Kept in step with the
         // client's `BLACKJACK_TOTAL_MS`.
@@ -256,7 +303,7 @@ export const ROULETTE: AbilityDefinition = {
   id: "roulette",
   name: "Roulette",
   kind: "attack",
-  cost: 450,
+  cost: 400,
   cooldownTicks: 30 * TICK.RATE, // 22 s
   targeting: { mode: "singleEnemy" },
   effects: [{ type: "roulette", target: "target", params: {} }],
@@ -285,8 +332,8 @@ export const SLOT_MACHINE: AbilityDefinition = {
   id: "slotMachine",
   name: "Slot Machine",
   kind: "ultimate",
-  cost: 750,
-  cooldownTicks: 120 * TICK.RATE, // 120 s
+  cost: 800,
+  cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [{ type: "slotMachine", target: "target", params: {} }],
   upgradePath: [

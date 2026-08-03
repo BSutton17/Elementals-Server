@@ -43,8 +43,9 @@ export function isBetColor(value: unknown): value is BetColor {
 }
 
 /** Full damage for a losing colour bet — every other payout scales off this. */
-export const ROULETTE_DAMAGE = 750;
-/** A right colour call still costs you, at half. */
+export const ROULETTE_DAMAGE = 1000;
+/** A right colour call still costs you, at half. There is no safe bet: calling
+ *  it correctly halves the hit, it never avoids it. */
 export const ROULETTE_HALF_DAMAGE = ROULETTE_DAMAGE / 2;
 /** Missing on green is the worst result on the table. */
 export const ROULETTE_GREEN_MISS_MULTIPLIER = 1.5;

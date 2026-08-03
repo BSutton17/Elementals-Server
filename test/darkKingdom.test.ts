@@ -367,15 +367,15 @@ test("without the buff Dark still only strikes one kingdom", () => {
   assert.equal(c.castle.hp, c.castle.maxHp, "a second target was hit without the buff");
 });
 
-test("the meter fills at 2500 absorbed and returns 1500", () => {
+test("the meter fills at 2000 absorbed and returns 1500", () => {
   // Both numbers are tuning the user set explicitly, so they are pinned rather
   // than left to "it dealt some damage".
-  assert.equal(DARK.RAGE_FULL, 2500);
+  assert.equal(DARK.RAGE_FULL, 2000);
 
   const { match, a, b } = darkMatch();
   // Exactly the stated punishment fills it — no more, no less.
-  applyDamage(a, 2_499, { tick: 1 });
-  assert.equal(a.rageMeter, 2_499);
+  applyDamage(a, 1_999, { tick: 1 });
+  assert.equal(a.rageMeter, 1_999);
   assert.equal(cast(match, a, UNLIMITED_RAGE).ok, false, "fired below full");
 
   applyDamage(a, 1, { tick: 2 });

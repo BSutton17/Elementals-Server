@@ -83,7 +83,7 @@ export const A_LIGHT_BREEZE: AbilityDefinition = {
   name: "A Light Breeze",
   kind: "attack",
   cost: 100,
-  cooldownTicks: 5 * TICK.RATE, // 3 s
+  cooldownTicks: 3 * TICK.RATE, // 3 s
   targeting: { mode: "singleEnemy" },
   // Bird's Eye View turns a multi-target Breeze into a bouncing gust: full
   // damage per landing, 50% to bounce again, up to 4 landings, never the same

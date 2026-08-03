@@ -19,11 +19,27 @@ export const FACE_CARD_DAMAGE = 750;
 export const JOKER_CARD_DAMAGE = 1000;
 
 /**
- * The Ace's rank for damage purposes: a 1, making it the deck's WORST draw at
- * 75. Ace of Spades deliberately does not strip it — it would be stripping
- * itself — so the floor stays low however the deck is stacked.
+ * The Ace's rank for damage purposes: an 11, worth 825 — the second-best card
+ * in the deck behind a joker. It used to count as a 1 (75, the worst draw),
+ * which made Blackjack's floor so low that a quarter of the deck was close to
+ * a wasted cast at 250 gold. Raising it lifts Joker's damage where the kingdom
+ * was weakest: the bottom of its range, not the top.
+ *
+ * Ace of Spades still does not strip aces — it would now be throwing away one
+ * of the best cards it could draw.
  */
-export const ACE_RANK = 1;
+export const ACE_RANK = 11;
+
+/**
+ * The four suits. Every card carries one, and the suit decides what the hit
+ * does BESIDES damage — so a draw has two independent axes: how hard it lands
+ * (rank) and what it leaves behind (suit).
+ */
+export const SUITS = ["spades", "hearts", "diamonds", "clubs"] as const;
+export type Suit = (typeof SUITS)[number];
+
+/** Diamonds hit harder — the only suit that touches the damage itself. */
+export const DIAMOND_DAMAGE_MULTIPLIER = 1.1;
 
 /** Ranks that are FACE cards rather than numbered ones. */
 export const FACE_RANKS = [11, 12, 13] as const;
@@ -40,8 +56,11 @@ export interface DrawnCard {
   rank: number | null;
   /** Human-readable label for events/UI ("7", "Queen", "Joker"). */
   label: string;
-  /** Damage this card deals. */
+  /** Damage this card deals, diamonds already boosted. */
   damage: number;
+  /** The suit drawn, or null for a joker — jokers are suitless, so they carry
+   *  no rider at all and are pure damage. */
+  suit: Suit | null;
 }
 
 const RANK_LABELS: Record<number, string> = {
@@ -81,12 +100,24 @@ export function buildDeck(player: PlayerState): DrawnCard[] {
   const deck: DrawnCard[] = [];
   for (let rank = 1; rank <= 13; rank++) {
     if (missing.includes(rank)) continue;
+    // One copy per suit, exactly like a real deck — which is also what makes
+    // each suit's rider a clean 1-in-4.
     for (let i = 0; i < COPIES_PER_RANK; i++) {
-      deck.push({ rank, label: labelFor(rank), damage: damageForRank(rank) });
+      const suit = SUITS[i]!;
+      const base = damageForRank(rank);
+      deck.push({
+        rank,
+        label: labelFor(rank),
+        suit,
+        damage:
+          suit === "diamonds"
+            ? Math.round(base * DIAMOND_DAMAGE_MULTIPLIER)
+            : base,
+      });
     }
   }
   for (let i = 0; i < JOKER_COUNT; i++) {
-    deck.push({ rank: null, label: "Joker", damage: JOKER_CARD_DAMAGE });
+    deck.push({ rank: null, label: "Joker", damage: JOKER_CARD_DAMAGE, suit: null });
   }
   return deck;
 }
@@ -104,7 +135,7 @@ export function drawBlackjackCard(
   // A deck can never be emptied by the strip effects that exist, but a future
   // one could; falling back to a joker keeps the draw total.
   if (deck.length === 0) {
-    return { rank: null, label: "Joker", damage: JOKER_CARD_DAMAGE };
+    return { rank: null, label: "Joker", damage: JOKER_CARD_DAMAGE, suit: null };
   }
   const index = Math.min(deck.length - 1, Math.floor(rng() * deck.length));
   return deck[index]!;

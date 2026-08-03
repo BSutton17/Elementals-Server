@@ -10,6 +10,7 @@ import {
   type AbilityDefinition,
 } from "../src/engine/abilities.js";
 import { earn } from "../src/engine/money.js";
+import { TICK } from "../src/data/balance.js";
 import { getStatus, processStatusTicks } from "../src/engine/status.js";
 import {
   A_LIGHT_BREEZE,
@@ -67,8 +68,11 @@ test("Embrace of Winds: Air attacks may hit multiple explicit targets for one co
   // Damage spreads evenly across the two kingdoms struck: 250 / 2 = 125 each.
   assert.equal(b.castle.hp, b.castle.maxHp - 125);
   assert.equal(c.castle.hp, c.castle.maxHp - 125);
-  assert.equal(a.economy.currency, before - 125); // cost paid once
-  assert.equal(a.cooldowns["aLightBreeze"], 100); // cooldown armed once
+  assert.equal(a.economy.currency, before - A_LIGHT_BREEZE.cost); // paid once
+  assert.equal(
+    a.cooldowns["aLightBreeze"],
+    A_LIGHT_BREEZE.cooldownTicks, // armed once
+  );
 });
 
 test("Embrace of Winds: a single target takes full damage (spread of 1)", () => {
@@ -170,8 +174,8 @@ test("Bird's Eye bounce: cost and cooldown are paid once for the whole chain", (
     forceCrit: false,
     rng: () => 0,
   });
-  assert.equal(before - a.economy.currency, 125); // one cast price
-  assert.equal(a.cooldowns["aLightBreeze"], 100); // one cooldown
+  assert.equal(before - a.economy.currency, A_LIGHT_BREEZE.cost); // one price
+  assert.equal(a.cooldowns["aLightBreeze"], A_LIGHT_BREEZE.cooldownTicks);
 });
 
 test("Bird's Eye bounce: 50% roll can stop the chain early (still full damage)", () => {
@@ -431,13 +435,13 @@ test("Dust Bunnies Lv2 increases the damage over time", () => {
 test("A Light Breeze upgrades modify damage and cooldown values", () => {
   const lv1 = resolveAbility(A_LIGHT_BREEZE, 0);
   assert.equal(lv1.effects[0].params.amount, 250);
-  assert.equal(lv1.cooldownTicks, 100);
+  assert.equal(lv1.cooldownTicks, 3 * TICK.RATE); // 3 s
 
   const lv2 = resolveAbility(A_LIGHT_BREEZE, 1);
   assert.equal(lv2.effects[0].params.amount, 300);
 
   const lv3 = resolveAbility(A_LIGHT_BREEZE, 2);
-  assert.equal(lv3.cooldownTicks, 54);
+  assert.equal(lv3.cooldownTicks, Math.round(3 * TICK.RATE * 0.9)); // 2.7 s
 
   const lv4 = resolveAbility(A_LIGHT_BREEZE, 3);
   assert.equal(lv4.effects[0].params.amount, 350);

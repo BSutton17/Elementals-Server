@@ -4,6 +4,7 @@ import type { PlayerState } from "../match/playerState.js";
 import { computeStat } from "./modifiers.js";
 import { param } from "./parameters.js";
 import {
+  besiegedIncomeMultiplier,
   besiegedIncomePerTick,
   besiegerIncomeMultiplier,
   incomeRatePerCitizen,
@@ -61,11 +62,16 @@ export function applyPassiveIncome(state: GameState): void {
       );
       continue;
     }
-    // Pressure-driven income: Space's "Vast Universe" multiplies income by the
-    // number of kingdoms targeting it; the universal "Besieged" bonus adds a
-    // flat defensive top-up. Both fold into incomePerTick so the HUD reflects it.
+    // Pressure-driven income, all folded into incomePerTick so the HUD shows
+    // the real rate:
+    //   • the universal "Besieged" MULTIPLIER — the comeback mechanic, +25% per
+    //     attacker beyond the first (+50% for Dark);
+    //   • Space's "Vast Universe", which multiplies on top of that;
+    //   • the universal flat top-up, added last so it isn't multiplied twice.
     player.economy.incomePerTick = roundMoney(
-      player.economy.incomePerTick * besiegerIncomeMultiplier(player, players) +
+      player.economy.incomePerTick *
+        besiegedIncomeMultiplier(player, players) *
+        besiegerIncomeMultiplier(player, players) +
         besiegedIncomePerTick(player, players),
     );
     earn(player, player.economy.incomePerTick);

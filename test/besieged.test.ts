@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { activateAbility } from "../src/engine/abilities.js";
-import { besiegedDamageMultiplier, besiegedIncomePerTick } from "../src/engine/passives.js";
+import {
+  besiegedDamageMultiplier,
+  besiegedIncomeMultiplier,
+  besiegedIncomePerTick,
+} from "../src/engine/passives.js";
 import { applyPassiveIncome } from "../src/engine/economy.js";
 import { withParameterSet } from "../src/engine/parameters.js";
 import { selectTarget } from "../src/engine/targeting.js";
@@ -158,10 +162,105 @@ test("a besieged attacker's Water Ball hits harder end to end", () => {
   const { match, players } = arena(4);
   const [me, a, b, c] = players;
 
-  // Two enemies pile onto `me` (1 stack = +10%); `me` fires at a third.
+  // Two enemies pile onto `me` (1 stack); `me` fires at a third.
   selectTarget(match, a, me.id);
   selectTarget(match, b, me.id);
   c.castle.hp = 10_000;
   activateAbility(match, me, WATER_BALL, { targetId: c.id, forceCrit: false });
-  assert.equal(c.castle.hp, 10_000 - 330); // 300 × 1.10
+  // Derived from the constant, so retuning the bonus doesn't break the test
+  // that exists to prove it reaches the damage pipeline at all.
+  const expected = Math.round(300 * (1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER));
+  assert.equal(c.castle.hp, 10_000 - expected);
 });
+
+// --- The income side of the comeback ----------------------------------------
+
+/** Points `attackers` at `victim`. */
+function gangUpOn(victim: PlayerState, attackers: PlayerState[], match: Match) {
+  for (const a of attackers) selectTarget(match, a, victim.id);
+}
+
+test("gold production scales 25% per attacker beyond the first", () => {
+  const { match, players } = arena(5);
+  const [me, ...rest] = players;
+  const all = match.gameState!.getPlayers();
+
+  // A fair fight is neutral: one attacker is not a gang.
+  gangUpOn(me, [rest[0]!], match);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1);
+
+  // Each attacker past the first is +25%.
+  gangUpOn(me, [rest[1]!], match);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1.25);
+  gangUpOn(me, [rest[2]!], match);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1.5);
+  gangUpOn(me, [rest[3]!], match);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1.75);
+});
+
+test("Space profits twice as fast from being ganged up on", () => {
+  // "Vast Universe" is the passive about being everyone's target, so Space —
+  // not Dark, whose passive is about perks — runs the doubled rate.
+  const match = new Match("1234");
+  match.addPlayer(player("p0", "space"));
+  for (let i = 1; i < 5; i++) match.addPlayer(player(`p${i}`, "plains"));
+  match.hostId = "p0";
+  match.start(createMatchConfig(match));
+  match.tick = 1000;
+  const gs = match.gameState!;
+  const space = gs.getPlayer("p0")!;
+  const rest = [1, 2, 3, 4].map((i) => gs.getPlayer(`p${i}`)!);
+
+  gangUpOn(space, [rest[0]!, rest[1]!], match);
+  // Two attackers = one stack, and "Vast Universe" doubles the rate.
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1.5);
+
+  gangUpOn(space, [rest[2]!], match);
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 2);
+});
+
+test("Dark runs the ORDINARY rate — Black Magic governs perks, not sieges", () => {
+  const match = new Match("1234");
+  match.addPlayer(player("p0", "dark"));
+  for (let i = 1; i < 5; i++) match.addPlayer(player(`p${i}`, "plains"));
+  match.hostId = "p0";
+  match.start(createMatchConfig(match));
+  match.tick = 1000;
+  const gs = match.gameState!;
+  const dark = gs.getPlayer("p0")!;
+  const rest = [1, 2, 3].map((i) => gs.getPlayer(`p${i}`)!);
+
+  gangUpOn(dark, [rest[0]!, rest[1]!, rest[2]!], match);
+  assert.equal(besiegedIncomeMultiplier(dark, gs.getPlayers()), 1.5); // 2 stacks x 25%
+});
+
+test("the besieged multiplier actually reaches the treasury", () => {
+  const { match, players } = arena(5);
+  const [me, ...rest] = players;
+  me.economy.citizens = 20;
+
+  // Alone: the plain rate.
+  const solo = me.economy.currency;
+  applyPassiveIncome(match.gameState!);
+  const plainRate = me.economy.currency - solo;
+
+  // Ganged up on by three: +50% (two attackers past the first).
+  gangUpOn(me, [rest[0]!, rest[1]!, rest[2]!], match);
+  const before = me.economy.currency;
+  applyPassiveIncome(match.gameState!);
+  const besiegedRate = me.economy.currency - before;
+
+  assert.ok(besiegedRate > plainRate, "being ganged up on paid no better");
+  // The flat top-up rides along on top, so this is a floor rather than equality.
+  assert.ok(besiegedRate >= plainRate * 1.5);
+});
+
+test("the damage bonus is untouched by the income change", () => {
+  const { match, players } = arena(4);
+  const [me, ...rest] = players;
+  gangUpOn(me, [rest[0]!, rest[1]!], match);
+  assert.equal(
+    besiegedDamageMultiplier(me, match.gameState!.getPlayers()),
+    1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
+  );
+})

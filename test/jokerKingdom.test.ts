@@ -14,7 +14,9 @@ import {
   DAMAGE_PER_RANK,
   FACE_CARD_DAMAGE,
   JOKER_CARD_DAMAGE,
+  DIAMOND_DAMAGE_MULTIPLIER,
 } from "../src/engine/blackjack.js";
+import { computeStat } from "../src/engine/modifiers.js";
 import {
   ACE_OF_SPADES,
   BLACKJACK,
@@ -78,9 +80,13 @@ test("cards pay out by rank, with face cards and jokers flat", () => {
   for (const face of [11, 12, 13]) {
     assert.equal(damageForRank(face), FACE_CARD_DAMAGE);
   }
-  // The Ace counts as 1 — the deck's worst card at 75.
-  assert.equal(damageForRank(1), ACE_RANK * DAMAGE_PER_RANK); // 75
-  assert.equal(ACE_RANK, 1);
+  // The Ace counts as 11 — 825, second only to a joker.
+  assert.equal(damageForRank(1), ACE_RANK * DAMAGE_PER_RANK); // 825
+  assert.equal(ACE_RANK, 11);
+  assert.ok(damageForRank(1) > FACE_CARD_DAMAGE, "an Ace should beat a face card");
+  assert.ok(damageForRank(1) < JOKER_CARD_DAMAGE, "only a joker beats an Ace");
+  // The 2 is now the deck's floor.
+  assert.equal(damageForRank(2), 150);
 
   const { a } = jokerMatch();
   const joker = buildDeck(a).find((c) => c.rank === null)!;
@@ -140,17 +146,18 @@ test("stripping the deck raises the AVERAGE draw but not the floor", () => {
   applyStatus(a, STACKED_DECK_STATUS, { sourceId: a.id, durationTicks: 100 });
   assert.ok(mean(a) > before, `expected a better average (${mean(a)} vs ${before})`);
 
-  // The Ace survives the strip and is the deck's worst card, so the floor is
-  // unchanged — Ace of Spades does not remove aces.
-  assert.equal(Math.min(...buildDeck(a).map((c) => c.damage)), ACE_RANK * DAMAGE_PER_RANK);
+  // Aces survive the strip — they are among the BEST cards now, so removing
+  // them would be Ace of Spades sabotaging its own draw.
   assert.equal(buildDeck(a).filter((c) => c.rank === 1).length, 4);
+  // With the 2s and 3s gone the floor rises to the 4.
+  assert.equal(Math.min(...buildDeck(a).map((c) => c.damage)), 4 * DAMAGE_PER_RANK);
 });
 
 // --- Blackjack --------------------------------------------------------------
 
 test("Blackjack hits for the card it draws — when the card arrives", () => {
   const { match, a, b } = jokerMatch();
-  // rng() = 0 draws the deck's first card (an Ace, 75).
+  // rng() = 0 draws the deck's first card (an Ace, 825).
   const hpBefore = b.castle.hp;
   assert.equal(
     activateAbility(match, a, BLACKJACK, { forceCrit: false, rng: () => 0 }).ok,
@@ -353,4 +360,86 @@ test("a settled bet carries both points of view", () => {
   assert.match(bet.outcome, /\byou\b/i);
   assert.match(bet.publicOutcome, /Alice/);
   assert.doesNotMatch(bet.publicOutcome, /\byou\b/i);
+});
+
+// --- Blackjack: the suits ----------------------------------------------------
+
+test("every card carries a suit, one of each per rank; jokers carry none", () => {
+  const { a } = jokerMatch();
+  const deck = buildDeck(a);
+  for (let rank = 1; rank <= 13; rank++) {
+    const suits = deck.filter((c) => c.rank === rank).map((c) => c.suit).sort();
+    assert.deepEqual(suits, ["clubs", "diamonds", "hearts", "spades"], `rank ${rank}`);
+  }
+  // A joker is suitless — the deck's best card is pure damage, no rider.
+  assert.equal(deck.filter((c) => c.rank === null).every((c) => c.suit === null), true);
+});
+
+test("diamonds hit 10% harder; the other suits hit for the plain rank", () => {
+  const { a } = jokerMatch();
+  const sevens = buildDeck(a).filter((c) => c.rank === 7);
+  const diamond = sevens.find((c) => c.suit === "diamonds")!;
+  const spade = sevens.find((c) => c.suit === "spades")!;
+  assert.equal(spade.damage, 7 * DAMAGE_PER_RANK); // 525
+  assert.equal(diamond.damage, Math.round(7 * DAMAGE_PER_RANK * DIAMOND_DAMAGE_MULTIPLIER)); // 578
+  assert.ok(diamond.damage > spade.damage);
+});
+
+/** Draws a specific suit of a specific rank by picking its index in the deck. */
+function drawIndex(player: PlayerState, predicate: (c: ReturnType<typeof buildDeck>[number]) => boolean) {
+  const deck = buildDeck(player);
+  const i = deck.findIndex(predicate);
+  assert.ok(i >= 0, "no such card in the deck");
+  return () => i / deck.length;
+}
+
+function landBlackjack(match: Match, a: PlayerState, rng: () => number) {
+  assert.equal(activateAbility(match, a, BLACKJACK, { forceCrit: false, rng }).ok, true);
+  match.tick += BLACKJACK_IMPACT_DELAY;
+  resolvePendingStrikes(match);
+}
+
+test("a spade blunts the victim's own attacks", () => {
+  const { match, a, b } = jokerMatch();
+  landBlackjack(match, a, drawIndex(a, (c) => c.rank === 7 && c.suit === "spades"));
+  const spade = b.statuses.find((s) => s.id === "blackjackSpade");
+  assert.ok(spade, "no spade rider landed");
+  assert.equal(computeStat(b, "damage", 1000), 900); // -10%
+});
+
+test("a club skims the victim's gold production", () => {
+  const { match, a, b } = jokerMatch();
+  landBlackjack(match, a, drawIndex(a, (c) => c.rank === 7 && c.suit === "clubs"));
+  assert.ok(b.statuses.some((s) => s.id === "blackjackClub"), "no club rider landed");
+  assert.equal(computeStat(b, "income", 100), 85); // -15%
+});
+
+test("a heart leaves the victim exposed to everything", () => {
+  const { match, a, b } = jokerMatch();
+  landBlackjack(match, a, drawIndex(a, (c) => c.rank === 7 && c.suit === "hearts"));
+  assert.ok(b.statuses.some((s) => s.id === "blackjackHeart"), "no heart rider landed");
+  assert.equal(computeStat(b, "damageTaken", 1000), 1150); // +15% taken
+});
+
+test("a diamond leaves NO rider — its whole bonus is the damage", () => {
+  const { match, a, b } = jokerMatch();
+  landBlackjack(match, a, drawIndex(a, (c) => c.rank === 7 && c.suit === "diamonds"));
+  assert.equal(
+    b.statuses.some((s) => s.id.startsWith("blackjack")),
+    false,
+    "a diamond applied a status it shouldn't have",
+  );
+});
+
+test("the rider lands WITH the card, never before it", () => {
+  // The victim must not learn the suit while the card is still in the air —
+  // that would spoil the reveal the whole cinematic is built around.
+  const { match, a, b } = jokerMatch();
+  const rng = drawIndex(a, (c) => c.rank === 7 && c.suit === "spades");
+  assert.equal(activateAbility(match, a, BLACKJACK, { forceCrit: false, rng }).ok, true);
+  assert.equal(b.statuses.some((s) => s.id === "blackjackSpade"), false, "the rider arrived early");
+
+  match.tick += BLACKJACK_IMPACT_DELAY;
+  resolvePendingStrikes(match);
+  assert.ok(b.statuses.some((s) => s.id === "blackjackSpade"), "the rider never arrived");
 });

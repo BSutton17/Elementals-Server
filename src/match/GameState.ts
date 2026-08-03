@@ -1,3 +1,4 @@
+import type { StatusEffectDefinition } from "../engine/status.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer } from "./types.js";
 import { createPlayerState, type PlayerState } from "./playerState.js";
@@ -37,6 +38,13 @@ export interface PendingStrike {
    * shield and takes NO damage, with nothing carrying over to castle HP.
    */
   breaksShields: boolean;
+  /**
+   * A status applied to each kingdom the strike lands on. It rides ALONG with
+   * the damage rather than being applied at cast, so a delayed hit (Joker's
+   * Blackjack) doesn't tip its own reveal — the victim learns the suit when the
+   * card arrives, not before it.
+   */
+  rider?: { status: StatusEffectDefinition; durationTicks: number };
   /**
    * When set, ONLY this kingdom is struck rather than the whole field — a
    * single delayed hit whose damage was already resolved at cast time and is

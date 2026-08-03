@@ -183,6 +183,15 @@ export interface EffectDefinition {
     /** damage: extra damage when the recipient bears a named status. */
     bonusDamageIfTargetHasStatus?: { statusId: string; extraAmount: number };
     /**
+     * Joker's Blackjack: what each SUIT leaves behind when the card lands.
+     * Keyed by suit; a suit with no entry (diamonds) carries no rider, and a
+     * joker has no suit at all.
+     */
+    suitStatuses?: Record<
+      string,
+      { status: StatusEffectDefinition; durationTicks: number }
+    >;
+    /**
      * amplifyDispelCost: multiply what the recipient owes to shake off a named
      * status (Light's Illumination inflating the Fireflies buy-off price). A
      * no-op unless they already carry it — it never applies the status itself.
@@ -2014,6 +2023,9 @@ function applyEffect(
       const cardAmount = Math.round(
         card.damage * (p.cardDamageMultiplier ?? 1),
       );
+      // The suit's rider, if this suit has one. Diamonds don't — their bonus is
+      // already inside `card.damage` — and a joker has no suit at all.
+      const rider = card.suit ? p.suitStatuses?.[card.suit] : undefined;
       if (bus.enabled) {
         bus.emit({
           type: "cardDrawn",
@@ -2021,6 +2033,7 @@ function applyEffect(
           playerId: caster.id,
           abilityId,
           card: card.label,
+          suit: card.suit,
           damage: cardAmount,
         });
       }
@@ -2047,6 +2060,7 @@ function applyEffect(
           amount: drawn.amount,
           element: p.element,
           breaksShields: false,
+          rider,
         });
         break;
       }
@@ -2054,6 +2068,13 @@ function applyEffect(
       const drawnApplied = applyDamage(recipient, drawn.amount, { tick: match.tick });
       damage.push(drawnApplied);
       emitDamage(recipient.id, caster.id, drawnApplied, drawn.crit, abilityId);
+      if (rider) {
+        const inst = applyStatus(recipient, rider.status, {
+          sourceId: caster.id,
+          durationTicks: rider.durationTicks,
+        });
+        emitStatusApplied(recipient.id, caster.id, inst);
+      }
       break;
     }
 
@@ -2448,6 +2469,25 @@ export function resolvePendingStrikes(match: Match): void {
       }
 
       const applied = applyDamage(victim, strike.amount, { tick: match.tick });
+      // A rider travels WITH the strike (Blackjack's suit), so it lands on the
+      // same frame as the damage rather than tipping the reveal early.
+      if (strike.rider) {
+        const inst = applyStatus(victim, strike.rider.status, {
+          sourceId: strike.ownerId,
+          durationTicks: strike.rider.durationTicks,
+        });
+        if (bus.enabled) {
+          bus.emit({
+            type: "statusApplied",
+            tick: match.tick,
+            targetId: victim.id,
+            sourceId: strike.ownerId,
+            statusId: inst.id,
+            durationTicks: inst.remainingTicks ?? strike.rider.durationTicks,
+            stacks: inst.stacks ?? 1,
+          });
+        }
+      }
       if (bus.enabled) {
         bus.emit({
           type: "damage",

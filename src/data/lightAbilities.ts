@@ -296,6 +296,13 @@ export const LIGHT_SHOW_DELAY = Math.round(3.25 * TICK.RATE); // 3.25 s
  * down on everyone. The delay is PUBLIC — that window is the whole ability, and
  * it is a race for the shop.
  *
+ * Light's kit is built AROUND casting this as often as possible, which is why
+ * it hits for less than its peers and comes back far sooner (60 s against the
+ * field's 90–210 s). Fireflies exists to serve it: barring the victim from
+ * buying a shield is what turns the next Light Show from a tax into a kill.
+ * Reading this ability's numbers next to other ultimates in isolation will
+ * always make it look cheap — the cooldown IS the kingdom.
+ *
  * When it lands, each kingdom is judged on one thing: whether it is behind a
  * shield. A shielded castle loses that shield outright, however much health it
  * had left, and takes nothing — no carry-over. A castle caught in the open eats
@@ -306,14 +313,14 @@ export const LIGHT_SHOW: AbilityDefinition = {
   name: "Light Show",
   kind: "ultimate",
   cost: 500,
-  cooldownTicks: 45 * TICK.RATE, // 60 s
+  cooldownTicks: 60 * TICK.RATE, // 60 s
   targeting: { mode: "self" },
   effects: [
     {
       type: "delayedStrike",
       target: "self",
       params: {
-        amount: 2750,
+        amount: 1750,
         element: "light",
         delayTicks: LIGHT_SHOW_DELAY,
         breaksShields: true,
@@ -321,12 +328,12 @@ export const LIGHT_SHOW: AbilityDefinition = {
     },
   ],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 3200 }] } },
+    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 2000 }] } },
     {
       level: 2,
       cost: 1500,
       changes: {
-        cooldownTicks: Math.round(90 * TICK.RATE * 0.85),
+        cooldownTicks: Math.round(60 * TICK.RATE * 0.85), // 60 s -> 51 s
         costMultiplier: 0.85,
       },
     },

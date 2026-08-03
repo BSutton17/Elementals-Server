@@ -163,6 +163,39 @@ export function besiegedDamageMultiplier(
 }
 
 /**
+ * "Besieged" income MULTIPLIER (universal): each attacker beyond the first
+ * raises production by a fraction of it — 25% normally, or 50% for the kingdom
+ * whose passive is profiting from besiegers (Space's "Vast Universe"). Space's
+ * own multiplier applies on top: being everyone's target is its whole economy.
+ *
+ * This scales with the economy the player has actually built, unlike the flat
+ * top-up below, which is why it can still matter in the late game where a
+ * comeback has to happen.
+ */
+export function besiegedIncomeMultiplier(
+  player: PlayerState,
+  allPlayers: readonly PlayerState[],
+): number {
+  const stacks = besiegedStacks(player, allPlayers);
+  if (stacks <= 0) return 1;
+  // Keyed on the passive itself rather than on a kingdom id, so any future
+  // kingdom given "Vast Universe" inherits the boosted rate automatically.
+  const profitsFromSiege = kingdomPassives(player).some(
+    (p) => p.type === "incomeMultiplierPerBesieger",
+  );
+  const pct = profitsFromSiege
+    ? param(
+        "combat.besiegedIncomePctPerAttackerBoosted",
+        COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED,
+      )
+    : param(
+        "combat.besiegedIncomePctPerAttacker",
+        COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER,
+      );
+  return 1 + pct * stacks;
+}
+
+/**
  * "Besieged" defensive income bonus (universal): while ganged up on, your
  * citizens work harder — each besieging attacker beyond the first grants
  * `BESIEGED_INCOME_PER_ATTACKER` extra gold PER SECOND. Returned as a PER-TICK

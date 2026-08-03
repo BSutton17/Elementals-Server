@@ -64,7 +64,12 @@ export const COMBAT = {
    * grants this fraction of extra outgoing attack damage — so a fair 1v1 is
    * unbuffed, but being triple-teamed pays you back for the pressure.
    */
-  BESIEGED_DAMAGE_PER_ATTACKER: 0.1,
+  /**
+   * Extra damage per attacker beyond the first. Deliberately steep: at the cap
+   * a kingdom the whole field has turned on hits for well over double, which is
+   * what makes ganging up genuinely dangerous rather than simply efficient.
+   */
+  BESIEGED_DAMAGE_PER_ATTACKER: 0.2,
   /** Cap on besieging attackers that count toward the bonus (beyond the first). */
   BESIEGED_MAX_STACKS: 6,
   /**
@@ -73,6 +78,22 @@ export const COMBAT = {
    * fund the defense). Uses the same capped stack count as the damage bonus.
    */
   BESIEGED_INCOME_PER_ATTACKER: 2,
+  /**
+   * "Besieged" income MULTIPLIER: each attacker beyond the first raises your
+   * gold production by this fraction. Unlike the flat top-up above this scales
+   * with the economy you have actually built, so it stays meaningful late.
+   *
+   * This is the game's comeback mechanic: the kingdom everyone has decided to
+   * kill earns faster while they do it, so being focused is survivable rather
+   * than simply terminal.
+   */
+  BESIEGED_INCOME_PCT_PER_ATTACKER: 0.25,
+  /**
+   * The same, doubled, for the kingdom whose passive is profiting from being
+   * ganged up on (Space's "Vast Universe"). It stacks with that passive's own
+   * multiplier on purpose — being everyone's target IS Space's economy.
+   */
+  BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED: 0.5,
 } as const;
 
 /**
@@ -177,7 +198,7 @@ export const DARK = {
    * The meter fills by exactly the damage taken, so a big hit is worth
    * proportionally more than a poke — but the total is all that matters.
    */
-  RAGE_FULL: 2500,
+  RAGE_FULL: 2000,
 } as const;
 
 /** Targeting rules. */

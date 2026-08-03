@@ -263,6 +263,9 @@ export type GameplayEvent =
       playerId: string;
       abilityId: string;
       card: string;
+      /** The suit drawn, or null for a joker (which has none). Decides the
+       *  rider the card leaves behind, and which pip the reveal shows. */
+      suit: string | null;
       damage: number;
     }
   /** Joker gambled on Lucky Draw. `outcome` names what came up, or is null
