@@ -246,7 +246,7 @@ export const NEVER_ENDING_NIGHTMARE: AbilityDefinition = {
 };
 
 /** How long Infinitum tenebrae's darkness holds the field. */
-export const TENEBRAE_DURATION = 30 * TICK.RATE; // 30 s
+export const TENEBRAE_DURATION = 15 * TICK.RATE; // 15 s
 
 /**
  * "Infinitum tenebrae" — the ultimate's self-buff. For its window Dark's

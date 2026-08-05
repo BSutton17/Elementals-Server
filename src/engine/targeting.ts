@@ -1,5 +1,7 @@
 import { TARGETING } from "../data/balance.js";
 import { param } from "./parameters.js";
+import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { volcanoIsLive } from "./volcano.js";
 import { isTargetingBlocked } from "./status.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
@@ -73,6 +75,20 @@ export function selectTarget(
 
   // Must still be in the match roster. A player removed after their reconnection
   // grace expired is no longer targetable; one still within grace remains (#62).
+  // The volcano (Magma's "The End of the World") is a legal target while it is
+  // standing: everyone but Magma has to be able to point at it and swing. It is
+  // not a kingdom, so none of the player checks below apply to it.
+  if (targetId === VOLCANO_TARGET_ID) {
+    if (!volcanoIsLive(match)) return { ok: false, error: "INVALID_TARGET" };
+    if (match.gameState!.volcano!.ownerId === player.id) {
+      // Magma cannot attack its own volcano — it is the one kingdom the
+      // eruption spares, so letting it help would be pure downside.
+      return { ok: false, error: "INVALID_TARGET" };
+    }
+    player.target = targetId;
+    return { ok: true };
+  }
+
   if (!match.hasPlayer(targetId)) return { ok: false, error: "INVALID_TARGET" };
 
   // Must be a live, non-eliminated kingdom (#61/#62).

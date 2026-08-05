@@ -1,10 +1,62 @@
 import type { StatusEffectDefinition } from "../engine/status.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer } from "./types.js";
-import { createPlayerState, type PlayerState } from "./playerState.js";
+import {
+  createPlayerState,
+  type PlayerState,
+  type StatusTickEffect,
+} from "./playerState.js";
 import { EventBus } from "../engine/events.js";
 
 /** An open Black Hole absorbing attacks until it collapses (Space ultimate). */
+/** The sentinel target id that means "the volcano", not a kingdom. */
+export const VOLCANO_TARGET_ID = "__volcano__";
+
+export interface VolcanoState {
+  /** The Magma kingdom that called it down — spared by the eruption. */
+  ownerId: string;
+  /** Damage it can still absorb before it is broken. */
+  hp: number;
+  /** What it started at: 1000 per living kingdom. */
+  maxHp: number;
+  /** Tick at which it erupts if it is still standing. */
+  endTick: number;
+  /**
+   * Damage each kingdom has personally chipped off it, by player id.
+   *
+   * The eruption bill is SHARED — everyone takes the same shortfall — so this
+   * does not affect anyone's damage. It is kept so the client can show who
+   * actually helped, which is the information a table needs to shame a
+   * free-rider into swinging next time.
+   */
+  contributions: Record<string, number>;
+  /**
+   * Statuses riding on the mountain — burns, freezes, anything an attack
+   * carries.
+   *
+   * The volcano is not a kingdom, so it has no stats to modify and takes no
+   * actions to interrupt: a freeze on it is inert, and only tick DAMAGE
+   * actually does anything. It still HOLDS every status it is given, because
+   * an attack that silently drops half of itself when pointed at the volcano
+   * is worse than one whose second half is visibly doing nothing.
+   */
+  statuses: VolcanoStatus[];
+}
+
+/**
+ * A status on the volcano. A deliberately thin slice of `StatusEffectInstance`:
+ * modifiers, targeting bans and the rest of the player machinery have nothing
+ * to act on here, so they are not carried.
+ */
+export interface VolcanoStatus {
+  id: string;
+  /** Who applied it — tick damage keeps being credited to them. */
+  sourceId: string;
+  remainingTicks: number;
+  stacks: number;
+  tickEffects?: StatusTickEffect[];
+}
+
 export interface BlackHoleState {
   /** The Space player who opened it. */
   ownerId: string;
@@ -12,9 +64,17 @@ export interface BlackHoleState {
   endTick: number;
   /** Total damage swallowed so far. */
   accumulated: number;
-  /** The last kingdom whose attack was absorbed — receives the dump. Null until
-   *  something has been absorbed. */
+  /** The last kingdom whose attack was absorbed. The fallback victim, used only
+   *  when every surviving kingdom fed the hole. Null until something has been
+   *  absorbed. */
   lastAttackerId: string | null;
+  /**
+   * Every kingdom that fed the hole. The dump goes to someone who did NOT —
+   * sitting the fight out is what the collapse punishes — so this is the set it
+   * is chosen against. An array rather than a Set so the state stays plainly
+   * serializable.
+   */
+  fedBy: string[];
 }
 
 /**
@@ -79,6 +139,22 @@ export class GameState {
    * attack it absorbed (`lastAttackerId`). Null when no black hole is open.
    */
   blackHole: BlackHoleState | null = null;
+
+  /**
+   * Magma's "Floor is Lava": while this is live, every burn on the field hits
+   * harder. Match-wide rather than per-player — see `engine/lavaFloor.ts`.
+   */
+  lavaFloor: { ownerId: string; endTick: number; multiplier: number } | null = null;
+
+  /**
+   * Magma's "The End of the World": a volcano standing in the middle of the
+   * battlefield that every OTHER kingdom must break before the timer runs out.
+   *
+   * Not a player — it has no economy, no abilities and cannot be eliminated —
+   * so it lives here rather than in the player map, and the one place it is
+   * treated like a kingdom is as a target id (see `VOLCANO_TARGET_ID`).
+   */
+  volcano: VolcanoState | null = null;
 
   /**
    * Telegraphed strikes waiting to land (Light's "Light Show"). Resolved once

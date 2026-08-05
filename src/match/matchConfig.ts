@@ -1,4 +1,4 @@
-import { CASTLE, CITIZENS, DARK, TICK } from "../data/balance.js";
+import { CASTLE, CITIZENS, DARK, KITSUNE, TICK } from "../data/balance.js";
 import type { Match } from "./Match.js";
 import { param } from "../engine/parameters.js";
 
@@ -19,6 +19,8 @@ export interface MatchConfig {
    * number the engine had stopped using.
    */
   rageFull: number;
+  /** What a full Ancient Memory meter is worth (Kitsune's "Swift Tails"). */
+  memoryFull: number;
 }
 
 /** Builds the config snapshot for a match from the current balance values. */
@@ -30,5 +32,6 @@ export function createMatchConfig(match: Match): MatchConfig {
     startingCitizens: param("citizens.startingCount", CITIZENS.STARTING_COUNT),
     startingCastleHp: param("castle.startingHp", CASTLE.STARTING_HP),
     rageFull: DARK.RAGE_FULL,
+    memoryFull: KITSUNE.MEMORY_FULL,
   };
 }

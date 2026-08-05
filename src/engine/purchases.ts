@@ -242,6 +242,24 @@ export function buyShield(match: Match, player: PlayerState): TransactionResult 
   player.castle.shield += granted;
   player.castle.shieldsPurchased += 1;
 
+  // Kitsune's "Old Friends": the wall going up drives the foxes off. Buying a
+  // shield is the ONLY exit from that status — it has no duration — so this is
+  // where it ends, not the tick loop.
+  const driven = player.statuses.filter((s) => s.endsOnShieldPurchase);
+  if (driven.length > 0) {
+    player.statuses = player.statuses.filter((s) => !s.endsOnShieldPurchase);
+    if (match.gameState!.events.enabled) {
+      for (const s of driven) {
+        match.gameState!.events.emit({
+          type: "statusExpired",
+          tick: match.tick,
+          playerId: player.id,
+          statusId: s.id,
+        });
+      }
+    }
+  }
+
   // Gameplay events (#204).
   const bus = match.gameState!.events;
   if (bus.enabled) {

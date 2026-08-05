@@ -205,10 +205,12 @@ test("extended match: repairs scale geometrically and stop at the per-match cap"
     assert.equal(cost, expected, `repair #${i} cost ${cost} ≠ ${expected}`);
     if (i > 0) assert.ok(cost > repairCostHistory[i - 1]);
   });
-  assert.deepEqual(repairCostHistory, [500, 625, 781]);
+  // Derived from the ladder — the loop above already checks each entry against
+  // it, so pinning the array by hand only breaks when the cap is retuned.
+  assert.equal(repairCostHistory.length, CASTLE.MAX_REPAIRS);
   assert.equal(a.castle.repairs, CASTLE.MAX_REPAIRS);
 
-  // The cap: a fourth repair is refused and the quoted next cost drops to 0.
+  // The cap: one past it is refused and the quoted next cost drops to 0.
   // (Ability-based healing is unaffected — the cap binds only the shop button.)
   a.castle.hp = a.castle.maxHp - 100;
   const refused = repairCastle(match, a);

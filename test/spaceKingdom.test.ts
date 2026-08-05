@@ -232,9 +232,9 @@ test("Orion's Belt: a landed attack still hits (chance not met)", () => {
   assert.equal(belted.castle.hp, belted.castle.maxHp - 250);
 });
 
-test("Black Hole swallows every attack, then dumps the pool on the last feeder", () => {
+test("Black Hole swallows every attack, then dumps on a kingdom that stayed out", () => {
   const { match, players } = arena(["space", "space", "plains"]);
-  const [owner, attacker, prey] = players;
+  const [owner, attacker, bystander] = players;
 
   const open = activateAbility(match, owner, BLACK_HOLE);
   assert.equal(open.ok, true);
@@ -242,14 +242,85 @@ test("Black Hole swallows every attack, then dumps the pool on the last feeder",
   assert.equal(match.gameState!.blackHole!.endTick, 10 * TICK.RATE); // opened at tick 0
 
   // An attack during the hole lands nothing on its target — it's pooled.
-  const swing = activateAbility(match, attacker, SHOOTING_STAR, { targetId: prey.id, rng: () => 0.9 });
+  const swing = activateAbility(match, attacker, SHOOTING_STAR, { targetId: bystander.id, rng: () => 0.9 });
   assert.equal(swing.ok, true);
-  assert.equal(prey.castle.hp, prey.castle.maxHp); // absorbed, no damage
+  assert.equal(bystander.castle.hp, bystander.castle.maxHp); // absorbed, no damage
   assert.equal(match.gameState!.blackHole!.accumulated, 250);
   assert.equal(match.gameState!.blackHole!.lastAttackerId, attacker.id);
+  assert.deepEqual(match.gameState!.blackHole!.fedBy, [attacker.id]);
 
-  // On collapse the whole pool is dealt to the last kingdom that fed the hole.
+  // On collapse the pool goes to the kingdom that never fed it. Whoever threw a
+  // punch already paid by having it swallowed; the player who sat the window
+  // out is the one the collapse is for.
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(match.gameState!.blackHole, null);
-  assert.equal(attacker.castle.hp, attacker.castle.maxHp - 250);
+  assert.equal(bystander.castle.hp, bystander.castle.maxHp - 250);
+  assert.equal(attacker.castle.hp, attacker.castle.maxHp, "the feeder was taxed twice");
 });
+
+test("Black Hole falls back to the last feeder when the whole field engaged", () => {
+  const { match, players } = arena(["space", "space", "plains"]);
+  const [owner, first, second] = players;
+
+  assert.equal(activateAbility(match, owner, BLACK_HOLE).ok, true);
+  assert.equal(
+    activateAbility(match, first, SHOOTING_STAR, { targetId: second.id, rng: () => 0.9 }).ok,
+    true,
+  );
+  assert.equal(
+    activateAbility(match, second, SHOOTING_STAR, { targetId: first.id, rng: () => 0.9 }).ok,
+    true,
+  );
+  // Nobody stayed out, so there is no bystander to prefer.
+  assert.equal(match.gameState!.blackHole!.fedBy.length, 2);
+  assert.equal(match.gameState!.blackHole!.lastAttackerId, second.id);
+
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  assert.equal(second.castle.hp, second.castle.maxHp - 500);
+  assert.equal(first.castle.hp, first.castle.maxHp);
+});
+
+test("Black Hole never dumps on Space — its owner or any other", () => {
+  // The hole is Space's own instrument; it does not turn on the kingdom that
+  // understands it. With nobody else alive there is simply nothing to hit.
+  const { match, players } = arena(["space", "space"]);
+  const [owner, otherSpace] = players;
+
+  assert.equal(activateAbility(match, owner, BLACK_HOLE).ok, true);
+  assert.equal(
+    activateAbility(match, otherSpace, SHOOTING_STAR, { targetId: owner.id, rng: () => 0.9 }).ok,
+    true,
+  );
+  assert.equal(match.gameState!.blackHole!.accumulated, 250);
+
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  assert.equal(match.gameState!.blackHole, null);
+  assert.equal(owner.castle.hp, owner.castle.maxHp, "Space was hit by its own black hole");
+  assert.equal(
+    otherSpace.castle.hp,
+    otherSpace.castle.maxHp,
+    "a second Space took the dump",
+  );
+});
+
+test("Black Hole skips Space and dumps on a kingdom that can take it", () => {
+  const { match, players } = arena(["space", "space", "plains"]);
+  const [owner, otherSpace, plains] = players;
+
+  assert.equal(activateAbility(match, owner, BLACK_HOLE).ok, true);
+  // BOTH non-owners feed it, so neither is a bystander — the only thing
+  // separating them is that one of them is Space.
+  assert.equal(
+    activateAbility(match, otherSpace, SHOOTING_STAR, { targetId: plains.id, rng: () => 0.9 }).ok,
+    true,
+  );
+  assert.equal(
+    activateAbility(match, plains, SHOOTING_STAR, { targetId: owner.id, rng: () => 0.9 }).ok,
+    true,
+  );
+
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  assert.equal(otherSpace.castle.hp, otherSpace.castle.maxHp, "Space took the dump");
+  assert.equal(plains.castle.hp, plains.castle.maxHp - 500);
+});
+

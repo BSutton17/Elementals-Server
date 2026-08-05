@@ -87,6 +87,61 @@ export type GameplayEvent =
     }
   | { type: "statusExpired"; tick: number; playerId: string; statusId: string }
   | {
+      // Magma's "The End of the World": a volcano is standing in the middle of
+      // the field, and every kingdom but Magma has until `endTick` to break it.
+      type: "volcanoSpawned";
+      tick: number;
+      ownerId: string;
+      hp: number;
+      maxHp: number;
+      endTick: number;
+      durationTicks: number;
+    }
+  | {
+      type: "volcanoDamaged";
+      tick: number;
+      attackerId: string;
+      amount: number;
+      hp: number;
+      maxHp: number;
+    }
+  | { type: "volcanoBroken"; tick: number; ownerId: string }
+  | {
+      // It survived. Every kingdom but Magma takes the SAME shortfall.
+      type: "volcanoErupted";
+      tick: number;
+      ownerId: string;
+      /** How much the field managed to take off it in total. */
+      absorbed: number;
+      /** What each kingdom but Magma is charged — one shared number. */
+      amount: number;
+      /** Who helped, for display only; it does not change anyone's bill. */
+      contributions: Record<string, number>;
+    }
+  | {
+      // Magma's "Floor is Lava": the whole battlefield is alight, so every burn
+      // on it — anyone's — hits harder until it cools.
+      type: "lavaFloorLit";
+      tick: number;
+      ownerId: string;
+      durationTicks: number;
+      multiplier: number;
+    }
+  | {
+      // Magma's "Hot ash": a periodic public readout of who is currently
+      // aiming at Magma — and therefore taking extra damage from it. Not a
+      // status: nothing changes when it fires, it only shows what is already
+      // true, so the client marks those kingdoms for `durationTicks` and drops
+      // it again.
+      type: "hotAshMarked";
+      tick: number;
+      /** The Magma kingdom being aimed at. */
+      ownerId: string;
+      /** Every kingdom currently targeting it. */
+      targeterIds: string[];
+      durationTicks: number;
+    }
+  | {
       // A status was turned away before it could land — Light's Fireflies
       // bouncing off a shield. Announced rather than silent: without it the
       // caster sees an ability apparently do nothing, and the defender never

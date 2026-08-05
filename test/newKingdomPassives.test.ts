@@ -10,7 +10,26 @@ import { setCooldown, getCooldown } from "../src/engine/cooldowns.js";
 import { resolveDamage } from "../src/engine/damage.js";
 import { earn } from "../src/engine/money.js";
 import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
-import { PERKS, COMBAT, TICK } from "../src/data/balance.js";
+import { PERKS, COMBAT, KITSUNE, MAGMA, TICK } from "../src/data/balance.js";
+import { tickMatch } from "../src/engine/tick.js";
+import { applyStatus, processStatusTicks } from "../src/engine/status.js";
+import {
+  hasFullPerkSelection,
+  normalizePerks,
+  perksAllowedFor,
+  PERKS_PER_PLAYER,
+} from "../src/data/perks.js";
+import type { StatusEffectDefinition } from "../src/engine/status.js";
+
+/** A plain burn-shaped DoT, so "Hotter fire" is tested against the generic
+ *  pipeline rather than one kingdom's particular ability. */
+const BURN_LIKE: StatusEffectDefinition = {
+  id: "testBurn",
+  name: "Test Burn",
+  category: "debuff",
+  stacking: "refresh",
+  tickEffects: [{ type: "damage", amount: 10 }],
+};
 import type { PerkId } from "../src/data/perks.js";
 import type { MatchPlayer } from "../src/match/types.js";
 
@@ -284,4 +303,147 @@ test("Why so serious? lets attacks through when the roll fails", () => {
     true,
   );
   assert.ok(b.castle.shield < shieldBefore, "the attack was wrongly dodged");
+});
+
+// ---------------------------------------------------------------------------
+// Kitsune — "Swift Tails" / "Three tailed fox"
+// ---------------------------------------------------------------------------
+
+test("Swift Tails: Ancient Memory fills on its own, every tick", () => {
+  const { match, a } = activeMatch("kitsune");
+  assert.equal(a.ancientMemory, 0);
+
+  // One second of doing nothing at all.
+  for (let t = 1; t <= TICK.RATE; t++) tickMatch(match, t);
+  assert.ok(
+    Math.abs(a.ancientMemory - KITSUNE.MEMORY_PER_SECOND) < 0.001,
+    `expected ~${KITSUNE.MEMORY_PER_SECOND}/s, got ${a.ancientMemory}`,
+  );
+});
+
+test("Swift Tails: attacking fills it faster than waiting", () => {
+  const { a, b } = activeMatch("kitsune");
+  const before = a.ancientMemory;
+  resolveDamage(a, b, 1000, { forceCrit: false });
+  const gained = a.ancientMemory - before;
+  assert.ok(gained > 0, "damage dealt contributed nothing");
+  // A share of what was actually dealt, not a flat bump.
+  assert.ok(gained > KITSUNE.MEMORY_PER_SECOND, "a big hit was worth less than a second of idling");
+});
+
+test("Swift Tails: the meter is capped and belongs to Kitsune alone", () => {
+  const { match, a } = activeMatch("kitsune");
+  a.ancientMemory = KITSUNE.MEMORY_FULL;
+  for (let t = 1; t <= TICK.RATE * 2; t++) tickMatch(match, t);
+  assert.equal(a.ancientMemory, KITSUNE.MEMORY_FULL, "the meter overfilled");
+
+  // A kingdom without the passive never accrues.
+  const other = activeMatch("water");
+  for (let t = 1; t <= TICK.RATE * 5; t++) tickMatch(other.match, t);
+  assert.equal(other.a.ancientMemory, 0);
+});
+
+test("Three tailed fox: Kitsune picks three perks, everyone else two", () => {
+  assert.equal(perksAllowedFor("kitsune"), PERKS_PER_PLAYER + 1);
+  assert.equal(perksAllowedFor("water"), PERKS_PER_PLAYER);
+  assert.equal(perksAllowedFor(null), PERKS_PER_PLAYER);
+
+  const three: PerkId[] = ["sharperSwords", "extraGuards", "deepPockets"];
+  // Three is a complete selection for Kitsune and an over-full one for Water.
+  assert.equal(hasFullPerkSelection(three, "kitsune"), true);
+  assert.equal(hasFullPerkSelection(three.slice(0, 2), "kitsune"), false);
+  assert.equal(hasFullPerkSelection(three.slice(0, 2), "water"), true);
+
+  // And the payload validator agrees, so a third perk isn't rejected on the way in.
+  assert.deepEqual(normalizePerks(three, "kitsune"), three);
+  assert.equal(normalizePerks(three, "water"), null);
+});
+
+// ---------------------------------------------------------------------------
+// Magma — "Hotter fire" / "Hot ash"
+// ---------------------------------------------------------------------------
+
+test("Hotter fire: a DoT Magma inflicted goes straight through a shield", () => {
+  const { match, a, b } = activeMatch("magma");
+  b.castle.shield = 5000;
+  const shieldBefore = b.castle.shield;
+  const hpBefore = b.castle.hp;
+
+  applyStatus(b, BURN_LIKE, { sourceId: a.id, durationTicks: TICK.RATE });
+  processStatusTicks(match.gameState!, () => 0.5);
+
+  assert.equal(b.castle.shield, shieldBefore, "the shield absorbed Magma's burn");
+  assert.ok(b.castle.hp < hpBefore, "the burn dealt no damage at all");
+});
+
+test("Hotter fire: the same DoT from anyone else is absorbed normally", () => {
+  const { match, a, b } = activeMatch("fire");
+  b.castle.shield = 5000;
+  const shieldBefore = b.castle.shield;
+  const hpBefore = b.castle.hp;
+
+  applyStatus(b, BURN_LIKE, { sourceId: a.id, durationTicks: TICK.RATE });
+  processStatusTicks(match.gameState!, () => 0.5);
+
+  assert.ok(b.castle.shield < shieldBefore, "the shield took nothing");
+  assert.equal(b.castle.hp, hpBefore, "damage leaked past a healthy shield");
+});
+
+test("Hot ash: Magma hits a kingdom that is aiming at it harder", () => {
+  const { a, b } = activeMatch("magma");
+
+  b.target = null; // not aiming at Magma
+  const plain = resolveDamage(a, b, 1000, { forceCrit: false }).amount;
+
+  b.target = a.id; // now aiming at Magma
+  const punished = resolveDamage(a, b, 1000, { forceCrit: false }).amount;
+
+  assert.ok(punished > plain, "aiming at Magma cost nothing");
+  assert.equal(punished, Math.round(plain * (1 + MAGMA.HOT_ASH_DAMAGE_PCT)));
+});
+
+test("Hot ash: only Magma gets it, and only against its own targeters", () => {
+  // Another kingdom aiming at a non-Magma attacker is hit normally.
+  const { a, b } = activeMatch("fire");
+  b.target = null;
+  const plain = resolveDamage(a, b, 1000, { forceCrit: false }).amount;
+  b.target = a.id;
+  assert.equal(resolveDamage(a, b, 1000, { forceCrit: false }).amount, plain);
+
+  // And Magma aiming at someone who is aiming elsewhere gets no bonus.
+  const magma = activeMatch("magma");
+  magma.b.target = "someone-else";
+  const noBonus = resolveDamage(magma.a, magma.b, 1000, { forceCrit: false }).amount;
+  magma.b.target = magma.a.id;
+  assert.ok(resolveDamage(magma.a, magma.b, 1000, { forceCrit: false }).amount > noBonus);
+});
+
+test("Hot ash: everyone aiming at Magma is publicly marked, on a cadence", () => {
+  const { match, a, b } = activeMatch("magma");
+  b.target = a.id;
+
+  const seen: { tick: number; targeterIds: string[] }[] = [];
+  match.gameState!.events.on((e) => {
+    if (e.type === "hotAshMarked") seen.push(e as never);
+  });
+
+  // Nothing until the interval comes round.
+  for (let t = 1; t < MAGMA.HOT_ASH_INTERVAL_TICKS; t++) tickMatch(match, t);
+  assert.equal(seen.length, 0, "the mark fired early");
+
+  tickMatch(match, MAGMA.HOT_ASH_INTERVAL_TICKS);
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0]!.targeterIds, [b.id]);
+});
+
+test("Hot ash: nothing is announced when nobody is aiming at Magma", () => {
+  const { match, b } = activeMatch("magma");
+  b.target = null;
+
+  const seen: unknown[] = [];
+  match.gameState!.events.on((e) => {
+    if (e.type === "hotAshMarked") seen.push(e);
+  });
+  for (let t = 1; t <= MAGMA.HOT_ASH_INTERVAL_TICKS; t++) tickMatch(match, t);
+  assert.equal(seen.length, 0);
 });

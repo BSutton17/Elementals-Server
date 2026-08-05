@@ -180,7 +180,7 @@ function gangUpOn(victim: PlayerState, attackers: PlayerState[], match: Match) {
   for (const a of attackers) selectTarget(match, a, victim.id);
 }
 
-test("gold production scales 25% per attacker beyond the first", () => {
+test("gold production scales by the besieged rate per attacker beyond the first", () => {
   const { match, players } = arena(5);
   const [me, ...rest] = players;
   const all = match.gameState!.getPlayers();
@@ -189,13 +189,16 @@ test("gold production scales 25% per attacker beyond the first", () => {
   gangUpOn(me, [rest[0]!], match);
   assert.equal(besiegedIncomeMultiplier(me, all), 1);
 
-  // Each attacker past the first is +25%.
+  // Each attacker past the first adds one step of the rate. Derived from the
+  // constant so retuning the mechanic doesn't break the test that proves it
+  // scales at all.
+  const step = COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER;
   gangUpOn(me, [rest[1]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1.25);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step);
   gangUpOn(me, [rest[2]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1.5);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step * 2);
   gangUpOn(me, [rest[3]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1.75);
+  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step * 3);
 });
 
 test("Space profits twice as fast from being ganged up on", () => {
@@ -211,12 +214,17 @@ test("Space profits twice as fast from being ganged up on", () => {
   const space = gs.getPlayer("p0")!;
   const rest = [1, 2, 3, 4].map((i) => gs.getPlayer(`p${i}`)!);
 
+  const boosted = COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED;
+  assert.ok(
+    boosted > COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER,
+    "the boosted rate should actually be better",
+  );
   gangUpOn(space, [rest[0]!, rest[1]!], match);
-  // Two attackers = one stack, and "Vast Universe" doubles the rate.
-  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1.5);
+  // Two attackers = one stack, at "Vast Universe"'s doubled rate.
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1 + boosted);
 
   gangUpOn(space, [rest[2]!], match);
-  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 2);
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1 + boosted * 2);
 });
 
 test("Dark runs the ORDINARY rate — Black Magic governs perks, not sieges", () => {
@@ -231,7 +239,10 @@ test("Dark runs the ORDINARY rate — Black Magic governs perks, not sieges", ()
   const rest = [1, 2, 3].map((i) => gs.getPlayer(`p${i}`)!);
 
   gangUpOn(dark, [rest[0]!, rest[1]!, rest[2]!], match);
-  assert.equal(besiegedIncomeMultiplier(dark, gs.getPlayers()), 1.5); // 2 stacks x 25%
+  assert.equal(
+    besiegedIncomeMultiplier(dark, gs.getPlayers()),
+    1 + COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER * 2, // two stacks at the plain rate
+  );
 });
 
 test("the besieged multiplier actually reaches the treasury", () => {
@@ -244,7 +255,7 @@ test("the besieged multiplier actually reaches the treasury", () => {
   applyPassiveIncome(match.gameState!);
   const plainRate = me.economy.currency - solo;
 
-  // Ganged up on by three: +50% (two attackers past the first).
+  // Ganged up on by three — two attackers past the first.
   gangUpOn(me, [rest[0]!, rest[1]!, rest[2]!], match);
   const before = me.economy.currency;
   applyPassiveIncome(match.gameState!);
@@ -252,7 +263,9 @@ test("the besieged multiplier actually reaches the treasury", () => {
 
   assert.ok(besiegedRate > plainRate, "being ganged up on paid no better");
   // The flat top-up rides along on top, so this is a floor rather than equality.
-  assert.ok(besiegedRate >= plainRate * 1.5);
+  assert.ok(
+    besiegedRate >= plainRate * (1 + COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER * 2),
+  );
 });
 
 test("the damage bonus is untouched by the income change", () => {

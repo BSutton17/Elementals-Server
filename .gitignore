@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# TypeScript's incremental build cache. Machine-local, and a stale one silently
+# makes `npm run build` skip re-checking files that did change.
+*.tsbuildinfo
 *.log
 .env
 .DS_Store

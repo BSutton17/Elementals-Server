@@ -11,7 +11,8 @@ import {
 } from "../src/engine/abilities.js";
 import { earn } from "../src/engine/money.js";
 import { applyStatus, getStatus, processStatusTicks } from "../src/engine/status.js";
-import { FIREBALL, SCORCHING_SUN, FIRENADO, BURN_STATUS, HEAT_WAVE, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
+import { FIREBALL, SCORCHING_SUN, FIRENADO, BURN_STATUS, IGNITED_STATUS, HEAT_WAVE, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
+import { FIRE, TICK } from "../src/data/balance.js";
 
 const player = (id: string, kingdomId: string = "fire"): MatchPlayer => ({
   id,
@@ -96,25 +97,73 @@ test("Burn status ticks damage over time based on stack count", () => {
 
 // --- [#112] Fire Attacks & Synergies ----------------------------------------------
 
-test("Scorching Sun applies Burn directly, and deals bonus damage to burning targets", () => {
+test("Scorching Sun IGNITES rather than burning, and still punishes a burning target", () => {
   const { match, a, b } = activeMatch("fire", "plains");
 
-  // Cast Scorching Sun — base 450 × 1.35 (Set Your Heart Ablaze!) = 607.5 -> 608.
   b.castle.hp = 10_000;
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
   assert.equal(b.castle.hp, 10_000 - 540); // base 400 × 1.35
 
-  // Target should have Burn status now
-  const burn = getStatus(b, "burn");
-  assert.ok(burn);
-  assert.equal(burn.remainingTicks, 100); // 5 seconds (100 ticks)
+  // The mark, not a fire: nothing is burning yet.
+  assert.ok(!getStatus(b, "burn"), "Scorching Sun should not apply Burn itself");
+  const ignited = getStatus(b, "ignited");
+  assert.ok(ignited);
+  assert.equal(ignited.remainingTicks, FIRE.IGNITED_SECONDS * TICK.RATE); // 60 s
 
-  // Cast again on a burning target: (450 + 100 burn bonus) × 1.35 = 742.5,
-  // then Burn amplifies the applier's Fire attacks × 1.25 = 928.
+  // Its bonus still keys off Burn — so once something else has set the fire,
+  // Scorching Sun is the follow-up that cashes it in.
+  b.statuses = [];
+  b.modifiers = [];
+  applyStatus(b, BURN_STATUS, { sourceId: "a", durationTicks: 1000 });
   b.castle.hp = 10_000;
   a.cooldowns = {};
   activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
   assert.equal(b.castle.hp, 10_000 - 844); // (400+100)×1.35×1.25 burn amp
+});
+
+test("Ignited rolls for a Burn on its own cadence, and only sometimes catches", () => {
+  const { match, a, b } = activeMatch("fire", "plains");
+  activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
+  assert.ok(getStatus(b, "ignited"));
+
+  const roll = FIRE.IGNITED_ROLL_SECONDS * TICK.RATE;
+  const advance = (ticks: number, rng: () => number) => {
+    for (let i = 0; i < ticks; i++) {
+      match.gameState!.tick++;
+      processStatusTicks(match.gameState!, rng);
+    }
+  };
+
+  // Nothing happens BETWEEN rolls, however lucky the dice are — the cadence is
+  // the whole point, otherwise it is just a burn with extra steps.
+  advance(roll - 1, () => 0);
+  assert.ok(!getStatus(b, "burn"), "Ignited fired before its interval");
+
+  // A failed roll on the interval leaves them cold.
+  advance(1, () => 0.99);
+  assert.ok(!getStatus(b, "burn"), "a failed roll should not light anything");
+
+  // A successful one sets a real Burn, credited to whoever ignited them — so
+  // it feeds the igniter's Burn amplification, not the victim's.
+  advance(roll, () => 0.01);
+  const burn = getStatus(b, "burn");
+  assert.ok(burn, "a successful roll should set a Burn");
+  assert.equal(burn.sourceId, "a");
+  assert.equal(burn.remainingTicks, FIRE.IGNITED_BURN_SECONDS * TICK.RATE);
+});
+
+test("Ignited does no damage of its own", () => {
+  const { match, a, b } = activeMatch("fire", "plains");
+  activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
+
+  // The mark is pure threat. If it ticked, it would just be a slow burn and the
+  // gamble would stop mattering.
+  const hp = (b.castle.hp = 10_000);
+  for (let i = 0; i < FIRE.IGNITED_ROLL_SECONDS * TICK.RATE - 1; i++) {
+    match.gameState!.tick++;
+    processStatusTicks(match.gameState!, () => 0.99);
+  }
+  assert.equal(b.castle.hp, hp);
 });
 
 test("Burn amplifies Fire attacks from the applier only", () => {
@@ -137,18 +186,47 @@ test("Burn amplifies Fire attacks from the applier only", () => {
   assert.equal(b.castle.hp, 10_000 - 338); // unamplified
 });
 
-test("Firenado has a 50% chance to apply Burn", () => {
+test("Firenado always applies Burn, whatever the dice say", () => {
   const { match, a, b } = activeMatch("fire", "plains");
 
-  // RNG below 0.50 succeeds
-  b.statuses = [];
-  activateAbility(match, a, FIRENADO, { targetId: "b", rng: () => 0.40 });
-  assert.ok(getStatus(b, "burn"));
+  // The gamble moved to Ignited; Firenado is the ability that actually sets
+  // the fire, so no roll can deny it.
+  for (const rng of [() => 0.01, () => 0.5, () => 0.99]) {
+    b.statuses = [];
+    b.modifiers = [];
+    a.cooldowns = {};
+    activateAbility(match, a, FIRENADO, { targetId: "b", rng });
+    assert.ok(getStatus(b, "burn"), "Firenado failed to burn");
+  }
+});
 
-  // RNG above 0.50 fails
-  b.statuses = [];
-  activateAbility(match, a, FIRENADO, { targetId: "b", rng: () => 0.60 });
-  assert.ok(!getStatus(b, "burn"));
+test("Firenado hits an IGNITED target harder — but not an already-burning one", () => {
+  const { match, a, b } = activeMatch("fire", "plains");
+
+  const hit = (setup: (target: PlayerState) => void) => {
+    b.statuses = [];
+    b.modifiers = [];
+    a.cooldowns = {};
+    setup(b);
+    b.castle.hp = 10_000;
+    activateAbility(match, a, FIRENADO, { targetId: "b", forceCrit: false });
+    return 10_000 - b.castle.hp;
+  };
+
+  const plain = hit(() => {});
+  const ignited = hit((t) =>
+    applyStatus(t, IGNITED_STATUS, { sourceId: "a", durationTicks: 1000 }),
+  );
+  assert.ok(ignited > plain, "Ignited did not increase Firenado's damage");
+
+  // Burn's own amplification still applies to a burning target, but that is a
+  // different, smaller effect — the setup bonus is specifically for a target
+  // that is marked and NOT yet alight, which is what makes the pair a combo
+  // rather than "burn them, then hit the burn".
+  const burning = hit((t) =>
+    applyStatus(t, BURN_STATUS, { sourceId: "a", durationTicks: 1000 }),
+  );
+  assert.ok(ignited > burning, "the bonus should favour Ignited over Burn");
 });
 
 test("Fireball is a plain attack and does not apply Burn", () => {
@@ -162,9 +240,10 @@ test("Fireball is a plain attack and does not apply Burn", () => {
 test("Ice players suffer 1.5x longer Burn durations", () => {
   const { match, a, b } = activeMatch("fire", "ice");
 
-  // Scorching Sun applies Burn for 100 ticks (5 seconds);
-  // Ice player b should take Burn for 100 * 1.5 = 150 ticks
-  activateAbility(match, a, SCORCHING_SUN, { targetId: "b", forceCrit: false });
+  // Firenado applies Burn for 100 ticks (5 seconds); Ice player b should take
+  // it for 100 × 1.5 = 150. (Scorching Sun ignites rather than burning now, so
+  // it is no longer the ability that demonstrates this.)
+  activateAbility(match, a, FIRENADO, { targetId: "b", forceCrit: false });
   const burn = getStatus(b, "burn");
   assert.ok(burn);
   assert.equal(burn.remainingTicks, 150);
@@ -244,11 +323,12 @@ test("Fireball upgrades modify damage and cooldown values", () => {
   assert.equal(lv4.cooldownTicks, 54);
 });
 
-test("Scorching Sun upgrades modify damage, burn duration, cooldown, and bonus damage", () => {
-  // Lv 1 (Default): Damage 450, Burn duration 100 (5s), CD 160 (8s), bonus damage 200
+test("Scorching Sun upgrades modify damage, Ignited duration, cooldown, and bonus damage", () => {
+  // Lv 1 (Default): Damage 400, Ignited 60 s, CD 160 (8s), bonus damage 100
   const lv1 = resolveAbility(SCORCHING_SUN, 0);
   assert.equal(lv1.effects[0].params.amount, 400);
-  assert.equal(lv1.effects[1].params.durationTicks, 100);
+  assert.equal(lv1.effects[1].params.status?.id, "ignited");
+  assert.equal(lv1.effects[1].params.durationTicks, FIRE.IGNITED_SECONDS * TICK.RATE);
   assert.equal(lv1.cooldownTicks, 160);
   assert.equal(lv1.effects[0].params.bonusDamageIfTargetHasStatus?.extraAmount, 100);
 
@@ -256,9 +336,14 @@ test("Scorching Sun upgrades modify damage, burn duration, cooldown, and bonus d
   const lv2 = resolveAbility(SCORCHING_SUN, 1);
   assert.equal(lv2.effects[0].params.amount, 500);
 
-  // Lv 3: Burn duration increased (7s -> 140 ticks)
+  // Lv 3: the mark lasts longer, so it gets an extra roll at a Burn.
   const lv3 = resolveAbility(SCORCHING_SUN, 2);
-  assert.equal(lv3.effects[1].params.durationTicks, 140);
+  assert.equal(lv3.effects[1].params.durationTicks, 75 * TICK.RATE);
+  assert.ok(
+    lv3.effects[1].params.durationTicks! >
+      lv1.effects[1].params.durationTicks! + FIRE.IGNITED_ROLL_SECONDS * TICK.RATE - 1,
+    "the upgrade should buy at least one more roll",
+  );
 
   // Lv 4: Cooldown reduced 10% (144 ticks)
   const lv4 = resolveAbility(SCORCHING_SUN, 3);
@@ -269,21 +354,27 @@ test("Scorching Sun upgrades modify damage, burn duration, cooldown, and bonus d
   assert.equal(lv5.effects[0].params.bonusDamageIfTargetHasStatus?.extraAmount, 350);
 });
 
-test("Firenado upgrades modify damage, burn chance, cooldown, and burn duration", () => {
-  // Lv 1 (Default): Damage 800, chance 0.50, CD 240 (12s), burn duration 100 (5s)
+test("Firenado upgrades modify damage, the Ignited bonus, cooldown, and burn duration", () => {
+  // Lv 1 (Default): Damage 600, burn GUARANTEED, CD 400, burn duration 100 (5s)
   const lv1 = resolveAbility(FIRENADO, 0);
   assert.equal(lv1.effects[0].params.amount, 600);
-  assert.equal(lv1.effects[1].chance, 0.50);
+  assert.equal(lv1.effects[1].chance, undefined, "the burn is certain now");
   assert.equal(lv1.cooldownTicks, 400);
   assert.equal(lv1.effects[1].params.durationTicks, 100);
+  assert.equal(
+    lv1.effects[0].params.bonusDamageIfTargetHasStatus?.statusId,
+    "ignited",
+  );
 
   // Lv 2: Increased damage
   const lv2 = resolveAbility(FIRENADO, 1);
   assert.equal(lv2.effects[0].params.amount, 700);
 
-  // Lv 3: Burn chance increased (0.75)
+  // Lv 3: a bigger payoff for setting the target up first (the burn used to
+  // become more likely here; it is certain from level 1 now).
   const lv3 = resolveAbility(FIRENADO, 2);
-  assert.equal(lv3.effects[1].chance, 0.75);
+  assert.equal(lv3.effects[1].chance, undefined);
+  assert.equal(lv3.effects[0].params.bonusDamageIfTargetHasStatus?.extraAmount, 400);
 
   // Lv 4: Cooldown reduced 10% (216 ticks)
   const lv4 = resolveAbility(FIRENADO, 3);

@@ -6,7 +6,9 @@ import {
   damageMultiplier,
   shieldDamageMultiplier,
   critChanceModifier,
-  critDamageMultiplier
+  critDamageMultiplier,
+  targeterDamageMultiplier,
+  creditAncientMemory
 } from "./passives.js";
 import {
   perkDamageMultiplier,
@@ -192,6 +194,8 @@ export function resolveDamage(
       damageMultiplier(attacker, defender, options.element) *
       // "Sharper Swords" stacks on top of every kingdom passive above.
       perkDamageMultiplier(attacker) *
+      // Magma's "Hot ash": aiming at Magma is what makes Magma hit you harder.
+      targeterDamageMultiplier(attacker, defender) *
       besieged *
       attackerScaling,
   );
@@ -252,6 +256,11 @@ export function resolveDamage(
         defenderScaling,
     ),
   );
+
+  // Kitsune's "Swift Tails" charges off damage DEALT, so it is credited here —
+  // the one place that knows both who swung and how hard it landed. Tracked for
+  // everyone; only a kingdom with the passive actually accrues.
+  creditAncientMemory(attacker, amount);
 
   return {
     amount,

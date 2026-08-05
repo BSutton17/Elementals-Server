@@ -315,14 +315,14 @@ export const LIGHT_SHOW: AbilityDefinition = {
   name: "Light Show",
   kind: "ultimate",
   cost: 500,
-  cooldownTicks: 60 * TICK.RATE, // 60 s
+  cooldownTicks: 50 * TICK.RATE, // 60 s
   targeting: { mode: "self" },
   effects: [
     {
       type: "delayedStrike",
       target: "self",
       params: {
-        amount: 1750,
+        amount: 2000,
         element: "light",
         delayTicks: LIGHT_SHOW_DELAY,
         breaksShields: true,
@@ -330,7 +330,7 @@ export const LIGHT_SHOW: AbilityDefinition = {
     },
   ],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 2000 }] } },
+    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 2500 }] } },
     {
       level: 2,
       cost: 1500,

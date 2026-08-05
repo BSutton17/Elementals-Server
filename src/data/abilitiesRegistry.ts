@@ -11,6 +11,8 @@ import { TOUGH_LOVE, CUPIDS_ARROW, BFFS, EMPATHY, LOVE_GALORE } from "./loveAbil
 import { JOKER_ABILITIES } from "./jokerAbilities.js";
 import { LIGHT_ABILITIES } from "./lightAbilities.js";
 import { DARK_ABILITIES } from "./darkAbilities.js";
+import { KITSUNE_ABILITIES } from "./kitsuneAbilities.js";
+import { MAGMA_ABILITIES } from "./magmaAbilities.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
 /** Keys a kingdom's ability list by ability id, for spreading into the map. */
@@ -74,4 +76,6 @@ export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   ...byId(JOKER_ABILITIES),
   ...byId(LIGHT_ABILITIES),
   ...byId(DARK_ABILITIES),
+  ...byId(KITSUNE_ABILITIES),
+  ...byId(MAGMA_ABILITIES),
 };

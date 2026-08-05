@@ -820,3 +820,53 @@ test("only the host can change the rules, and only before the match starts", asy
     joiner.close();
   }
 });
+
+test("switching away from Kitsune gives back the perk its passive granted", async () => {
+  const host = connect();
+  try {
+    await waitConnected(host);
+    await host.emitWithAck("lobby:create", { name: "Alice" });
+
+    // Kitsune's "Three tailed fox" allows a third perk.
+    assert.equal(
+      (await host.emitWithAck("lobby:selectKingdom", { kingdom: "kitsune" })).ok,
+      true,
+    );
+    const three = [...PERKS, "extraRepairs"];
+    assert.equal((await host.emitWithAck("lobby:selectPerks", { perks: three })).ok, true);
+    assert.equal(
+      (await host.emitWithAck("lobby:ready", { ready: true })).ok,
+      true,
+      "three perks is a full set for Kitsune",
+    );
+
+    // Switching to a kingdom without that passive has to give the extra perk
+    // back. Keeping it would hand out a free bonus AND wedge the seat: the
+    // ready gate wants the count to match the allowance exactly, so three perks
+    // on a two-perk kingdom can never be readied.
+    await host.emitWithAck("lobby:ready", { ready: false });
+    const trimmed = waitForUpdate(
+      host,
+      (m) => (m.players.find((p) => p.name === "Alice")?.perks?.length ?? 0) === 2,
+    );
+    assert.equal((await host.emitWithAck("lobby:selectKingdom", { kingdom: "water" })).ok, true);
+    const match = await trimmed;
+    const alice = match.players.find((p) => p.name === "Alice");
+    assert.deepEqual(alice?.perks, PERKS, "the earliest picks are the ones kept");
+    // …and the seat is immediately readyable again on its new allowance.
+    assert.equal((await host.emitWithAck("lobby:ready", { ready: true })).ok, true);
+
+    // Going the other way does NOT hand out the third perk automatically — it
+    // only raises the ceiling, so the seat has to pick it.
+    await host.emitWithAck("lobby:ready", { ready: false });
+    assert.equal(
+      (await host.emitWithAck("lobby:selectKingdom", { kingdom: "kitsune" })).ok,
+      true,
+    );
+    const backToThree = await host.emitWithAck("lobby:ready", { ready: true });
+    assert.equal(backToThree.ok, false);
+    assert.equal(backToThree.error.code, "NOT_READY");
+  } finally {
+    host.close();
+  }
+});

@@ -6,6 +6,7 @@ import { activateAbility } from "../src/engine/abilities.js";
 import { tickMatch } from "../src/engine/tick.js";
 import { earn } from "../src/engine/money.js";
 import { FIRENADO } from "../src/data/fireAbilities.js";
+import { FLOOD_OF_FROST } from "../src/data/iceAbilities.js";
 import { NATURAL_TERRAIN } from "../src/data/earthAbilities.js";
 import type { MatchPlayer } from "../src/match/types.js";
 import { mulberry32 } from "../simulation/src/rng.js";
@@ -25,10 +26,10 @@ const player = (id: string, kingdomId: string): MatchPlayer => ({
   connected: true,
 });
 
-/** A started fire-vs-water match with the given match-level RNG seed. */
-function seededMatch(seed: number) {
+/** A started attacker-vs-water match with the given match-level RNG seed. */
+function seededMatch(seed: number, kingdomA = "fire") {
   const match = new Match("DTRM", { rng: mulberry32(seed) });
-  match.addPlayer(player("a", "fire"));
+  match.addPlayer(player("a", kingdomA));
   match.addPlayer(player("b", "water"));
   match.hostId = "a";
   match.start(createMatchConfig(match));
@@ -42,18 +43,25 @@ function seededMatch(seed: number) {
 
 /**
  * A chance-heavy scripted scenario, cast WITHOUT pinning options.rng — every
- * roll (crits, Firenado's 50% Burn, AfterShock-style procs) must come from
- * the match-level RNG. Returns a full deterministic projection.
+ * roll (crits, Flood of Frost's 35% Chilling Retribution, AfterShock-style
+ * procs) must come from the match-level RNG. Returns a full deterministic
+ * projection.
+ *
+ * ICE rather than Fire: this scenario needs an ability whose effect is decided
+ * by a coin flip on every cast, and Fire no longer has one — Firenado's Burn
+ * is guaranteed now, and Scorching Sun's Ignited rolls on a fifteen-second
+ * cadence rather than per cast. Ten independent 35% rolls is what makes two
+ * different seeds reliably diverge; a 5% crit chance alone does not.
  */
 function runScripted(seed: number) {
-  const { match, a, b } = seededMatch(seed);
-  const burns: number[] = [];
+  const { match, a, b } = seededMatch(seed, "ice");
+  const procs: number[] = [];
 
   for (let i = 0; i < 10; i++) {
     a.cooldowns = {}; // isolate the dice from cooldown pacing
-    const r = activateAbility(match, a, FIRENADO, { targetId: "b" });
+    const r = activateAbility(match, a, FLOOD_OF_FROST, { targetId: "b" });
     assert.equal(r.ok, true);
-    burns.push(b.statuses.find((s) => s.id === "burn")?.stacks ?? 0);
+    procs.push(b.statuses.some((s) => s.id === "chillingRetribution") ? 1 : 0);
     b.castle.hp = Math.max(b.castle.hp, 5000); // keep the target alive: we are
     // testing dice streams here, not lethality
     tickMatch(match, i + 1); // DoT ticks + expiries also draw from match.rng
@@ -64,7 +72,7 @@ function runScripted(seed: number) {
   activateAbility(match, b, NATURAL_TERRAIN, {});
 
   return {
-    burns,
+    procs,
     hpB: b.castle.hp,
     hpA: a.castle.hp,
     currencyA: a.economy.currency,

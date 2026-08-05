@@ -29,7 +29,7 @@ export const CASTLE = {
    * Hard cap on purchased repairs per match. Ability-based healing (Riptide,
    * lifesteal, …) is NOT limited — only the shop's repair button.
    */
-  MAX_REPAIRS: 3,
+  MAX_REPAIRS: 4,
 } as const;
 
 /** Citizen / economy defaults. */
@@ -69,7 +69,7 @@ export const COMBAT = {
    * a kingdom the whole field has turned on hits for well over double, which is
    * what makes ganging up genuinely dangerous rather than simply efficient.
    */
-  BESIEGED_DAMAGE_PER_ATTACKER: 0.2,
+  BESIEGED_DAMAGE_PER_ATTACKER: 0.4,
   /** Cap on besieging attackers that count toward the bonus (beyond the first). */
   BESIEGED_MAX_STACKS: 6,
   /**
@@ -87,13 +87,13 @@ export const COMBAT = {
    * kill earns faster while they do it, so being focused is survivable rather
    * than simply terminal.
    */
-  BESIEGED_INCOME_PCT_PER_ATTACKER: 0.25,
+  BESIEGED_INCOME_PCT_PER_ATTACKER: 0.5,
   /**
    * The same, doubled, for the kingdom whose passive is profiting from being
    * ganged up on (Space's "Vast Universe"). It stacks with that passive's own
    * multiplier on purpose — being everyone's target IS Space's economy.
    */
-  BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED: 0.5,
+  BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED: 1,
 } as const;
 
 /**
@@ -114,7 +114,7 @@ export const PERKS = {
   /** "Extra Medics": incoming damage-over-time (status tick) damage. */
   DOT_REDUCTION_PCT: 0.15,
   /** "Extra Repairs": every ability cooldown. */
-  COOLDOWN_REDUCTION_PCT: 0.15,
+  COOLDOWN_REDUCTION_PCT: 0.1,
   /** "Deep Pockets": gold in the bank at match start. */
   STARTING_GOLD: 150,
   /** "Great Merchants": discount on ability unlock prices. */
@@ -130,7 +130,7 @@ export const PERKS = {
   SHIELD_ATTACK_PCT_BOOSTED: 0.2,
   DAMAGE_REDUCTION_PCT_BOOSTED: 0.15,
   DOT_REDUCTION_PCT_BOOSTED: 0.2,
-  COOLDOWN_REDUCTION_PCT_BOOSTED: 0.2,
+  COOLDOWN_REDUCTION_PCT_BOOSTED: 0.15,
   STARTING_GOLD_BOOSTED: 200,
   UNLOCK_DISCOUNT_PCT_BOOSTED: 0.2,
   SHIELD_BONUS_HP_BOOSTED: 750,
@@ -166,10 +166,10 @@ export const SHIELD = {
   /** Health of the standard purchasable shield. */
   STANDARD_HP: 1750,
   /** Cost of the first shield (matches the client's shop display). */
-  COST: 500,
+  COST: 400,
   /**
    * Multiplier applied per shield already bought this match, so each shield
-   * costs a little more than the last (500 → 525 → 551 → …). Only one shield
+   * costs a little more than the last (400 → 420 → 441 → …). Only one shield
    * can be active at a time, so this scales with cumulative purchases.
    */
   COST_GROWTH: 1.05,
@@ -199,6 +199,95 @@ export const DARK = {
    * proportionally more than a poke — but the total is all that matters.
    */
   RAGE_FULL: 2000,
+} as const;
+
+/** Kitsune kingdom — the "Ancient Memory" meter ("Swift Tails"). */
+export const KITSUNE = {
+  /**
+   * A full Ancient Memory meter — what Kitsune Rush costs. Never shown as a
+   * number: the HUD renders progress toward it, because "how full" is the only
+   * part a player needs.
+   */
+  MEMORY_FULL: 6000,
+  /**
+   * Filled passively, per second, whatever Kitsune is doing. Set so a Kitsune
+   * that does NOTHING at all still reaches a full meter in exactly three
+   * minutes — that is the floor the ultimate is paced against, and everything
+   * else (attacks, Old Friends, Azure Guidance) only brings it forward.
+   */
+  MEMORY_PER_SECOND: 6000 / 180,
+  /** Plus this share of every point of damage Kitsune deals: acting fills it
+   *  several times faster than waiting, without waiting ever being useless. */
+  MEMORY_PER_DAMAGE: 0.15,
+  /** Azure Guidance: how much faster Memory accrues while it holds. */
+  AZURE_GUIDANCE_MULTIPLIER: 2,
+  /** How long Azure Guidance lasts. */
+  AZURE_GUIDANCE_DURATION_SECONDS: 12,
+  /** Kitsune Rush: cooldowns run at this rate (0.5 = twice as fast). */
+  RUSH_COOLDOWN_RATE: 0.5,
+  /** Kitsune Rush: gold production multiplier. */
+  RUSH_INCOME_MULTIPLIER: 2,
+  /** How long Kitsune Rush lasts. */
+  RUSH_DURATION_SECONDS: 15,
+} as const;
+
+/** Magma kingdom — "Hot ash". */
+/**
+ * Fire's "Ignited" (Scorching Sun). Not a burn — a long-lived mark that keeps
+ * ROLLING for one. The victim is never sure whether the next quarter-minute
+ * costs them anything, which is what makes covering for it a real decision.
+ */
+export const FIRE = {
+  /** How long the mark lasts. */
+  IGNITED_SECONDS: 60,
+  /** How often it rolls for a burn. */
+  IGNITED_ROLL_SECONDS: 15,
+  /** Odds of each roll catching. */
+  IGNITED_BURN_CHANCE: 0.25,
+  /** How long a burn it lights lasts. */
+  IGNITED_BURN_SECONDS: 5,
+} as const;
+
+export const MAGMA = {
+  /** Extra damage dealt to a kingdom that is currently targeting Magma. */
+  HOT_ASH_DAMAGE_PCT: 0.25,
+  /**
+   * How often the warning fires. Every kingdom currently targeting Magma is
+   * marked for `HOT_ASH_MARK_TICKS` — a periodic reminder that aiming at Magma
+   * is what makes its attacks hurt more.
+   */
+  HOT_ASH_INTERVAL_TICKS: 45 * TICK.RATE,
+  /** How long the mark stays up. */
+  HOT_ASH_MARK_TICKS: 3 * TICK.RATE,
+  /** Lava Punch: chance the basic attack also sets the target alight. */
+  LAVA_PUNCH_BURN_CHANCE: 0.35,
+  /** "Floor is Lava": how much harder EVERY burn on the field hits. */
+  /** Eruption's odds of setting a burn. Low: Eruption is the big hit, not the
+   *  reliable way to light someone. */
+  ERUPTION_BURN_CHANCE: 0.2,
+  /** Every Magma attack hits this much harder while the floor is lava. */
+  LAVA_FLOOR_ATTACK_MULTIPLIER: 1.1,
+  LAVA_FLOOR_BURN_MULTIPLIER: 1.5,
+  /** How long the floor stays molten, in seconds. */
+  LAVA_FLOOR_DURATION_SECONDS: 20,
+  /**
+   * Magma's burn, per tick per stack, while the victim has a shield up. It
+   * still goes THROUGH the shield ("Hotter fire") — just for less, so a shield
+   * is worth buying against Magma without shutting it out.
+   */
+  SHIELDED_BURN_TICK: 4,
+  /** Smoke Screen: damage dealt to each kingdom currently targeting Magma. */
+  SMOKE_SCREEN_DAMAGE: 200,
+  /** How long the smoke blinds them, in seconds. */
+  SMOKE_SCREEN_BLIND_SECONDS: 4,
+  /**
+   * "The End of the World": what the eruption is worth. The field takes this
+   * MINUS whatever it managed to chip off the volcano, so breaking it entirely
+   * is a clean escape and doing nothing is the full hit.
+   */
+  VOLCANO_ERUPTION_YIELD: 5000,
+  /** How long the field has to break it, in seconds. */
+  VOLCANO_TIMER_SECONDS: 20,
 } as const;
 
 /** Targeting rules. */

@@ -112,6 +112,19 @@ export function broadcastGameState(io: Server, match: Match): void {
       dispel: dispellableStatus(p),
     })),
     projectiles: [],
+    // Magma's "The End of the World". Synced to EVERYONE, not just Magma: the
+    // whole table has to be able to see it, click it and watch its health fall,
+    // because breaking it in time is a job none of them can do alone.
+    volcano: state.volcano
+      ? {
+          ownerId: state.volcano.ownerId,
+          hp: state.volcano.hp,
+          maxHp: state.volcano.maxHp,
+          // Seconds left, derived here so the client never has to know the
+          // server's tick rate to render a countdown.
+          ticksRemaining: Math.max(0, state.volcano.endTick - state.tick),
+        }
+      : null,
   });
 }
 

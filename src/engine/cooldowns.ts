@@ -63,8 +63,14 @@ export function isReady(player: PlayerState, abilityId: string): boolean {
 export function tickCooldowns(state: GameState): void {
   const bus = state.events;
   for (const player of state.getPlayers()) {
+    // Kitsune Rush runs every cooldown at double speed, INCLUDING ones already
+    // counting down — "twice as fast" would be a hollow promise if it only
+    // applied to cooldowns armed after the cast. A rate of 0.5 means each tick
+    // burns two ticks of cooldown.
+    const rate = Math.max(0.01, computeStat(player, "cooldownRate", 1));
+    const step = 1 / rate;
     for (const abilityId of Object.keys(player.cooldowns)) {
-      const remaining = player.cooldowns[abilityId] - 1;
+      const remaining = player.cooldowns[abilityId] - step;
       if (remaining <= 0) {
         delete player.cooldowns[abilityId];
         // Gameplay event (#204): the ability is ready again.

@@ -102,16 +102,21 @@ test("repairs are capped at MAX_REPAIRS per match; ability healing is not", () =
   a.castle.hp = a.castle.maxHp - 5000;
   earn(a, 100_000);
 
-  // Spend all 3 repairs: 500, 625, 781.
+  // Spend every repair: 500, 625, 781, 977 (each 1.25x the last).
   const costs: number[] = [];
   for (let i = 0; i < CASTLE.MAX_REPAIRS; i++) {
     costs.push(repairCost(a));
     assert.equal(repairCastle(match, a).ok, true);
   }
-  assert.deepEqual(costs, [500, 625, 781]);
-  assert.equal(a.castle.repairs, 3);
+  // Derived from the ladder rather than pinned, so raising the cap doesn't
+  // break the test that exists to prove the price climbs.
+  const expected = Array.from({ length: CASTLE.MAX_REPAIRS }, (_, i) =>
+    Math.round(CASTLE.REPAIR_COST * CASTLE.REPAIR_COST_GROWTH ** i),
+  );
+  assert.deepEqual(costs, expected); // 500, 625, 781, 977
+  assert.equal(a.castle.repairs, CASTLE.MAX_REPAIRS);
 
-  // The 4th is refused outright, and the quoted price drops to 0.
+  // One past the cap is refused outright, and the quoted price drops to 0.
   const refused = repairCastle(match, a);
   assert.equal(refused.ok, false);
   assert.equal(refused.error, "REPAIR_LIMIT");
@@ -197,16 +202,16 @@ test("each shield costs 1.05× the last (scales with cumulative purchases)", () 
   const { match, a } = activeMatch();
   earn(a, 5000);
 
-  assert.equal(shieldCost(a), SHIELD.COST); // 500, none bought yet
+  assert.equal(shieldCost(a), SHIELD.COST); // 400, none bought yet
   buyShield(match, a);
   a.castle.shield = 0; // deplete so the next is buyable
 
-  const second = Math.round(SHIELD.COST * SHIELD.COST_GROWTH); // 525
+  const second = Math.round(SHIELD.COST * SHIELD.COST_GROWTH); // 420
   assert.equal(shieldCost(a), second);
   buyShield(match, a);
   a.castle.shield = 0;
 
-  const third = Math.round(SHIELD.COST * SHIELD.COST_GROWTH ** 2); // 551
+  const third = Math.round(SHIELD.COST * SHIELD.COST_GROWTH ** 2); // 441
   assert.equal(shieldCost(a), third);
   assert.equal(a.castle.shieldsPurchased, 2);
 });

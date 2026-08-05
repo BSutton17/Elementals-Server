@@ -279,8 +279,11 @@ test("Back to the Future is castable against the field", () => {
 
   const r = activateAbility(match, a, BACK_TO_THE_FUTURE);
   assert.equal(r.ok, true);
-  assert.equal(before - a.economy.currency, 1000);
-  assert.equal(getCooldown(a, "backToTheFuture"), 90 * 20);
+  // Read off the definition rather than pinned to a literal: the price is a
+  // balance knob the designer moves, and this test is about the cast being
+  // paid for and put on cooldown, not about what the number happens to be.
+  assert.equal(before - a.economy.currency, BACK_TO_THE_FUTURE.cost);
+  assert.equal(getCooldown(a, "backToTheFuture"), BACK_TO_THE_FUTURE.cooldownTicks);
 });
 
 test("Back to the Future rewinds each enemy's gold at their income rate, floored at 0", () => {

@@ -23,6 +23,13 @@ export interface DamageOptions {
   /** Current match tick — recorded when this hit breaks the shield, so the
    *  buy-shield break cooldown can be enforced. */
   tick?: number;
+  /**
+   * The hit spends itself entirely on the shield: whatever the shield cannot
+   * absorb is DISCARDED rather than carrying over to castle HP (Kitsune's "Old
+   * Friends" against a shielded kingdom). With no shield up it does nothing at
+   * all — which is what makes it a different move from an ordinary attack.
+   */
+  shieldOnly?: boolean;
 }
 
 export interface DamageApplication {
@@ -73,8 +80,9 @@ export function applyDamage(
     }
   }
 
-  // 2. Remaining damage hits castle HP (#66), clamped at 0.
-  const dealtToHp = Math.min(target.castle.hp, remaining);
+  // 2. Remaining damage hits castle HP (#66), clamped at 0 — unless the hit
+  // was spent on the shield, in which case the remainder is simply lost.
+  const dealtToHp = options.shieldOnly ? 0 : Math.min(target.castle.hp, remaining);
   target.castle.hp -= dealtToHp;
 
   // Rage (Dark's Unlimited Rage) charges off punishment taken, whatever its
@@ -85,6 +93,10 @@ export function applyDamage(
   if (taken > 0) {
     target.rageMeter = Math.min(DARK.RAGE_FULL, target.rageMeter + taken);
   }
+
+  // Kitsune's "Swift Tails" charges off damage DEALT. `applyDamage` only knows
+  // the victim, so the attacker's share is credited by `creditAncientMemory`
+  // from the call sites that know who swung — see resolveDamage.
 
   const eliminated = target.castle.hp <= 0;
   if (eliminated) {

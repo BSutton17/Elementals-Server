@@ -11,6 +11,8 @@ import { LOVE_ABILITIES } from "./loveAbilities.js";
 import { JOKER_ABILITIES } from "./jokerAbilities.js";
 import { LIGHT_ABILITIES } from "./lightAbilities.js";
 import { DARK_ABILITIES } from "./darkAbilities.js";
+import { KITSUNE_ABILITIES } from "./kitsuneAbilities.js";
+import { MAGMA_ABILITIES } from "./magmaAbilities.js";
 import type { KingdomId } from "./kingdoms.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
@@ -34,6 +36,8 @@ export const KINGDOM_ABILITIES: Record<KingdomId, AbilityDefinition[]> = {
   joker: JOKER_ABILITIES,
   light: LIGHT_ABILITIES,
   dark: DARK_ABILITIES,
+  kitsune: KITSUNE_ABILITIES,
+  magma: MAGMA_ABILITIES,
 };
 
 /** The ability set for a kingdom id, or an empty list for unknown ids. */

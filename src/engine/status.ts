@@ -8,7 +8,13 @@ import type {
 import { type EffectCondition } from "./conditions.js";
 import { addModifier, removeModifiersFromSource, computeStat } from "./modifiers.js";
 import { applyDamage } from "./combat.js";
-import { statusDurationMultiplier, dotResistanceMultiplier } from "./passives.js";
+import { lavaFloorMultiplier } from "./lavaFloor.js";
+import {
+  statusDurationMultiplier,
+  dotResistanceMultiplier,
+  dotIgnoresShields,
+  creditMemoryDirect,
+} from "./passives.js";
 import { perkDamageTakenMultiplier, perkDotDamageTakenMultiplier } from "./perks.js";
 import { param } from "./parameters.js";
 import { TICK } from "../data/balance.js";
@@ -179,6 +185,41 @@ export interface StatusEffectDefinition {
    */
   blocksBearerShield?: boolean;
   /**
+   * Per-tick damage used INSTEAD of `amount` while the bearer has a shield up
+   * and the tick is piercing it (Magma's "Hotter fire").
+   *
+   * A shield should never be worthless against Magma, but it should not be a
+   * full answer either: the burn still gets through, just for less. Declared on
+   * the status rather than computed from a ratio so the softened number is a
+   * deliberate choice, visible next to the one it replaces.
+   */
+  shieldedTickAmount?: number;
+  /**
+   * This status is a BURN — fire damage over time, whoever inflicted it.
+   * Marked rather than inferred from the id so Magma's "Floor is Lava" can
+   * amplify every burn on the field (Fire's, Magma's, Kitsune's foxfire) from
+   * one rule, and a future kingdom's burn is covered the day it is written.
+   */
+  isBurn?: boolean;
+  /**
+   * The status ends the moment the bearer buys a shield (Kitsune's "Old
+   * Friends": the foxes are driven off by the wall going up, and buying one is
+   * the ONLY way out). Removed by `buyShield`, not by any timer.
+   */
+  endsOnShieldPurchase?: boolean;
+  /**
+   * While this status is on someone, the player who applied it gains this much
+   * Ancient Memory per tick (Kitsune's "Old Friends": the longer the foxes are
+   * left alone, the more Kitsune remembers).
+   */
+  chargesSourceMemoryPerTick?: number;
+  /**
+   * Each attack the BEARER makes multiplies this status's tick damage by this
+   * much (Kitsune's "Fox Fire": swinging fans the flames). Compounds, so a
+   * kingdom that keeps attacking burns hotter and hotter.
+   */
+  intensifiesOnBearerAttack?: number;
+  /**
    * While active, whenever the STATUS'S SOURCE (the applier) takes damage,
    * the bearer also takes this fraction of it (Love's Cupid's Arrow —
    * "infatuated" kingdoms feel a share of what Love feels).
@@ -340,6 +381,13 @@ export function applyStatus(
       thornsPct: definition.thornsPct,
       revealsBeforeExpiry: definition.revealsBeforeExpiry,
       blocksBearerShield: definition.blocksBearerShield,
+      isBurn: definition.isBurn,
+      shieldedTickAmount: definition.shieldedTickAmount,
+      endsOnShieldPurchase: definition.endsOnShieldPurchase,
+      chargesSourceMemoryPerTick: definition.chargesSourceMemoryPerTick,
+      intensifiesOnBearerAttack: definition.intensifiesOnBearerAttack,
+      // Starts at 1× and climbs each time the bearer attacks (Fox Fire).
+      intensity: 1,
       strippedCardRanks: definition.strippedCardRanks,
       basicAttacksOnly: definition.basicAttacksOnly,
       basicAttacksRemaining: definition.basicAttackLimit,
@@ -494,6 +542,13 @@ export function tickStatuses(state: GameState): RemovedStatus[] {
     const kept: StatusEffectInstance[] = [];
     const expired: StatusEffectInstance[] = [];
     for (const status of player.statuses) {
+      // A status with no clock never expires on time — the only thing that
+      // ends it is the condition it names (Kitsune's "Old Friends": buying a
+      // shield). Skipped before the countdown so it can't tick to zero.
+      if (status.endsOnShieldPurchase) {
+        kept.push(status);
+        continue;
+      }
       status.remainingTicks -= 1;
       if (status.remainingTicks > 0) {
         kept.push(status);
@@ -612,6 +667,15 @@ export function processStatusTicks(
       // Advance the status's own tick counter once per game tick, for
       // interval-cadence effects (e.g. Father Time's once-per-second punish).
       const elapsed = (status.tickElapsed = (status.tickElapsed ?? 0) + 1);
+
+      // "Old Friends": while the foxes are loose, Kitsune remembers. Credited
+      // to whoever set them on this kingdom, every tick they are still here.
+      if (status.chargesSourceMemoryPerTick) {
+        const owner = state.getPlayer(status.sourceId);
+        if (owner && !owner.eliminated) {
+          creditMemoryDirect(owner, status.chargesSourceMemoryPerTick);
+        }
+      }
       for (const effect of status.tickEffects ?? []) {
         // Interval cadence: fire only on this effect's Nth tick (default every).
         const interval = effect.intervalTicks ?? 1;
@@ -642,6 +706,34 @@ export function processStatusTicks(
         if (effect.chance !== undefined && rng() >= effect.chance) {
           continue;
         }
+
+        // "applyStatus": this tick seeds ANOTHER status on the bearer instead
+        // of dealing damage — Fire's Ignited rolling a Burn every fifteen
+        // seconds. None of the damage machinery below applies to it.
+        //
+        // Credited to whoever applied the CARRIER, not to the carrier itself,
+        // so the burn belongs to the kingdom that lit them: it feeds that
+        // kingdom's passives and counts as their damage, exactly as it would
+        // had they applied the burn directly.
+        if (effect.type === "applyStatus") {
+          if (!effect.applies) continue;
+          const seeded = applyStatus(player, effect.applies.status, {
+            sourceId: status.sourceId,
+            durationTicks: effect.applies.durationTicks,
+          });
+          if (bus.enabled) {
+            bus.emit({
+              type: "statusApplied",
+              tick: state.tick,
+              targetId: player.id,
+              sourceId: status.sourceId,
+              statusId: seeded.id,
+              durationTicks: seeded.remainingTicks,
+              stacks: seeded.stacks,
+            });
+          }
+          continue;
+        }
         // Half-life step: past the midpoint of its duration, the effect can
         // switch to a heavier magnitude (Father Time: 100 → 200 in the back
         // half). Measured from the elapsed clock vs the applied duration.
@@ -652,9 +744,16 @@ export function processStatusTicks(
         const perTickAmount = pastHalfLife
           ? effect.amountAfterHalfLife!
           : effect.amount;
+        // Magma's burn is softened while a shield is up: it still pierces (see
+        // `piercesShields` below), but for less, so raising a shield is worth
+        // doing against Magma without being a full answer to it.
+        const shieldSoftened =
+          status.shieldedTickAmount !== undefined && player.castle.shield > 0
+            ? status.shieldedTickAmount
+            : perTickAmount;
         let stacked = effect.perStack
-          ? perTickAmount * status.stacks
-          : perTickAmount;
+          ? shieldSoftened * status.stacks
+          : shieldSoftened;
         // Ramp: DoTs that worsen the longer they fester (Nature's Poison vs
         // Fire's flat Burn) — ×(1 + rampPerSecond × secondsActive), capped.
         if (effect.rampPerSecond) {
@@ -664,6 +763,17 @@ export function processStatusTicks(
             1 + effect.rampPerSecond * seconds,
           );
           stacked *= rampMult;
+        }
+        // Fox Fire: every attack the BEARER made since this landed has fanned
+        // the flames. Stored on the instance so it compounds across ticks and
+        // survives refreshes.
+        if (status.intensity && status.intensity !== 1) {
+          stacked *= status.intensity;
+        }
+        // Magma's "Floor is Lava": while the field is molten, EVERY burn on it
+        // hits harder — no matter which kingdom set it.
+        if (status.isBurn) {
+          stacked *= lavaFloorMultiplier(state, player.id);
         }
         // Balance knob (ticket #202): a DoT's per-tick DAMAGE is tunable through
         // `status.<id>.tickDamage` (a multiplier, so all severity variants —
@@ -689,8 +799,18 @@ export function processStatusTicks(
               : 1),
         );
         if (effect.type === "damage") {
+          // Magma's "Hotter fire": a DoT inflicted BY Magma goes straight
+          // through a shield. Read off whoever applied the status, so it
+          // follows Magma's damage rather than the status definition — any
+          // burn Magma lands pierces, whichever ability put it there.
+          const inflicter = status.sourceId
+            ? state.getPlayer(status.sourceId)
+            : undefined;
+          const piercesShields =
+            effect.ignoreShields === true ||
+            (inflicter !== undefined && dotIgnoresShields(inflicter));
           const applied = applyDamage(player, amount, {
-            ignoreShields: effect.ignoreShields,
+            ignoreShields: piercesShields,
             tick: state.tick,
           });
           // Attribute this DoT tick back to the attack that applied the status,

@@ -1,4 +1,4 @@
-import { TICK } from "./balance.js";
+import { KITSUNE, MAGMA, TICK } from "./balance.js";
 import { FROZEN_STATUS, FROZEN_DURATION, FROSTBITE_STATUS } from "./iceAbilities.js";
 import { DARKENED_STATUS, DARKENED_DURATION } from "./darkAbilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
@@ -27,6 +27,8 @@ export const KINGDOM_IDS = [
   "joker",
   "light",
   "dark",
+  "kitsune",
+  "magma",
 ] as const;
 
 export type KingdomId = (typeof KINGDOM_IDS)[number];
@@ -125,6 +127,23 @@ export type KingdomPassive = (
   /** While this kingdom's castle has an ACTIVE SHIELD, incoming attacks have
    *  `pct` chance to miss entirely (Joker's "Why so serious?"). */
   | { type: "shieldedMissChance"; pct: number }
+  /** A meter that charges on its own AND from damage dealt (Kitsune's "Swift
+   *  Tails"). `perSecond` is flat; `perDamage` is a share of damage dealt. */
+  | { type: "chargingMeter"; perSecond: number; perDamage: number; full: number }
+  /** This kingdom picks `extra` more perks than everyone else (Kitsune's
+   *  "Three tailed fox"). */
+  | { type: "extraPerks"; extra: number }
+  /** Damage-over-time this kingdom INFLICTS bypasses shields entirely
+   *  (Magma's "Hotter fire"). */
+  | { type: "dotIgnoresShields" }
+  /** Extra damage against a kingdom that is currently targeting this one, and
+   *  a periodic public mark over everyone who is (Magma's "Hot ash"). */
+  | {
+      type: "bonusDamageVsTargeters";
+      pct: number;
+      markIntervalTicks: number;
+      markDurationTicks: number;
+    }
 ) & { conditions?: any[] };
 
 /**
@@ -261,6 +280,32 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     { type: "cooldownReductionOnCast", ticks: 1.5 * TICK.RATE },
     // "Bright idea" — ability upgrade tiers cost 20% less.
     { type: "upgradeCostReduction", pct: 0.2 },
+  ],
+  magma: [
+    // "Hotter fire" — Magma's burn goes straight through a shield. Its own kit
+    // is still placeholder, so nothing of Magma's inflicts a DoT yet; this is
+    // wired against the generic tick pipeline and applies the day one does.
+    { type: "dotIgnoresShields" },
+    // "Hot ash" — pointing at Magma costs you: it hits back harder, and every
+    // 45 s it publicly marks everyone currently aiming at it.
+    {
+      type: "bonusDamageVsTargeters",
+      pct: MAGMA.HOT_ASH_DAMAGE_PCT,
+      markIntervalTicks: MAGMA.HOT_ASH_INTERVAL_TICKS,
+      markDurationTicks: MAGMA.HOT_ASH_MARK_TICKS,
+    },
+  ],
+  kitsune: [
+    // "Swift Tails" — the Ancient Memory meter fills on its own, and faster
+    // when Kitsune is actually fighting.
+    {
+      type: "chargingMeter",
+      perSecond: KITSUNE.MEMORY_PER_SECOND,
+      perDamage: KITSUNE.MEMORY_PER_DAMAGE,
+      full: KITSUNE.MEMORY_FULL,
+    },
+    // "Three tailed fox" — one more perk than anyone else gets.
+    { type: "extraPerks", extra: 1 },
   ],
   dark: [
     // "Night terrors" — attacking Dark risks a blackout: the attacker's own

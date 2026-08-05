@@ -313,7 +313,7 @@ export const TOXIC_GAS: AbilityDefinition = {
   id: "toxicGas",
   name: "Toxic Gas",
   kind: "ultimate",
-  cost: 800,
+  cost: 700,
   cooldownTicks: 75 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [

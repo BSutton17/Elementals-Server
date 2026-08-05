@@ -163,7 +163,11 @@ export class Match {
     return (
       players.length >= MATCH.MIN_PLAYERS &&
       players.every(
-        (p) => p.ready && p.kingdomId !== null && hasFullPerkSelection(p.perks),
+        (p) =>
+          p.ready &&
+          p.kingdomId !== null &&
+          // The allowance is per kingdom — Kitsune needs three.
+          hasFullPerkSelection(p.perks, p.kingdomId),
       )
     );
   }

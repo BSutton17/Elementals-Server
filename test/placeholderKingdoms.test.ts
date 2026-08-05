@@ -22,14 +22,26 @@ import type { MatchPlayer } from "../src/match/types.js";
 
 /** The kingdoms added as placeholders — all fully WIRED, whatever the state of
  *  their kit design. */
-const PLACEHOLDER_KINGDOMS = ["joker", "light", "dark"] as const;
+const PLACEHOLDER_KINGDOMS = ["joker", "light", "dark", "kitsune", "magma"] as const;
 
 /**
- * The slots still filled by generic stand-ins, as `[kingdom, abilityId]`. All
- * three kits are now fully designed, so this is empty — add an entry back if a
- * future kingdom ships with placeholder abilities again.
+ * The slots still filled by generic stand-ins, as `[kingdom, abilityId]`.
+ * Joker, Light and Dark are fully designed; Kitsune is brand new and every
+ * slot is still a stand-in. Remove entries here as its real kit lands.
  */
-const PLACEHOLDER_SLOTS: readonly (readonly [string, string])[] = [];
+const PLACEHOLDER_SLOTS: readonly (readonly [string, string])[] = [
+  // Kitsune's kit is fully designed — see kitsuneKingdom.test.ts.
+  // Magma's kit is fully designed — see magmaKingdom.test.ts.
+];
+
+/**
+ * Kingdoms whose PASSIVES are not designed yet — an empty entry in
+ * `KINGDOM_PASSIVES` is the honest state for those, rather than two inert
+ * stand-ins that look wired and do nothing. Empty today: every kingdom's
+ * passives are real (Kitsune's and Magma's behaviour is pinned in
+ * newKingdomPassives.test.ts). Add a kingdom back if one ships without them.
+ */
+const PASSIVES_PENDING: readonly string[] = [];
 
 const matchPlayer = (id: string, kingdomId: string): MatchPlayer => ({
   id,
@@ -60,17 +72,34 @@ for (const kingdom of PLACEHOLDER_KINGDOMS) {
     assert.ok((KINGDOM_IDS as readonly string[]).includes(kingdom));
     // Its passives are designed and wired (behaviour is pinned in
     // newKingdomPassives.test.ts) — only the ABILITY kit below is a
-    // placeholder. Every kingdom carries exactly two.
-    assert.equal(KINGDOM_PASSIVES[kingdom].length, 2);
+    // placeholder. Every finished kingdom carries exactly two.
+    const passives = KINGDOM_PASSIVES[kingdom];
+    assert.ok(Array.isArray(passives), "no passive list is declared at all");
+    if (PASSIVES_PENDING.includes(kingdom)) {
+      // Not yet designed: empty is the honest state, and the engine treats it
+      // as "nothing applies" rather than erroring.
+      assert.equal(passives.length, 0);
+    } else {
+      assert.equal(passives.length, 2);
+    }
   });
 
   test(`${kingdom} has a full five-ability kit, all registered`, () => {
     const abilities = abilitiesForKingdom(kingdom);
     assert.equal(abilities.length, 5);
-    assert.deepEqual(
-      abilities.map((a) => a.kind),
-      ["attack", "attack", "attack", "utility", "ultimate"],
+    // Most kits run three attacks, but that is a convention rather than a rule:
+    // Magma runs two plus two support abilities, both offensive in intent but
+    // neither dealing damage the way an attack does. What the ENGINE actually
+    // requires is pinned instead.
+    const kinds = abilities.map((a) => a.kind);
+    assert.equal(kinds[0], "attack", "slot 1 must be the basic attack");
+    assert.equal(kinds[4], "ultimate", "slot 5 must be the ultimate");
+    assert.equal(
+      kinds.filter((k) => k === "ultimate").length,
+      1,
+      "a kingdom has exactly one ultimate",
     );
+    assert.equal(kinds.includes("passive"), false, "passives are not castable");
     for (const ability of abilities) {
       // Registered by id — `cooldownModify`, purchases, and the sync all look
       // abilities up here, so an unregistered one is invisible to the engine.
@@ -86,9 +115,12 @@ for (const kingdom of PLACEHOLDER_KINGDOMS) {
       Object.keys(prices).sort(),
       abilitiesForKingdom(kingdom).map((x) => x.id).sort(),
     );
-    for (const p of Object.values(prices)) {
-      assert.ok(p.cast > 0);
-      assert.ok(p.unlock !== null && p.unlock > 0); // all locked at start
+    for (const [id, p] of Object.entries(prices)) {
+      // A cast price of 0 is legal for an ability paid for in something other
+      // than gold (Kitsune Rush spends a full Ancient Memory meter). Every
+      // ability still has to be UNLOCKED, so that price is always real.
+      assert.ok(p.cast >= 0, `${id} has a negative cast price`);
+      assert.ok(p.unlock !== null && p.unlock > 0, `${id} has no unlock price`);
     }
   });
 
@@ -123,7 +155,16 @@ for (const [kingdom, abilityId] of PLACEHOLDER_SLOTS) {
     const hpBefore = b.castle.hp;
     const result = activateAbility(match, a, ability!, { forceCrit: false });
     assert.equal(result.ok, true, `${abilityId} failed: ${JSON.stringify(result)}`);
-    assert.ok(b.castle.hp < hpBefore, `${abilityId} dealt no damage`);
+
+    if (ability!.kind === "utility") {
+      // A self-buff lands a status on its caster rather than damage — asserting
+      // damage here would pass only by accident of what the stand-in happens
+      // to do.
+      assert.ok(a.statuses.length > 0, `${abilityId} applied no status`);
+      assert.equal(b.castle.hp, hpBefore, `${abilityId} damaged its caster's target`);
+    } else {
+      assert.ok(b.castle.hp < hpBefore, `${abilityId} dealt no damage`);
+    }
   });
 }
 

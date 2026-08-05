@@ -1,8 +1,9 @@
-import { KINGDOM_PASSIVES, type KingdomPassive } from "../data/kingdoms.js";
+import { KINGDOM_PASSIVES, type KingdomId, type KingdomPassive } from "../data/kingdoms.js";
 import { COMBAT, TICK } from "../data/balance.js";
 import type { PlayerState } from "../match/playerState.js";
 import type { StatusEffectDefinition } from "./status.js";
 import { evaluateCondition } from "./conditions.js";
+import { computeStat } from "./modifiers.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 
 /**
@@ -331,6 +332,113 @@ export function upgradeCostMultiplier(player: PlayerState): number {
     if (p.type === "upgradeCostReduction") mult *= Math.max(0, 1 - p.pct);
   }
   return mult;
+}
+
+/**
+ * The charging-meter spec for a kingdom that has one (Kitsune's "Swift Tails"),
+ * or null. Returned whole so callers don't re-walk the passive list per field.
+ */
+export function chargingMeterSpec(
+  player: PlayerState,
+): { perSecond: number; perDamage: number; full: number } | null {
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "chargingMeter") {
+      return { perSecond: p.perSecond, perDamage: p.perDamage, full: p.full };
+    }
+  }
+  return null;
+}
+
+/**
+ * Credits a share of damage DEALT to the attacker's charging meter (Kitsune's
+ * "Swift Tails"). A no-op for every kingdom without the passive, so callers
+ * don't need to know who has one.
+ */
+export function creditAncientMemory(attacker: PlayerState, dealt: number): void {
+  if (dealt <= 0) return;
+  const spec = chargingMeterSpec(attacker);
+  if (!spec) return;
+  attacker.ancientMemory = Math.min(
+    spec.full,
+    attacker.ancientMemory + dealt * spec.perDamage * memoryGainMultiplier(attacker),
+  );
+}
+
+/**
+ * Adds a flat amount to a charging meter, clamped to its cap. Used by abilities
+ * and statuses that grant Memory directly (Fox Swipe's flat bump, Old Friends'
+ * per-tick trickle) rather than as a share of damage dealt.
+ */
+export function creditMemoryDirect(player: PlayerState, amount: number): void {
+  if (amount <= 0) return;
+  const spec = chargingMeterSpec(player);
+  if (!spec) return;
+  player.ancientMemory = Math.min(
+    spec.full,
+    player.ancientMemory + amount * memoryGainMultiplier(player),
+  );
+}
+
+/**
+ * How much faster Memory accrues right now (Azure Guidance doubles it).
+ *
+ * Applied to EVERY source — the passive trickle, the share of damage dealt, the
+ * foxes, and flat ability grants alike. "Doubles the speed of Ancient Memory"
+ * is what a player reads it as, and doubling only some sources would make the
+ * buff behave differently depending on what they happened to be doing.
+ */
+export function memoryGainMultiplier(player: PlayerState): number {
+  return Math.max(0, computeStat(player, "memoryGain", 1));
+}
+
+/**
+ * The passive, per-tick trickle into a charging meter (Kitsune's "Swift
+ * Tails"). Called once per tick for every player; a no-op without the passive.
+ */
+export function tickChargingMeter(player: PlayerState): void {
+  const spec = chargingMeterSpec(player);
+  if (!spec) return;
+  const perTick =
+    (spec.perSecond / param("tick.rate", TICK.RATE)) * memoryGainMultiplier(player);
+  player.ancientMemory = Math.min(spec.full, player.ancientMemory + perTick);
+}
+
+/** Whether damage-over-time INFLICTED by this player bypasses shields
+ *  (Magma's "Hotter fire"). */
+export function dotIgnoresShields(player: PlayerState): boolean {
+  return kingdomPassives(player).some((p) => p.type === "dotIgnoresShields");
+}
+
+/**
+ * "Hot ash" (Magma): extra damage multiplier against a recipient that is
+ * currently targeting the attacker. 1 when it doesn't apply — pointing at Magma
+ * is what arms it, so a kingdom aiming anywhere else takes normal damage.
+ */
+export function targeterDamageMultiplier(
+  attacker: PlayerState,
+  recipient: PlayerState,
+): number {
+  if (recipient.target !== attacker.id) return 1;
+  let mult = 1;
+  for (const p of kingdomPassives(attacker)) {
+    if (p.type === "bonusDamageVsTargeters") mult *= 1 + p.pct;
+  }
+  return mult;
+}
+
+/** The "Hot ash" marking cadence for a kingdom that has it, or null. */
+export function targeterMarkSpec(
+  player: PlayerState,
+): { intervalTicks: number; durationTicks: number } | null {
+  for (const p of kingdomPassives(player)) {
+    if (p.type === "bonusDamageVsTargeters") {
+      return {
+        intervalTicks: p.markIntervalTicks,
+        durationTicks: p.markDurationTicks,
+      };
+    }
+  }
+  return null;
 }
 
 /** Whether this player's perks run at their boosted magnitudes (Dark's

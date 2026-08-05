@@ -65,7 +65,7 @@ export interface Modifier {
  * damage or a regeneration heal, optionally scaling with stack count.
  */
 export interface StatusTickEffect {
-  type: "damage" | "heal";
+  type: "damage" | "heal" | "applyStatus";
   /** Magnitude per tick (per stack when `perStack` is set). */
   amount: number;
   /** Multiply by the status's current stacks (poison-style ramping). */
@@ -98,6 +98,13 @@ export interface StatusTickEffect {
    * magnitude instead of `amount` (Father Time hits harder in the back half).
    */
   amountAfterHalfLife?: number;
+  /**
+   * `applyStatus` only: the status laid on the bearer when this effect fires,
+   * credited to whoever applied the CARRIER (Fire's Ignited rolling a Burn
+   * every fifteen seconds). Combine with `intervalTicks` for the cadence and
+   * `chance` for the odds — a status that periodically seeds another status.
+   */
+  applies?: { status: StatusEffectDefinition; durationTicks: number };
 }
 
 /**
@@ -126,6 +133,19 @@ export interface StatusEffectInstance {
   lastIdleEvalTick?: number;
   /** Whether the status has associated modifiers. */
   hasModifiers?: boolean;
+  /** Ends when the bearer buys a shield (Kitsune's "Old Friends"). */
+  endsOnShieldPurchase?: boolean;
+  /** A burn — amplified by Magma's "Floor is Lava" whoever inflicted it. */
+  isBurn?: boolean;
+  /** Per-tick damage used instead while the bearer has a shield up. */
+  shieldedTickAmount?: number;
+  /** Ancient Memory credited to `sourceId` each tick this is active. */
+  chargesSourceMemoryPerTick?: number;
+  /** Multiplier applied to this status's tick damage each time the BEARER
+   *  attacks (Kitsune's "Fox Fire"). */
+  intensifiesOnBearerAttack?: number;
+  /** How hot it currently burns — 1× on apply, climbing with `intensify`. */
+  intensity?: number;
   /** The attack-journal record (id) of the activation that applied this status,
    *  so its DoT/status damage attributes back to that attack for Blip's undo. */
   journalId?: string;
@@ -346,6 +366,12 @@ export interface PlayerState {
    */
   rageMeter: number;
   /**
+   * Kitsune's "Ancient Memory" ("Swift Tails"): charges on its own every tick
+   * and faster from damage dealt. Tracked for everyone, read only by Kitsune —
+   * the same arrangement as `rageMeter`.
+   */
+  ancientMemory: number;
+  /**
    * Joker's Slot Machine: this player has been handed a machine and owes a
    * spin. Their gold production is frozen until they pull the lever — there is
    * no way to decline, only to stall. Null when nothing is owed.
@@ -463,6 +489,7 @@ export function createPlayerState(
     attackJournal: [],
     supernovaMeter: 0,
     rageMeter: 0,
+    ancientMemory: 0,
     pendingSpin: null,
     lastSpin: null,
     pendingBet: null,

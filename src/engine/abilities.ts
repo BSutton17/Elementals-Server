@@ -34,8 +34,17 @@ import {
   cooldownReductionOnCast,
   upgradeCostMultiplier,
   shieldedMissChance,
+  creditMemoryDirect,
+  chargingMeterSpec,
 } from "./passives.js";
 import { applyDamage, type DamageApplication } from "./combat.js";
+import {
+  spawnVolcano,
+  damageVolcano,
+  volcanoIsLive,
+  applyVolcanoStatus,
+} from "./volcano.js";
+import { VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
 import { DARK, SPACE } from "../data/balance.js";
@@ -120,6 +129,12 @@ export interface EffectDefinition {
     | "vision"
     | "undoLastAttack"
     | "chargeSupernova"
+    | "chargeMemory"
+    | "spendMemory"
+    | "lavaFloor"
+    | "smokeScreen"
+    | "spawnVolcano"
+    | "foxSiege"
     | "supernovaBlast"
     | "createBlackHole"
     | "linkCastles"
@@ -249,6 +264,14 @@ export interface EffectDefinition {
     };
     /** chargeSupernova: points added to the caster's Supernova meter (Space). */
     supernovaCharge?: number;
+    /** chargeMemory: points added to the caster's Ancient Memory (Kitsune). */
+    memoryCharge?: number;
+    /** foxSiege: damage spent ENTIRELY on a standing shield, no carry-over. */
+    shieldOnlyAmount?: number;
+    /** lavaFloor: multiplier applied to every burn on the field. */
+    burnMultiplier?: number;
+    /** smokeScreen: damage dealt to each kingdom currently targeting the caster. */
+    targeterDamage?: number;
     /** supernovaBlast (Space): damage indexed by the caster's CURRENT Supernova
      *  level (index 0 = level 1, etc.); the meter is consumed on cast. */
     supernovaDamageByLevel?: number[];
@@ -569,6 +592,7 @@ export type AbilityError =
   | "NO_CHARGES" // a charge-costed ability needs at least one charge
   | "NO_SUPERNOVA" // Supernova has no charge yet (meter at level 0)
   | "NOT_ENRAGED" // Unlimited Rage is not fully charged yet
+  | "MEMORY_NOT_FULL" // Kitsune Rush needs a completely full Ancient Memory
   | "BASIC_ATTACKS_ONLY" // Never-ending nightmare bars everything but the basic
   | "CHOICE_REQUIRED" // Yin and Yang needs the caster to pick a side
   | "SECOND_TARGET_REQUIRED"; // BFFS!!! needs a second distinct kingdom selected
@@ -742,6 +766,15 @@ function activateAbilityInner(
     return { ok: false, error: "NOT_ENRAGED" };
   }
 
+  // Kitsune Rush: the same all-or-nothing rule, against Ancient Memory. Gold
+  // cannot bring it forward — a full meter is the only key.
+  if (effective.effects.some((e) => e.type === "spendMemory")) {
+    const spec = chargingMeterSpec(caster);
+    if (spec && caster.ancientMemory < spec.full) {
+      return { ok: false, error: "MEMORY_NOT_FULL" };
+    }
+  }
+
   // 3. Validate cooldown, then funds. Charge-based abilities (Lightning
   // Barrage) price the cast per charge spent: the caster picks 1..max charges
   // (default 1), clamped to how many are currently regenerated. The cast's
@@ -801,6 +834,8 @@ function activateAbilityInner(
     );
 
   let targets: PlayerState[];
+  /** Damage bound for the volcano instead of a kingdom, if this cast hit it. */
+  let volcanoStrike = 0;
   // Air's wind passive (Epic 9 VFX): records shots turned aside so the renderer
   // can play the attacker → Air → new-target deflection. `via` is the kingdom
   // that intercepted the shot; `to` is where it was hurled instead.
@@ -832,8 +867,25 @@ function activateAbilityInner(
             : [options.targetIds[0]!]
           : [options.targetId ?? caster.target];
 
+      // Swinging at the volcano: it is not a kingdom, so it skips the parts of
+      // the pipeline that need one — redirects, targeting bans, crits, and
+      // every defender-side modifier. Its plain damage is chipped off it, and
+      // any status the attack carries is laid on it as well (see below).
+      if (requestedIds.length === 1 && requestedIds[0] === VOLCANO_TARGET_ID) {
+        if (!volcanoIsLive(match)) return { ok: false, error: "INVALID_TARGET" };
+        if (ability.kind !== "attack" && ability.kind !== "ultimate") {
+          return { ok: false, error: "INVALID_TARGET" };
+        }
+        const total = effective.effects
+          .filter((e) => e.type === "damage")
+          .reduce((sum, e) => sum + (e.params.amount ?? 0), 0);
+        if (total <= 0) return { ok: false, error: "INVALID_TARGET" };
+        volcanoStrike = total;
+      }
+
       targets = [];
       for (const targetId of requestedIds) {
+        if (targetId === VOLCANO_TARGET_ID) continue; // handled above
         if (!targetId) return { ok: false, error: "TARGET_REQUIRED" };
         if (targetId === caster.id) return { ok: false, error: "INVALID_TARGET" };
         const resolved = match.hasPlayer(targetId)
@@ -1010,6 +1062,17 @@ function activateAbilityInner(
       : effective.cooldownTicks;
   setCooldown(caster, effective.id, cooldownTicks);
 
+  // Kitsune's "Fox Fire": swinging fans the flames. Counted here — once the
+  // cast is COMMITTED — so a rejected cast never stokes the fire, and it counts
+  // whatever the attack was aimed at. Ultimates fan it too: the fire responds
+  // to the kingdom acting, not to who it acted against.
+  if (ability.kind === "attack" || ability.kind === "ultimate") {
+    for (const fire of caster.statuses) {
+      if (!fire.intensifiesOnBearerAttack) continue;
+      fire.intensity = (fire.intensity ?? 1) * fire.intensifiesOnBearerAttack;
+    }
+  }
+
   // Dark's Never-ending nightmare: this attack burns one of the victim's
   // allowance. Counted here, once the cast is committed, so a rejected cast
   // never shortens the sentence — and the lock lifts the moment it runs out.
@@ -1081,6 +1144,40 @@ function activateAbilityInner(
 
   // 6. Apply each effect primitive in order, to every resolved target.
   const damage: DamageApplication[] = [];
+
+  // A swing at the volcano ends here: the cost and cooldown are already paid
+  // above, and the per-kingdom effect pipeline cannot run against a rock.
+  if (volcanoStrike > 0) {
+    damageVolcano(match, caster.id, volcanoStrike);
+
+    // …but the attack is not cut in half. Anything it inflicts — a burn, a
+    // freeze, anything — is laid on the mountain too, on the same chance roll
+    // it would face against a castle. A DoT then burns the volcano down and is
+    // credited to whoever set it, so lighting it counts toward breaking it
+    // exactly as swinging at it does. Statuses with nothing to act on (a
+    // freeze has no attack to stop) simply ride along inert.
+    const volcanoRng = options.rng ?? match.rng;
+    for (const effect of effective.effects) {
+      if (effect.type !== "status" || effect.target !== "target") continue;
+      const status = effect.params.status;
+      if (!status) continue;
+      if (
+        effect.chance !== undefined &&
+        !options.guaranteeChances &&
+        volcanoRng() >= effect.chance
+      ) {
+        continue;
+      }
+      applyVolcanoStatus(
+        match,
+        caster.id,
+        status,
+        effect.params.durationTicks ?? 0,
+        effect.params.stacks ?? 1,
+      );
+    }
+    return { ok: true, damage: [], targetId: VOLCANO_TARGET_ID };
+  }
 
   // Frozen Focus (Epic 11): while the caster holds guarantee stacks, an
   // attack's chance-gated effects always proc; each attack consumes a stack.
@@ -1860,6 +1957,128 @@ function applyEffect(
       }
       break;
     }
+    case "smokeScreen": {
+      // Magma's Smoke Screen: everyone currently aiming at Magma is blinded and
+      // singed. Untargeted — the victims are chosen by their OWN targeting, so
+      // a kingdom that has already looked away is untouched.
+      for (const other of match.gameState!.getPlayers()) {
+        if (other.id === caster.id || other.eliminated) continue;
+        if (other.target !== caster.id) continue;
+
+        if ((p.targeterDamage ?? 0) > 0) {
+          const applied = applyDamage(other, p.targeterDamage!, { tick: match.tick });
+          damage.push(applied);
+          emitDamage(other.id, caster.id, applied, false, abilityId);
+        }
+        if (p.status) {
+          const inst = applyStatus(other, p.status, {
+            sourceId: caster.id,
+            durationTicks: p.durationTicks ?? 0,
+          });
+          emitStatusApplied(other.id, caster.id, inst);
+        }
+      }
+      break;
+    }
+
+    case "spawnVolcano": {
+      spawnVolcano(match, caster.id, p.durationTicks ?? 0);
+      break;
+    }
+
+    case "lavaFloor": {
+      // Magma's "Floor is Lava": set the whole battlefield alight. Field-wide
+      // and untargeted — every burn on it hits harder, including burns on
+      // Magma and burns set by other kingdoms.
+      const state = match.gameState!;
+      state.lavaFloor = {
+        ownerId: caster.id,
+        endTick: match.tick + (p.durationTicks ?? 0),
+        multiplier: p.burnMultiplier ?? 1,
+      };
+      if (bus.enabled) {
+        bus.emit({
+          type: "lavaFloorLit",
+          tick: match.tick,
+          ownerId: caster.id,
+          durationTicks: p.durationTicks ?? 0,
+          multiplier: p.burnMultiplier ?? 1,
+        });
+      }
+      break;
+    }
+
+    case "spendMemory": {
+      // Kitsune Rush empties the meter it was paid for. An effect rather than a
+      // price because gold is not involved at all — Memory IS the currency.
+      caster.ancientMemory = 0;
+      break;
+    }
+
+    case "chargeMemory": {
+      // Kitsune's Fox Swipe: a flat top-up on top of whatever "Swift Tails"
+      // already credits from the damage itself.
+      creditMemoryDirect(caster, p.memoryCharge ?? 0);
+      break;
+    }
+
+    case "foxSiege": {
+      // Kitsune's "Old Friends". The foxes do one of two completely different
+      // things depending on what they find:
+      //
+      //  • a shield up   — they tear at it for a fixed amount and leave. None
+      //    of it carries over, so this is wasted on a fresh shield and lethal
+      //    to a worn one.
+      //  • no shield     — they move in and GNAW. The status has no duration:
+      //    the only way to be rid of them is to put a shield up (see
+      //    `endsOnShieldPurchase` in purchases.ts), and every tick they are
+      //    left alone feeds Kitsune's Ancient Memory.
+      if (recipient.castle.shield > 0) {
+        // The bite is DAMAGE, so it runs the ordinary damage pipeline: Sharper
+        // Swords, Sharper Axes, kingdom passives, Besieged and crits all apply,
+        // and any future attacker buff does too without touching this code.
+        // Only its DESTINATION is unusual — `shieldOnly` spends the whole
+        // figure on the shield with nothing carrying into castle HP.
+        const resolved = resolveDamage(caster, recipient, p.shieldOnlyAmount ?? 0, {
+          element: p.element,
+          forceCrit: options.forceCrit,
+          rng: options.rng,
+          besiegedMultiplier: besiegedDamageMultiplier(
+            caster,
+            match.gameState!.getPlayers(),
+          ),
+          attackerScalingMultiplier: scalingAttackMultiplier(caster, match.tick),
+          defenderScalingTakenMultiplier:
+            scalingDamageTakenMultiplier(recipient, match.tick) *
+            dotResistanceMultiplier(recipient, abilityId),
+        });
+        const applied = applyDamage(recipient, resolved.amount, {
+          tick: match.tick,
+          shieldOnly: true,
+        });
+        damage.push(applied);
+        emitDamage(recipient.id, caster.id, applied, resolved.crit, abilityId);
+        if (applied.shieldRemaining <= 0 && bus.enabled) {
+          bus.emit({
+            type: "shieldDestroyed",
+            tick: match.tick,
+            playerId: recipient.id,
+            cause: abilityId,
+          });
+        }
+        break;
+      }
+      if (p.status) {
+        const inst = applyStatus(recipient, p.status, {
+          sourceId: caster.id,
+          // No duration: it ends when a shield goes up, not when a clock does.
+          durationTicks: p.durationTicks ?? 0,
+        });
+        emitStatusApplied(recipient.id, caster.id, inst);
+      }
+      break;
+    }
+
     case "chargeSupernova": {
       // Space's Shooting Star / Saturn's Rings add progress to the caster's
       // Supernova meter, capped at a full charge (max level). The meter can't
@@ -1969,6 +2188,7 @@ function applyEffect(
         endTick: match.tick + dur,
         accumulated: 0,
         lastAttackerId: null,
+        fedBy: [],
       };
       if (bus.enabled) {
         bus.emit({
@@ -2410,6 +2630,7 @@ function absorbIntoBlackHole(
 ): void {
   hole.accumulated += amount;
   hole.lastAttackerId = attackerId;
+  if (!hole.fedBy.includes(attackerId)) hole.fedBy.push(attackerId);
   const bus = match.gameState!.events;
   if (bus.enabled) {
     bus.emit({
@@ -2424,7 +2645,9 @@ function absorbIntoBlackHole(
 
 /**
  * Collapses an open Black Hole once its duration elapses: the entire pooled
- * damage is dealt to the last kingdom whose attack it absorbed (nobody fed it →
+ * damage is dropped on one kingdom, chosen by `blackHoleVictim` — a kingdom
+ * that never fed it if there is one, otherwise the last that did (nobody fed
+ * it and nobody survives to take it →
  * it fizzles). Run once per tick from the game loop. Returns the collapse info
  * for callers that want to react (tests), or null if nothing collapsed.
  */
@@ -2514,6 +2737,49 @@ export function resolvePendingStrikes(match: Match): void {
   }
 }
 
+/**
+ * Who a collapsing Black Hole dumps on.
+ *
+ * Space is excluded outright, owner or not. Beyond that, a kingdom that never
+ * fed it comes FIRST. The hole punishes sitting the fight out: everyone who threw a punch at Space already paid for it by having that
+ * attack swallowed, so dropping the whole pool on one of them taxes the same
+ * kingdom twice while the player who quietly built up all window walks away
+ * untouched. Non-attackers are the top of the list; the last kingdom to feed it
+ * is only the fallback for when the entire field engaged.
+ *
+ * Ties are broken with the match RNG so a seeded replay picks the same victim
+ * (#203), and so the choice can't be gamed by turn order or seating.
+ */
+function blackHoleVictim(
+  match: Match,
+  hole: BlackHoleState,
+): PlayerState | undefined {
+  const state = match.gameState!;
+  // Space is never a valid victim — not the kingdom that opened it, and not
+  // another Space either. The black hole is Space's own instrument; it does not
+  // turn on the kingdom that understands it.
+  const candidates = state
+    .getPlayers()
+    .filter(
+      (p) => !p.eliminated && p.id !== hole.ownerId && p.kingdomId !== "space",
+    );
+  if (candidates.length === 0) return undefined;
+
+  const bystanders = candidates.filter((p) => !hole.fedBy.includes(p.id));
+  if (bystanders.length > 0) {
+    const i = Math.min(
+      bystanders.length - 1,
+      Math.floor(match.rng() * bystanders.length),
+    );
+    return bystanders[i];
+  }
+
+  // Everyone engaged — fall back to whoever fed it last.
+  return hole.lastAttackerId
+    ? candidates.find((p) => p.id === hole.lastAttackerId)
+    : undefined;
+}
+
 export function collapseBlackHoles(match: Match): void {
   const state = match.gameState;
   if (!state) return;
@@ -2522,8 +2788,7 @@ export function collapseBlackHoles(match: Match): void {
 
   state.blackHole = null; // closed regardless of whether it dumps
   const bus = state.events;
-  const victimId = hole.lastAttackerId;
-  const victim = victimId ? state.getPlayer(victimId) : undefined;
+  const victim = blackHoleVictim(match, hole);
   if (victim && !victim.eliminated && hole.accumulated > 0) {
     const applied = applyDamage(victim, hole.accumulated, { tick: match.tick });
     if (bus.enabled) {

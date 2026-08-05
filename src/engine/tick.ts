@@ -1,5 +1,8 @@
 import type { Match } from "../match/Match.js";
 import { applyPassiveIncome } from "./economy.js";
+import { tickChargingMeter } from "./passives.js";
+import { markHotAshTargeters } from "./hotAsh.js";
+import { resolveVolcano, tickVolcanoStatuses } from "./volcano.js";
 import { processStatusTicks, tickStatuses } from "./status.js";
 import { tickModifiers } from "./modifiers.js";
 import { tickCooldowns, tickRecharges } from "./cooldowns.js";
@@ -22,6 +25,16 @@ export function tickMatch(match: Match, tick: number): boolean {
   // Economy phase: passive income.
   applyPassiveIncome(state);
 
+  // Meter phase: charging meters trickle up on their own (Kitsune's "Swift
+  // Tails"). The damage-dealt share is credited in `resolveDamage`.
+  for (const player of state.getPlayers()) {
+    if (player.eliminated) continue;
+    tickChargingMeter(player);
+  }
+
+  // Magma's "Hot ash": every so often, publicly mark everyone aiming at it.
+  markHotAshTargeters(match);
+
   // Status phase: run recurring per-tick effects (burn, regen, … — #78), then
   // advance durations and expire finished statuses.
   processStatusTicks(state, match.rng); // #203: seeded status procs
@@ -38,6 +51,13 @@ export function tickMatch(match: Match, tick: number): boolean {
   // the pooled damage on the last kingdom that fed it (before death detection so
   // a fatal dump is resolved this tick).
   collapseBlackHoles(match);
+
+  // Magma's "The End of the World": break it or wear it. Resolved before death
+  // detection so a fatal eruption settles on the same tick.
+  // Burns on the mountain chip it BEFORE the eruption is scored, so a DoT
+  // that finishes it on the final tick still counts as breaking it in time.
+  tickVolcanoStatuses(match);
+  resolveVolcano(match);
 
   // Light's "Light Show": land any telegraphed field-wide strike whose warning
   // window has run out (also before death detection).

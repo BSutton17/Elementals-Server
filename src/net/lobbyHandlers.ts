@@ -9,7 +9,11 @@ import { ensureSessionId } from "./sessionHandlers.js";
 import { buildMatchSnapshot } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
 import { isKingdomId } from "../data/kingdoms.js";
-import { hasFullPerkSelection, normalizePerks, PERKS_PER_PLAYER } from "../data/perks.js";
+import {
+  hasFullPerkSelection,
+  normalizePerks,
+  perksAllowedFor,
+} from "../data/perks.js";
 import { MATCH } from "../data/balance.js";
 import { logger } from "../util/logger.js";
 
@@ -27,6 +31,24 @@ function normalizeName(raw: unknown): string | null {
   const name = raw.trim();
   if (name.length === 0 || name.length > MAX_NAME_LENGTH) return null;
   return name;
+}
+
+/**
+ * Drops any perks the player's CURRENT kingdom does not entitle them to.
+ *
+ * The allowance is per-kingdom — Kitsune's "Three tailed fox" grants one more
+ * than everyone else — so switching away from Kitsune (or to spectating) has to
+ * give the extra perk back. Without this the seat keeps three perks it is no
+ * longer owed AND can never ready up, since the ready gate wants the count to
+ * match the allowance exactly.
+ *
+ * The earliest picks are kept: they were chosen first, and dropping the most
+ * recent selection is the least surprising thing to undo.
+ */
+function trimPerksToAllowance(player: MatchPlayer): void {
+  const allowed = perksAllowedFor(player.kingdomId);
+  const perks = player.perks ?? [];
+  if (perks.length > allowed) player.perks = perks.slice(0, allowed);
 }
 
 /**
@@ -211,6 +233,7 @@ export function registerLobbyHandlers(
       if (wantsSpectate) {
         player.spectator = true;
         player.kingdomId = null;
+        trimPerksToAllowance(player);
         broadcastLobbyUpdate(io, match);
         respond(ack, ok({ spectator: true }));
         return;
@@ -240,6 +263,7 @@ export function registerLobbyHandlers(
 
       player.spectator = false;
       player.kingdomId = kingdom;
+      trimPerksToAllowance(player);
       broadcastLobbyUpdate(io, match);
       respond(ack, ok({ kingdom: player.kingdomId }));
     },
@@ -259,19 +283,25 @@ export function registerLobbyHandlers(
       return;
     }
 
-    const perks = normalizePerks(payload?.perks);
-    if (perks === null) {
-      respond(
-        ack,
-        fail("INVALID_PAYLOAD", `Pick up to ${PERKS_PER_PLAYER} distinct perks`),
-      );
-      return;
-    }
-
+    // The room is resolved FIRST: the allowance depends on which kingdom this
+    // player has chosen (Kitsune may pick three), so the payload cannot be
+    // validated until we know who is asking.
     const match = matches.getMatch(roomCode);
     const player = match?.getPlayer(playerId);
     if (!match || !player) {
       respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+      return;
+    }
+
+    const perks = normalizePerks(payload?.perks, player.kingdomId);
+    if (perks === null) {
+      respond(
+        ack,
+        fail(
+          "INVALID_PAYLOAD",
+          `Pick up to ${perksAllowedFor(player.kingdomId)} distinct perks`,
+        ),
+      );
       return;
     }
     if (match.phase !== "lobby") {
@@ -282,7 +312,7 @@ export function registerLobbyHandlers(
     player.perks = perks;
     // Dropping below a full set un-readies the player, so they can never be
     // carried into a match on a selection they've since taken apart.
-    if (player.ready && !hasFullPerkSelection(player.perks)) {
+    if (player.ready && !hasFullPerkSelection(player.perks, player.kingdomId)) {
       player.ready = false;
     }
     broadcastLobbyUpdate(io, match);
@@ -321,10 +351,13 @@ export function registerLobbyHandlers(
         respond(ack, fail("NOT_READY", "Select a kingdom first"));
         return;
       }
-      if (!hasFullPerkSelection(player.perks)) {
+      if (!hasFullPerkSelection(player.perks, player.kingdomId)) {
         respond(
           ack,
-          fail("NOT_READY", `Select ${PERKS_PER_PLAYER} perks first`),
+          fail(
+            "NOT_READY",
+            `Select ${perksAllowedFor(player.kingdomId)} perks first`,
+          ),
         );
         return;
       }
@@ -404,7 +437,7 @@ export function registerLobbyHandlers(
         ack,
         fail(
           "NOT_READY",
-          `All connected players must be ready with a kingdom and ${PERKS_PER_PLAYER} perks selected`,
+          "All connected players must be ready with a kingdom and a full perk selection",
         ),
       );
       return;

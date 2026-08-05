@@ -7,6 +7,7 @@ import {
   withParameterSet,
 } from "../src/engine/parameters.js";
 import { listParameters } from "../src/engine/parameterCatalog.js";
+import { CASTLE, SHIELD } from "../src/data/balance.js";
 import { resolveAbility } from "../src/engine/abilities.js";
 import { computeIncome } from "../src/engine/economy.js";
 import { repairCastle, repairCost, buyShield } from "../src/engine/purchases.js";
@@ -148,9 +149,9 @@ test("the catalog enumerates the tunable space with production bases", () => {
 
   // Globals.
   assert.equal(byId.get("economy.incomePerCitizen"), 0.06);
-  assert.equal(byId.get("castle.repairCost"), 500);
-  assert.equal(byId.get("castle.maxRepairs"), 3);
-  assert.equal(byId.get("shield.cost"), 500);
+  assert.equal(byId.get("castle.repairCost"), CASTLE.REPAIR_COST);
+  assert.equal(byId.get("castle.maxRepairs"), CASTLE.MAX_REPAIRS);
+  assert.equal(byId.get("shield.cost"), SHIELD.COST);
 
   // Ability values — including charges, unlocks, and upgrade prices.
   assert.equal(byId.get("ability.fireball.effects.0.amount"), 250);

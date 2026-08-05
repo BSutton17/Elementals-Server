@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { io, type Socket } from "socket.io-client";
 import { startServer, type RunningServer } from "./helpers/server.js";
+import { SHIELD } from "../src/data/balance.js";
 
 // End-to-end: once a match is active, the server broadcasts periodic game-state
 // syncs to everyone in the room (ticket #49).
@@ -86,7 +87,7 @@ test("an active match broadcasts periodic state:sync to players", async () => {
       assert.equal(p.economy.nextCitizenCost, 25); // base cost, none purchased
       assert.equal(p.castle.shield, 0);
       assert.equal(typeof p.castle.nextRepairCost, "number");
-      assert.equal(p.castle.nextShieldCost, 500); // base cost, none bought
+      assert.equal(p.castle.nextShieldCost, SHIELD.COST); // base, none bought
       // The full price table rides along — every ability of the kingdom, all
       // locked at match start, so each carries an unlock price and no upgrade.
       const prices = Object.values(p.abilityPrices);

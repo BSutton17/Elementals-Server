@@ -237,7 +237,7 @@ export const BACK_TO_THE_FUTURE: AbilityDefinition = {
   id: "backToTheFuture",
   name: "Back to the Future",
   kind: "ultimate",
-  cost: 1000,
+  cost: 900,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [

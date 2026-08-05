@@ -13,7 +13,7 @@ import {
 import { earn } from "../src/engine/money.js";
 import type { GameplayEvent } from "../src/engine/events.js";
 import type { MatchPlayer } from "../src/match/types.js";
-import { FIREBALL, SCORCHING_SUN, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
+import { FIREBALL, SCORCHING_SUN, FIRENADO, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
 import { RIPTIDE } from "../src/data/waterAbilities.js";
 import { mulberry32 } from "../simulation/src/rng.js";
 import { runSimulation } from "../simulation/src/index.js";
@@ -82,7 +82,10 @@ test("casts publish abilityCast and damage with full breakdowns", () => {
 test("statuses publish on apply, tick (DoT), and expiry", () => {
   const { match, a, b, ofType } = arena();
 
-  activateAbility(match, a, SCORCHING_SUN, { targetId: "b" });
+  // Firenado, not Scorching Sun: Scorching Sun IGNITES now (a mark that rolls
+  // for a burn later), so it is no longer the ability that demonstrates a
+  // straightforward apply → tick → expire lifecycle.
+  activateAbility(match, a, FIRENADO, { targetId: "b" });
   const applied = ofType("statusApplied");
   assert.equal(applied.length, 1);
   assert.equal(applied[0]!.statusId, "burn");
