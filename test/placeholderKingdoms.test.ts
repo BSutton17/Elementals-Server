@@ -22,7 +22,14 @@ import type { MatchPlayer } from "../src/match/types.js";
 
 /** The kingdoms added as placeholders — all fully WIRED, whatever the state of
  *  their kit design. */
-const PLACEHOLDER_KINGDOMS = ["joker", "light", "dark", "kitsune", "magma"] as const;
+const PLACEHOLDER_KINGDOMS = [
+  "joker",
+  "light",
+  "dark",
+  "kitsune",
+  "magma",
+  "insects",
+] as const;
 
 /**
  * The slots still filled by generic stand-ins, as `[kingdom, abilityId]`.
@@ -32,14 +39,15 @@ const PLACEHOLDER_KINGDOMS = ["joker", "light", "dark", "kitsune", "magma"] as c
 const PLACEHOLDER_SLOTS: readonly (readonly [string, string])[] = [
   // Kitsune's kit is fully designed — see kitsuneKingdom.test.ts.
   // Magma's kit is fully designed — see magmaKingdom.test.ts.
+  // Insects' kit is fully designed — see insectsKingdom.test.ts.
 ];
 
 /**
  * Kingdoms whose PASSIVES are not designed yet — an empty entry in
  * `KINGDOM_PASSIVES` is the honest state for those, rather than two inert
- * stand-ins that look wired and do nothing. Empty today: every kingdom's
- * passives are real (Kitsune's and Magma's behaviour is pinned in
- * newKingdomPassives.test.ts). Add a kingdom back if one ships without them.
+ * stand-ins that look wired and do nothing. Every other kingdom's passives are
+ * real (Kitsune's and Magma's behaviour is pinned in
+ * newKingdomPassives.test.ts). Remove a kingdom here as its passives land.
  */
 const PASSIVES_PENDING: readonly string[] = [];
 

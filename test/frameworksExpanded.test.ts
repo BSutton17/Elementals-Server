@@ -384,7 +384,11 @@ test("targeting modifiers successfully redirect, duplicate, and multi-target att
   // a attacks b -> redirected to c
   b.castle.hp = 10_000;
   c.castle.hp = 10_000;
-  activateAbility(match, a, strike, { targetId: "b" });
+  // `forceCrit: false` like every other strike in this test: an unseeded match
+  // rolls crits off `Math.random`, so without it this assertion fails whenever
+  // the roll happens to land (300 becomes 450) — a flake with nothing to do
+  // with the redirection it is meant to be checking.
+  activateAbility(match, a, strike, { targetId: "b", forceCrit: false });
   assert.equal(b.castle.hp, 10_000); // undamaged
   assert.equal(c.castle.hp, 10_000 - 300); // took redirected damage
 

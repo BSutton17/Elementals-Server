@@ -129,6 +129,24 @@ export interface StatusEffectDefinition {
    */
   incomingMissChance?: number;
   /**
+   * The bearer's OWN attacks miss this often (Insects' "Butterflies"). The
+   * mirror of `incomingMissChance`, which is about attacks aimed AT the bearer:
+   * this one makes the bearer inaccurate rather than evasive.
+   */
+  attackMissChance?: number;
+  /**
+   * Insects' "Creepy Crawlers": how many bugs land, and how hard each one is
+   * to swat. Each drains gold every tick until it is squashed, so the bleed
+   * eases as the victim works through them.
+   */
+  crawlers?: { count: number; hitsToKill: number; drainPerSecond: number };
+  /**
+   * When the bearer's own attack misses, it lands on THEM instead (Insects'
+   * "Infected"). Inert on its own — something else has to be making them miss,
+   * which is why Butterflies and Infected are built to be used together.
+   */
+  deflectsMissedAttack?: boolean;
+  /**
    * When an incoming attack misses via `incomingMissChance`, add this many
    * points to the bearer's Supernova meter (Orion's Belt feeds the meter).
    */
@@ -375,6 +393,14 @@ export function applyStatus(
       drainsIncome: definition.drainsIncome,
       blocksTargetChange: definition.blocksTargetChange,
       incomingMissChance: definition.incomingMissChance,
+      attackMissChance: definition.attackMissChance,
+      drainPerSecond: definition.crawlers?.drainPerSecond,
+      hitsToKill: definition.crawlers?.hitsToKill,
+      // One entry per bug, counting the clicks it has taken so far.
+      bugHits: definition.crawlers
+        ? new Array<number>(definition.crawlers.count).fill(0)
+        : undefined,
+      deflectsMissedAttack: definition.deflectsMissedAttack,
       missChargesSupernova: definition.missChargesSupernova,
       bearerTakesPctOfSourceDamage: definition.bearerTakesPctOfSourceDamage,
       negateDamageHealPct: definition.negateDamageHealPct,

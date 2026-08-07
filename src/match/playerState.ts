@@ -228,6 +228,18 @@ export interface StatusEffectInstance {
   /** While active, each incoming attack on the bearer has this chance (0–1) to
    *  miss entirely (Space's Orion's Belt). Snapshotted on apply. */
   incomingMissChance?: number;
+  /** The bearer's own attacks miss this often (Butterflies). Snapshotted. */
+  attackMissChance?: number;
+  /** Clicks landed on each crawling bug so far (Insects' "Creepy Crawlers").
+   *  One entry per bug; a bug is dead once it reaches `hitsToKill`. */
+  bugHits?: number[];
+  /** Clicks needed to squash one bug. Snapshotted. */
+  hitsToKill?: number;
+  /** Gold each LIVING bug drains per second. Snapshotted. */
+  drainPerSecond?: number;
+  /** A missed attack by the bearer lands on them instead (Infected).
+   *  Snapshotted. */
+  deflectsMissedAttack?: boolean;
   /** Points added to the bearer's Supernova meter when an incoming attack misses
    *  via `incomingMissChance` (Orion's Belt feeds the meter). Snapshotted. */
   missChargesSupernova?: number;
@@ -346,6 +358,18 @@ export interface PlayerState {
    * every second the bearer fails to land a damaging attack.
    */
   lastDamageDealtTick: number;
+  /**
+   * Tick of the last damage this kingdom TOOK, from any source. -1 until
+   * something lands. Read by Insects' "Fruit Fly", which only heals once this
+   * is far enough behind the current tick.
+   */
+  lastDamageTakenTick: number;
+  /**
+   * Fractional healing carried between ticks (Insects' "Fruit Fly"). A slow
+   * per-tick figure would round to zero every tick and the passive would do
+   * nothing at all, so the remainder is banked until it makes a whole point.
+   */
+  regenCarry: number;
   /**
    * Recent incoming attacks that affected this player (most recent last),
    * bounded. Time's Blip! pops the last one and reverses it.
@@ -486,6 +510,8 @@ export function createPlayerState(
     eliminated: false,
     eliminatedAtTick: null,
     lastDamageDealtTick: -1,
+    lastDamageTakenTick: -1,
+    regenCarry: 0,
     attackJournal: [],
     supernovaMeter: 0,
     rageMeter: 0,

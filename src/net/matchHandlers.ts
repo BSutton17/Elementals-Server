@@ -14,6 +14,7 @@ import {
 import { activateAbility } from "../engine/abilities.js";
 import { spinSlotMachine } from "../engine/slotMachine.js";
 import { isBetColor, placeRouletteBet } from "../engine/roulette.js";
+import { squashCrawler } from "../engine/crawlers.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
 import { selectTarget } from "../engine/targeting.js";
 import type { TransactionResult } from "../engine/transactions.js";
@@ -153,6 +154,43 @@ export function registerMatchHandlers(
         revealTick: player.lastSpin?.revealTick ?? match.tick,
       }),
     );
+  });
+
+  // Swat one of the bugs eating your gold (Insects' "Creepy Crawlers"). Two
+  // clicks kills one. Server-authoritative: the client says "I hit bug 2", it
+  // never says "bug 2 is dead" — a client that could declare its own kills
+  // could clear the whole swarm the instant it landed.
+  socket.on("match:squash", (payload: { index?: unknown }, ack: unknown) => {
+    const roomCode =
+      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId =
+      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) {
+      respond(ack, fail("INVALID_PHASE", "Not in a match"));
+      return;
+    }
+
+    const index = payload?.index;
+    if (typeof index !== "number" || !Number.isInteger(index)) {
+      respond(ack, fail("INVALID_PAYLOAD", "index must be an integer"));
+      return;
+    }
+
+    const match = matches.getMatch(roomCode);
+    const player = match?.gameState?.getPlayer(playerId);
+    if (!match || !player) {
+      respond(ack, fail("ROOM_NOT_FOUND", "No active match"));
+      return;
+    }
+
+    const result = squashCrawler(match, player, index);
+    if (!result) {
+      respond(ack, fail("INVALID_TRANSACTION", "Nothing to swat there"));
+      return;
+    }
+
+    broadcastGameState(io, match);
+    respond(ack, ok(result));
   });
 
   // Call a colour on Joker's Roulette. Server-authoritative: it spins the

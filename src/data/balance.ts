@@ -248,6 +248,64 @@ export const FIRE = {
   IGNITED_BURN_SECONDS: 5,
 } as const;
 
+/**
+ * Insects. Both passives reward not being the kingdom everyone is hitting:
+ * one turns a share of what does land into income, the other pays out for
+ * being left alone.
+ */
+export const INSECTS = {
+  /** "Cocoon": odds that an incoming ATTACK is partly cocooned. Rolled once
+   *  per attack, never per damage-over-time tick — a 5% roll twenty times a
+   *  second would fire constantly and mean nothing. */
+  COCOON_CHANCE: 0.05,
+  /** How much of a cocooned hit becomes gold instead of damage. */
+  COCOON_GOLD_PCT: 0.1,
+  /** "Fruit Fly": how long Insects must go untouched before it starts to heal.
+   *  Long enough that it is a reward for being ignored rather than something
+   *  that ticks between the beats of a fight. */
+  FRUIT_FLY_IDLE_SECONDS: 15,
+  /** Regeneration once idle, as a fraction of MAX castle HP per second. A
+   *  percentage rather than a flat figure so it scales with whatever a castle
+   *  is worth. */
+  FRUIT_FLY_REGEN_PCT_PER_SECOND: 0.002,
+
+  /** "Venom Shot": odds the basic attack leaves poison behind. */
+  VENOM_CHANCE: 0.35,
+  /** Venom's damage per tick, per stack. */
+  VENOM_TICK: 6,
+  /** How long venom lasts. */
+  VENOM_SECONDS: 6,
+
+  /** "Butterflies": how much of the target's damage reduction it strips, as a
+   *  multiplier on the damage they take. */
+  BUTTERFLIES_DAMAGE_TAKEN: 1.1,
+  /** …and the chance their OWN attacks now miss. Half of everything they throw
+   *  for the duration — crippling on its own, and the reason Infected is worth
+   *  paying for, since every one of those whiffs then rebounds onto them. */
+  BUTTERFLIES_MISS_CHANCE: 0.5,
+  /** How long both halves of the debuff last. */
+  BUTTERFLIES_SECONDS: 20,
+
+  /** "Infected": how long a victim keeps deflecting their own misses. */
+  INFECTED_SECONDS: 15,
+
+  /** "Creepy Crawlers": how many bugs are sent. */
+  CRAWLER_COUNT: 3,
+  /** Clicks needed to squash ONE of them. */
+  CRAWLER_HITS_TO_KILL: 2,
+  /** Gold drained per second, by EACH bug still alive. The drain therefore
+   *  falls as the victim swats them, so squashing one is worth something
+   *  immediately rather than only on the last one. */
+  CRAWLER_DRAIN_PER_SECOND: 22,
+  /** How long they stay if the victim never swats them. */
+  CRAWLER_SECONDS: 20,
+
+  /** "Caprice": how long the butterfly holds the field. */
+  CAPRICE_SECONDS: 25,
+  /** How often it re-rolls everyone's target. */
+  CAPRICE_SCRAMBLE_SECONDS: 1,
+} as const;
+
 export const MAGMA = {
   /** Extra damage dealt to a kingdom that is currently targeting Magma. */
   HOT_ASH_DAMAGE_PCT: 0.25,

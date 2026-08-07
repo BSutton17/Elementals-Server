@@ -57,6 +57,24 @@ export interface VolcanoStatus {
   tickEffects?: StatusTickEffect[];
 }
 
+/**
+ * Insects' "Caprice": a butterfly holding the middle of the field.
+ *
+ * While it is up nobody chooses their own target — every second it re-rolls
+ * them — and nobody may aim at Insects at all. Insects itself is untouched and
+ * picks freely, which is the entire point: for twenty-five seconds it is the
+ * only kingdom playing the game on purpose.
+ */
+export interface CapriceState {
+  /** The Insects kingdom that called it. Exempt from the scramble, and the one
+   *  kingdom nobody may target while it holds. */
+  ownerId: string;
+  /** Tick at which the butterfly leaves. */
+  endTick: number;
+  /** Ticks between re-rolls. */
+  scrambleTicks: number;
+}
+
 export interface BlackHoleState {
   /** The Space player who opened it. */
   ownerId: string;
@@ -155,6 +173,12 @@ export class GameState {
    * treated like a kingdom is as a target id (see `VOLCANO_TARGET_ID`).
    */
   volcano: VolcanoState | null = null;
+
+  /**
+   * Insects' "Caprice" — the butterfly scrambling everyone's aim. Null when
+   * none is out.
+   */
+  caprice: CapriceState | null = null;
 
   /**
    * Telegraphed strikes waiting to land (Light's "Light Show"). Resolved once

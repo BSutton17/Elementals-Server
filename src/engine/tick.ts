@@ -2,6 +2,9 @@ import type { Match } from "../match/Match.js";
 import { applyPassiveIncome } from "./economy.js";
 import { tickChargingMeter } from "./passives.js";
 import { markHotAshTargeters } from "./hotAsh.js";
+import { regenerateIdleKingdoms } from "./idleRegen.js";
+import { drainCrawledKingdoms } from "./crawlers.js";
+import { tickCaprice } from "./caprice.js";
 import { resolveVolcano, tickVolcanoStatuses } from "./volcano.js";
 import { processStatusTicks, tickStatuses } from "./status.js";
 import { tickModifiers } from "./modifiers.js";
@@ -34,6 +37,18 @@ export function tickMatch(match: Match, tick: number): boolean {
 
   // Magma's "Hot ash": every so often, publicly mark everyone aiming at it.
   markHotAshTargeters(match);
+
+  // Insects' "Creepy Crawlers": every bug still crawling eats gold.
+  drainCrawledKingdoms(match);
+
+  // Insects' "Caprice": the butterfly re-rolls everyone's aim on its cadence,
+  // and leaves when its time is up.
+  tickCaprice(match);
+
+  // Insects' "Fruit Fly": a kingdom nobody has touched for a while starts to
+  // heal. Run BEFORE the status phase so a burn landing this tick suppresses
+  // the regeneration on the same tick it lands, rather than a tick later.
+  regenerateIdleKingdoms(match);
 
   // Status phase: run recurring per-tick effects (burn, regen, … — #78), then
   // advance durations and expire finished statuses.

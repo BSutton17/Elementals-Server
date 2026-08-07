@@ -45,9 +45,11 @@ import {
   applyVolcanoStatus,
 } from "./volcano.js";
 import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { spawnCaprice, capriceIsActive, capriceProtects } from "./caprice.js";
+import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
-import { DARK, SPACE } from "../data/balance.js";
+import { DARK, INSECTS, SPACE, TICK } from "../data/balance.js";
 
 /**
  * Space's Supernova level (0–3) from a meter value, using the cumulative
@@ -135,6 +137,7 @@ export interface EffectDefinition {
     | "smokeScreen"
     | "spawnVolcano"
     | "foxSiege"
+    | "spawnCaprice"
     | "supernovaBlast"
     | "createBlackHole"
     | "linkCastles"
@@ -268,6 +271,8 @@ export interface EffectDefinition {
     memoryCharge?: number;
     /** foxSiege: damage spent ENTIRELY on a standing shield, no carry-over. */
     shieldOnlyAmount?: number;
+    /** spawnCaprice: ticks between target re-rolls. */
+    scrambleTicks?: number;
     /** lavaFloor: multiplier applied to every burn on the field. */
     burnMultiplier?: number;
     /** smokeScreen: damage dealt to each kingdom currently targeting the caster. */
@@ -595,7 +600,8 @@ export type AbilityError =
   | "MEMORY_NOT_FULL" // Kitsune Rush needs a completely full Ancient Memory
   | "BASIC_ATTACKS_ONLY" // Never-ending nightmare bars everything but the basic
   | "CHOICE_REQUIRED" // Yin and Yang needs the caster to pick a side
-  | "SECOND_TARGET_REQUIRED"; // BFFS!!! needs a second distinct kingdom selected
+  | "SECOND_TARGET_REQUIRED" // BFFS!!! needs a second distinct kingdom selected
+  | "FIELD_OCCUPIED"; // something already holds the middle of the battlefield
 
 export interface AbilityActivation {
   ok: boolean;
@@ -775,6 +781,18 @@ function activateAbilityInner(
     }
   }
 
+  // The middle of the battlefield holds one thing at a time. An ability that
+  // would put an entity there — Magma's volcano, Insects' butterfly — is
+  // refused outright while any other is still standing, in both directions and
+  // including itself. See `engine/centrepiece.ts` for why, and for the one-line
+  // registration that extends this to future centre-of-the-field abilities.
+  //
+  // Checked BEFORE the spend below, so a refused cast costs the caster nothing:
+  // the gate is "wait for the field to clear", never a squandered ultimate.
+  if (centrepieceSpawnedBy(effective) && standingCentrepiece(match)) {
+    return { ok: false, error: "FIELD_OCCUPIED" };
+  }
+
   // 3. Validate cooldown, then funds. Charge-based abilities (Lightning
   // Barrage) price the cast per charge spent: the caster picks 1..max charges
   // (default 1), clamped to how many are currently regenerated. The cast's
@@ -887,7 +905,16 @@ function activateAbilityInner(
       for (const targetId of requestedIds) {
         if (targetId === VOLCANO_TARGET_ID) continue; // handled above
         if (!targetId) return { ok: false, error: "TARGET_REQUIRED" };
-        if (targetId === caster.id) return { ok: false, error: "INVALID_TARGET" };
+        // Normally you cannot aim at yourself. While a Caprice is out you can
+        // — the scramble puts people on their own castle on purpose, and
+        // silently refusing to fire would turn the joke into a lockout.
+        if (targetId === caster.id && !capriceIsActive(match)) {
+          return { ok: false, error: "INVALID_TARGET" };
+        }
+        // Nobody may swing at Insects while its butterfly holds the field.
+        if (capriceProtects(match, targetId) && targetId !== caster.id) {
+          return { ok: false, error: "INVALID_TARGET" };
+        }
         const resolved = match.hasPlayer(targetId)
           ? match.gameState?.getPlayer(targetId)
           : undefined;
@@ -1222,6 +1249,17 @@ function activateAbilityInner(
   for (let i = 0; i < duplicateCount; i++) {
     // Apply to each resolved target
     for (const target of targets) {
+      // The CASTER may simply fumble it (Insects' "Butterflies" makes its
+      // victim inaccurate). Rolled before the defender's own dodge, because
+      // a swing that was never on target cannot also be evaded — and because
+      // a fumble can rebound onto the caster, which a dodge never does.
+      if (
+        effective.kind === "attack" &&
+        target.id !== caster.id &&
+        fumbleOwnAttack(match, effective, caster, target, effectOptions, damage)
+      ) {
+        continue;
+      }
       // An attack may miss entirely — none of its effects land (Orion's Belt
       // feeding the bearer's Supernova meter, or Joker's shielded luck). Only
       // offensive attacks against another kingdom can be dodged.
@@ -1981,6 +2019,19 @@ function applyEffect(
       break;
     }
 
+    case "spawnCaprice": {
+      // Insects' "Caprice". Field-wide and untargeted: it does not care who the
+      // caster was pointing at, because in a moment nobody will be pointing
+      // anywhere on purpose.
+      spawnCaprice(
+        match,
+        caster.id,
+        p.durationTicks ?? 0,
+        p.scrambleTicks ?? INSECTS.CAPRICE_SCRAMBLE_SECONDS * TICK.RATE,
+      );
+      break;
+    }
+
     case "spawnVolcano": {
       spawnVolcano(match, caster.id, p.durationTicks ?? 0);
       break;
@@ -2522,6 +2573,73 @@ function applyEffect(
       break;
     }
   }
+}
+
+/**
+ * Rolls whether the CASTER fumbles their own swing (Insects' "Butterflies"),
+ * and resolves what happens if they do.
+ *
+ * This is the mirror of `maybeMissAttack`: that one is about a defender being
+ * hard to hit, this one is about an attacker being unable to aim. Kept separate
+ * for a reason — a fumble can rebound, and a dodge never can.
+ *
+ * If the caster is also "Infected", the fumbled attack lands on THEM: every
+ * effect it would have inflicted on the target is applied to the caster
+ * instead. That is the whole interaction between Insects' two heavy attacks —
+ * Butterflies makes you miss, Infected makes missing hurt — and it is why
+ * `deflectsMissedAttack` does nothing on its own.
+ *
+ * Returns true when the attack is over, so the caller drops the rest of it.
+ */
+function fumbleOwnAttack(
+  match: Match,
+  effective: AbilityDefinition,
+  caster: PlayerState,
+  target: PlayerState,
+  options: ActivateOptions,
+  damage: DamageApplication[],
+): boolean {
+  const clumsy = caster.statuses.find((s) => (s.attackMissChance ?? 0) > 0);
+  if (!clumsy) return false;
+
+  const rng = options.rng ?? match.rng;
+  if (rng() >= clumsy.attackMissChance!) return false;
+
+  const bus = match.gameState!.events;
+  if (bus.enabled) {
+    bus.emit({
+      type: "attackMissed",
+      tick: match.tick,
+      playerId: target.id,
+      attackerId: caster.id,
+      abilityId: effective.id,
+      cause: clumsy.id,
+    });
+  }
+
+  // Infected: the swing comes back around. Applied straight to the caster
+  // rather than by re-entering `activateAbility`, so it cannot re-roll the
+  // fumble and rebound forever.
+  const infection = caster.statuses.find((s) => s.deflectsMissedAttack);
+  if (infection) {
+    if (bus.enabled) {
+      bus.emit({
+        type: "attackDeflected",
+        tick: match.tick,
+        playerId: caster.id,
+        abilityId: effective.id,
+        cause: infection.id,
+      });
+    }
+    for (const effect of effective.effects) {
+      // Only what the attack was aiming at the TARGET comes back. Anything it
+      // does to the caster (self-buffs, meter charges) already happened or is
+      // not part of the swing.
+      if (effect.target !== "target") continue;
+      applyEffect(match, effective.id, caster, caster, caster, effect, options, damage);
+    }
+  }
+  return true;
 }
 
 /**

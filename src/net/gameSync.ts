@@ -11,6 +11,7 @@ import {
 } from "../engine/purchases.js";
 import { abilityUpgradeCost, resolveAbility } from "../engine/abilities.js";
 import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
+import { standingCentrepiece } from "../engine/centrepiece.js";
 import { SHIELD } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
 
@@ -112,6 +113,15 @@ export function broadcastGameState(io: Server, match: Match): void {
       dispel: dispellableStatus(p),
     })),
     projectiles: [],
+    // Insects' "Caprice". Synced to everyone: the butterfly is the whole
+    // table's problem, and the client needs to know when to stop offering a
+    // targeting UI that the server is about to overrule anyway.
+    caprice: state.caprice
+      ? {
+          ownerId: state.caprice.ownerId,
+          ticksRemaining: Math.max(0, state.caprice.endTick - state.tick),
+        }
+      : null,
     // Magma's "The End of the World". Synced to EVERYONE, not just Magma: the
     // whole table has to be able to see it, click it and watch its health fall,
     // because breaking it in time is a job none of them can do alone.
@@ -125,6 +135,18 @@ export function broadcastGameState(io: Server, match: Match): void {
           ticksRemaining: Math.max(0, state.volcano.endTick - state.tick),
         }
       : null,
+    // What currently holds the middle of the battlefield, by name, or null when
+    // it is clear — Magma's volcano, Insects' butterfly, Space's black hole or
+    // Light's disc. Only one may ever stand there (`engine/centrepiece.ts`).
+    //
+    // Sent as the ANSWER rather than as the ingredients. The client only needs
+    // it to grey out the ultimates the server is about to refuse, and two of
+    // the four are not in this payload at all (the black hole and the Light
+    // Show reach the client as events). Re-deriving the rule on that side would
+    // mean maintaining it twice and getting it wrong in exactly the way it was
+    // already wrong: knowing about the two it could see and silently missing
+    // the other two.
+    centrepiece: standingCentrepiece(match)?.name ?? null,
   });
 }
 

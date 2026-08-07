@@ -119,6 +119,58 @@ export type GameplayEvent =
       contributions: Record<string, number>;
     }
   | {
+      // Insects' "Infected": the bearer fumbled a swing and it came back at
+      // them. Paired with the `attackMissed` for the same swing — this one
+      // says the miss also cost them.
+      type: "attackDeflected";
+      tick: number;
+      /** Whoever swung, and is now wearing it. */
+      playerId: string;
+      abilityId: string;
+      cause: EventCause;
+    }
+  | {
+      // Insects' "Creepy Crawlers": the victim landed a click on one of the
+      // bugs eating their gold.
+      type: "crawlerSquashed";
+      tick: number;
+      playerId: string;
+      /** Which bug of the swarm was hit. */
+      index: number;
+      /** True if that click finished it off. */
+      killed: boolean;
+      /** How many are still crawling afterwards. */
+      remaining: number;
+    }
+  | {
+      // Gold taken by something other than a purchase (Creepy Crawlers).
+      type: "goldDrained";
+      tick: number;
+      playerId: string;
+      amount: number;
+      cause: EventCause;
+    }
+  | {
+      // Insects' "Caprice": the butterfly is on the field, and for as long as
+      // it is, nobody but Insects chooses who they are fighting.
+      type: "capriceSpawned";
+      tick: number;
+      ownerId: string;
+      durationTicks: number;
+    }
+  | {
+      type: "capriceEnded";
+      tick: number;
+      ownerId: string;
+    }
+  | {
+      // One kingdom's aim was taken away and pointed somewhere else.
+      type: "targetScrambled";
+      tick: number;
+      playerId: string;
+      targetId: string;
+    }
+  | {
       // Magma's "Floor is Lava": the whole battlefield is alight, so every burn
       // on it — anyone's — hits harder until it cools.
       type: "lavaFloorLit";

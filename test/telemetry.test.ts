@@ -7,6 +7,10 @@ import {
   type MatchTelemetry,
   type PlayerSpec,
 } from "../simulation/src/index.js";
+import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
+import { activateAbility } from "../src/engine/abilities.js";
+import { unlockOrUpgradeAbility } from "../src/engine/purchases.js";
+import { earn } from "../src/engine/money.js";
 
 /**
  * Telemetry Foundation (Part 1): every simulated match carries a complete,
@@ -154,10 +158,72 @@ test("status effectiveness is tracked per status id, generically", () => {
   // Both statuses appear automatically (no per-status code).
   assert.ok(merged.frozen?.applications > 0, "Freeze tracked");
   assert.ok(merged.poison?.applications > 0, "Poison tracked");
-  // Freeze bars attacks → attacks blocked is attributed to it (and only CC does).
-  assert.ok(merged.frozen.attacksBlocked > 0, "Freeze blocked attacks");
   // Damage lands on poisoned bearers → follow-up damage accrues to Poison.
   assert.ok(merged.poison.followUpDamage > 0, "Poison follow-up damage recorded");
+});
+
+test("attacks a status blocked are attributed to that status", () => {
+  // `attacksBlocked` counts casts the engine REFUSED because the caster was
+  // under crowd control — it is fed by `castFailed`, which only fires when a
+  // player actually tries.
+  //
+  // The personality AIs never produce one. They spend their treasury on every
+  // acting tick, so by the time a freeze lands there is nothing ready and
+  // affordable left to attempt: measured over six matches, 623 ticks of someone
+  // being attack-blocked yielded ZERO ticks where the bearer held a ready,
+  // affordable attack, and zero failed casts of any kind. Asserting this metric
+  // off a normal simulation therefore tests the AI's thrift, not the telemetry
+  // — which is why it sat failing.
+  //
+  // A human absolutely does click while frozen, so the metric is real. It is
+  // reproduced here with a controller that keeps swinging regardless, which
+  // exercises the same end-to-end path the live game does: engine refusal →
+  // `castFailed` with the responsible status → attribution.
+  const stubborn: PlayerSpec["ai"] = () => ({
+    act: ({ match, player }) => {
+      if (match.phase !== "active" || player.eliminated) return;
+      earn(player, 5000); // never broke, so the refusal is never about money
+      for (const ability of abilitiesForKingdom(player.kingdomId)) {
+        if (ability.kind !== "attack") continue;
+        if (!player.unlocked[ability.id]) unlockOrUpgradeAbility(match, player, ability.id);
+        activateAbility(match, player, ability, { targetId: player.target ?? undefined });
+      }
+    },
+  });
+
+  const result = runSimulation({
+    matches: 2,
+    seed: "status-blocks",
+    players: [
+      { kingdomId: "ice" as PlayerSpec["kingdomId"], ai: personalityAI(AGGRESSIVE) },
+      { kingdomId: "water" as PlayerSpec["kingdomId"], ai: stubborn },
+      { kingdomId: "fire" as PlayerSpec["kingdomId"], ai: stubborn },
+    ],
+  });
+
+  let frozenApplications = 0;
+  let frozenBlocks = 0;
+  let blockedByAnythingElse = 0;
+  for (const rec of result.records) {
+    for (const [id, s] of Object.entries(rec.telemetry!.statusEffectiveness)) {
+      if (id === "frozen") {
+        frozenApplications += s.applications;
+        frozenBlocks += s.attacksBlocked;
+      } else {
+        blockedByAnythingElse += s.attacksBlocked;
+      }
+    }
+  }
+
+  assert.ok(frozenApplications > 0, "Ice never froze anyone, so nothing was blocked");
+  assert.ok(frozenBlocks > 0, "Freeze barred attacks but none were attributed to it");
+  // And ONLY crowd control claims them: a burn or a poison must never be
+  // credited with stopping an attack it had nothing to do with.
+  assert.equal(
+    blockedByAnythingElse,
+    0,
+    "a status that does not bar attacking was credited with blocking one",
+  );
 });
 
 test("telemetry is deterministic under a fixed seed", () => {

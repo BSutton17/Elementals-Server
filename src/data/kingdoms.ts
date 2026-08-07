@@ -1,4 +1,4 @@
-import { KITSUNE, MAGMA, TICK } from "./balance.js";
+import { INSECTS, KITSUNE, MAGMA, TICK } from "./balance.js";
 import { FROZEN_STATUS, FROZEN_DURATION, FROSTBITE_STATUS } from "./iceAbilities.js";
 import { DARKENED_STATUS, DARKENED_DURATION } from "./darkAbilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
@@ -29,6 +29,7 @@ export const KINGDOM_IDS = [
   "dark",
   "kitsune",
   "magma",
+  "insects",
 ] as const;
 
 export type KingdomId = (typeof KINGDOM_IDS)[number];
@@ -136,6 +137,12 @@ export type KingdomPassive = (
   /** Damage-over-time this kingdom INFLICTS bypasses shields entirely
    *  (Magma's "Hotter fire"). */
   | { type: "dotIgnoresShields" }
+  /** A chance that an incoming ATTACK is partly cocooned: that share of the
+   *  damage never lands and is earned as gold instead (Insects' "Cocoon"). */
+  | { type: "cocoon"; chance: number; goldPct: number }
+  /** Regenerates castle HP once this kingdom has gone untouched for a while
+   *  (Insects' "Fruit Fly"). */
+  | { type: "idleRegen"; idleTicks: number; pctPerSecond: number }
   /** Extra damage against a kingdom that is currently targeting this one, and
    *  a periodic public mark over everyone who is (Magma's "Hot ash"). */
   | {
@@ -293,6 +300,23 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
       pct: MAGMA.HOT_ASH_DAMAGE_PCT,
       markIntervalTicks: MAGMA.HOT_ASH_INTERVAL_TICKS,
       markDurationTicks: MAGMA.HOT_ASH_MARK_TICKS,
+    },
+  ],
+  insects: [
+    // "Cocoon" — sometimes an incoming attack is partly caught by a cocoon:
+    // that share never lands, and is earned as gold instead. Rolled per
+    // ATTACK, not per damage tick.
+    {
+      type: "cocoon",
+      chance: INSECTS.COCOON_CHANCE,
+      goldPct: INSECTS.COCOON_GOLD_PCT,
+    },
+    // "Fruit Fly" — left alone long enough, Insects starts healing. A reward
+    // for being nobody's problem, and a reason to swat it before it settles.
+    {
+      type: "idleRegen",
+      idleTicks: INSECTS.FRUIT_FLY_IDLE_SECONDS * TICK.RATE,
+      pctPerSecond: INSECTS.FRUIT_FLY_REGEN_PCT_PER_SECOND,
     },
   ],
   kitsune: [

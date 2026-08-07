@@ -1,6 +1,7 @@
 import { TARGETING } from "../data/balance.js";
 import { param } from "./parameters.js";
 import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { capriceProtects, capriceScrambles } from "./caprice.js";
 import { volcanoIsLive } from "./volcano.js";
 import { isTargetingBlocked } from "./status.js";
 import type { Match } from "../match/Match.js";
@@ -87,6 +88,18 @@ export function selectTarget(
     }
     player.target = targetId;
     return { ok: true };
+  }
+
+  // Insects' "Caprice": while the butterfly holds the field nobody picks their
+  // own fight. Manual selection is refused outright rather than merely being
+  // overwritten a moment later — being able to re-aim in the gaps between
+  // scrambles would hand back exactly the control the ability takes away.
+  if (capriceScrambles(match, player)) {
+    return { ok: false, error: "INVALID_TARGET" };
+  }
+  // …and Insects itself cannot be aimed at for the duration.
+  if (capriceProtects(match, targetId)) {
+    return { ok: false, error: "INVALID_TARGET" };
   }
 
   if (!match.hasPlayer(targetId)) return { ok: false, error: "INVALID_TARGET" };

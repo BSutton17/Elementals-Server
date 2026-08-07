@@ -630,3 +630,34 @@ export function healShareGlobalPct(player: PlayerState): number {
   }
   return pct;
 }
+
+/**
+ * Insects' "Cocoon": the odds that an incoming ATTACK is partly caught, and
+ * what share of it becomes gold rather than damage. Null for every kingdom
+ * without the passive.
+ */
+export function cocoonSpec(
+  defender: PlayerState,
+): { chance: number; goldPct: number } | null {
+  for (const passive of kingdomPassives(defender)) {
+    if (passive.type === "cocoon") {
+      return { chance: passive.chance, goldPct: passive.goldPct };
+    }
+  }
+  return null;
+}
+
+/**
+ * Insects' "Fruit Fly": how long this kingdom must go untouched before it
+ * starts healing, and how fast it heals once it does. Null without the passive.
+ */
+export function idleRegenSpec(
+  player: PlayerState,
+): { idleTicks: number; pctPerSecond: number } | null {
+  for (const passive of kingdomPassives(player)) {
+    if (passive.type === "idleRegen") {
+      return { idleTicks: passive.idleTicks, pctPerSecond: passive.pctPerSecond };
+    }
+  }
+  return null;
+}

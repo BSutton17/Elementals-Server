@@ -8,8 +8,10 @@ import {
   critChanceModifier,
   critDamageMultiplier,
   targeterDamageMultiplier,
-  creditAncientMemory
+  creditAncientMemory,
+  cocoonSpec,
 } from "./passives.js";
+import { earn } from "./money.js";
 import {
   perkDamageMultiplier,
   perkDamageTakenMultiplier,
@@ -159,6 +161,9 @@ export interface ResolvedDamage extends DamageResult {
   afterAttackerModifiers: number;
   /** Damage after the elemental multiplier, before the crit roll. */
   afterElement: number;
+  /** Gold Insects' "Cocoon" made of this hit instead of taking it. 0 normally
+   *  — the share is already deducted from `amount`. */
+  cocoonedGold: number;
 }
 
 /**
@@ -257,16 +262,37 @@ export function resolveDamage(
     ),
   );
 
+  // Insects' "Cocoon": a share of this hit is caught and turned into money
+  // rather than landing. Rolled HERE, in the attack pipeline, so it fires once
+  // per attack — rolling it inside `applyDamage` would also roll it on every
+  // damage-over-time tick, twenty times a second, and a 5% chance at that
+  // cadence is a certainty rather than a surprise.
+  let final = amount;
+  let cocoonedGold = 0;
+  const cocoon = cocoonSpec(defender);
+  if (cocoon && final > 0) {
+    const roll = options.rng ?? Math.random;
+    if (roll() < cocoon.chance) {
+      cocoonedGold = Math.round(final * cocoon.goldPct);
+      // That share never lands: it is income, not damage taken. Deducting it
+      // is what makes the passive defensive as well as economic.
+      final = Math.max(0, final - cocoonedGold);
+      earn(defender, cocoonedGold);
+    }
+  }
+
   // Kitsune's "Swift Tails" charges off damage DEALT, so it is credited here —
   // the one place that knows both who swung and how hard it landed. Tracked for
-  // everyone; only a kingdom with the passive actually accrues.
-  creditAncientMemory(attacker, amount);
+  // everyone; only a kingdom with the passive actually accrues. Credited on
+  // what LANDED, so a cocooned share feeds nobody's meter.
+  creditAncientMemory(attacker, final);
 
   return {
-    amount,
+    amount: final,
     baseAmount: rolled.baseAmount,
     crit: rolled.crit,
     afterAttackerModifiers,
     afterElement,
+    cocoonedGold,
   };
 }

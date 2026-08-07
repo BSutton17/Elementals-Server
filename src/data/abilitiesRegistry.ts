@@ -13,6 +13,7 @@ import { LIGHT_ABILITIES } from "./lightAbilities.js";
 import { DARK_ABILITIES } from "./darkAbilities.js";
 import { KITSUNE_ABILITIES } from "./kitsuneAbilities.js";
 import { MAGMA_ABILITIES } from "./magmaAbilities.js";
+import { INSECTS_ABILITIES } from "./insectsAbilities.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 
 /** Keys a kingdom's ability list by ability id, for spreading into the map. */
@@ -78,4 +79,5 @@ export const ALL_ABILITIES: Record<string, AbilityDefinition> = {
   ...byId(DARK_ABILITIES),
   ...byId(KITSUNE_ABILITIES),
   ...byId(MAGMA_ABILITIES),
+  ...byId(INSECTS_ABILITIES),
 };

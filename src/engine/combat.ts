@@ -92,6 +92,11 @@ export function applyDamage(
   const taken = absorbedByShield + dealtToHp;
   if (taken > 0) {
     target.rageMeter = Math.min(DARK.RAGE_FULL, target.rageMeter + taken);
+    // Insects' "Fruit Fly" heals only once this is far enough behind the
+    // current tick. Stamped in the same place Rage charges, so EVERY source of
+    // damage resets it — a DoT tick has to keep the regeneration suppressed
+    // just as a direct hit does, or a burn would be free healing time.
+    if (options.tick !== undefined) target.lastDamageTakenTick = options.tick;
   }
 
   // Kitsune's "Swift Tails" charges off damage DEALT. `applyDamage` only knows
