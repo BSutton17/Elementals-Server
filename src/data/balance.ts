@@ -284,7 +284,7 @@ export const INSECTS = {
    *  paying for, since every one of those whiffs then rebounds onto them. */
   BUTTERFLIES_MISS_CHANCE: 0.5,
   /** How long both halves of the debuff last. */
-  BUTTERFLIES_SECONDS: 20,
+  BUTTERFLIES_SECONDS: 10,
 
   /** "Infected": how long a victim keeps deflecting their own misses. */
   INFECTED_SECONDS: 15,
