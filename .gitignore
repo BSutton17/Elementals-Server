@@ -7,5 +7,7 @@ dist/
 .env
 .DS_Store
 
-# Internal balance-simulation tool (not part of the deployed game)
-simulation/
+# The balance-simulation tool is SOURCE and is tracked. Only its generated
+# output is ignored — mixing the two under one rule is what previously kept
+# ~3,900 lines of hand-written simulator out of version control.
+simulation/runs/
