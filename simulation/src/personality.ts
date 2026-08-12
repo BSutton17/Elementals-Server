@@ -157,6 +157,66 @@ function unlockPrice(ability: AbilityDefinition): number {
 }
 
 /**
+ * Fallback valuation for an effect the model has no bespoke evaluator for.
+ *
+ * Reads the effect's own numbers: a damage/absorb magnitude counts like damage,
+ * a duration counts like control, meter charge counts as progress toward the
+ * kingdom's gated payoff. An effect carrying no numbers at all still returns a
+ * positive floor, because scoring it zero is what made whole kits unplayable.
+ */
+function genericEffectValue(
+  effect: { type: string; params: Record<string, unknown> },
+  mode: string,
+  enemyHits: number,
+  toSelf: boolean,
+): number {
+  const p = effect.params;
+  // Field-wide and self-targeted effects always land once; enemy-directed ones
+  // need a live target.
+  const hits = toSelf || mode === "self" || mode === "noTarget" ? 1 : enemyHits;
+  if (hits === 0) return 0;
+
+  let value = 0;
+  let quantified = false;
+
+  // Damage/absorb magnitude. `amount` is the headline figure when present;
+  // otherwise take the largest alternative (variant payloads, not additive).
+  let magnitude = typeof p.amount === "number" ? p.amount : 0;
+  if (magnitude === 0) {
+    for (const key of MAGNITUDE_KEYS) {
+      const v = p[key];
+      if (typeof v === "number" && v > magnitude) magnitude = v;
+    }
+  }
+  if (magnitude > 0) {
+    value += magnitude * hits;
+    quantified = true;
+  }
+
+  // Meter progress — the mechanism gating a kingdom's biggest play.
+  for (const key of METER_KEYS) {
+    const charge = p[key];
+    if (typeof charge === "number" && charge > 0) {
+      value += charge * VALUE.meterChargePerPoint;
+      quantified = true;
+    }
+  }
+
+  // A duration on an unmodeled effect means a persistent field or lock effect.
+  const duration = p.durationTicks;
+  if (typeof duration === "number" && duration > 0) {
+    const seconds = Math.min(duration / TICK.RATE, VALUE.controlCapSeconds);
+    const rate = toSelf ? VALUE.selfBuffPerSecond : VALUE.enemyControlPerSecond;
+    value += seconds * rate * hits;
+    quantified = true;
+  }
+
+  // Nothing numeric to read (wagers, draws, spins, undo). Keep it in the
+  // running on a flat floor rather than filtering it out entirely.
+  return quantified ? value : VALUE.unknownEffect * hits;
+}
+
+/**
  * Heuristic value weights, all in a single HP-equivalent currency so that
  * heterogeneous effects — direct damage, damage-over-time, healing, shields,
  * crowd control, and economy swings — can be compared on one scale. The AI
@@ -190,7 +250,29 @@ const VALUE = {
    *  (lifesteal-vs-status, bonus-damage-vs-status, longer-duration-vs-status).
    *  This is how "setup" and "combo" plays earn value without naming them. */
   setup: 150,
+  /** HP-equivalent per point of progress on a charge meter (Supernova, Ancient
+   *  Memory). Meters gate a kingdom's biggest play, so filling one is worth
+   *  real value — per point, so it never outbids a landed hit. */
+  meterChargePerPoint: 6,
+  /**
+   * Floor value for an effect the model has no specific evaluator for.
+   *
+   * The engine defines 28 effect primitives in live ability data; this
+   * heuristic has cases for 9. Scoring the rest at 0 made every ability built
+   * purely from them structurally invisible — never ranked, never cast, at any
+   * price. Fifteen of the game's eighty abilities were dead this way, whole
+   * kits among them. A positive floor keeps them in the running, and means a
+   * NEW primitive added by a future kingdom degrades to "considered" rather
+   * than "unusable".
+   */
+  unknownEffect: 260,
 };
+
+/** Numeric effect params that behave like a damage or absorb magnitude, read
+ *  generically so unmodeled effects are still valued from their own data. */
+const MAGNITUDE_KEYS = ["amount", "shieldOnlyAmount", "targeterDamage"] as const;
+/** Params that advance a charge meter. */
+const METER_KEYS = ["supernovaCharge", "memoryCharge"] as const;
 
 /** How far toward affording a finisher (ultimate) the AI must already be before
  *  it holds gold for the final push (0.6 = 60%). Ultimates are gated to a
@@ -200,6 +282,19 @@ const SAVINGS_NEAR_FRACTION = 0.6;
 /** A play must be at least this much more valuable than the best option
  *  available right now to be worth holding gold (skipping a cast) for. */
 const SAVINGS_MARGIN = 1.25;
+/**
+ * How far ahead the AI looks for an ability that is still cooling down, in
+ * ticks, when deciding whether to bank gold (scaled by `patience`).
+ *
+ * A kingdom's strongest plays carry its longest cooldowns — Water's Flood is a
+ * 20 s cooldown and the most gold-efficient thing in the kit. Considering only
+ * plays that are ready THIS instant meant the AI never saved for them: its
+ * 3 s-cooldown filler attack drained the treasury between every cycle, so the
+ * expensive ability was unaffordable on the one tick it became castable, and
+ * the kit collapsed to its cheapest option. Looking ahead over a cooldown lets
+ * the AI arrive at that moment solvent.
+ */
+const SAVINGS_LOOKAHEAD_TICKS = 500;
 
 /** The generic, metadata-driven controller. One instance per seat per match. */
 export class PersonalityAI implements AIController {
@@ -677,32 +772,44 @@ export class PersonalityAI implements AIController {
     const patience = this.profile.patience;
     let hold = 0;
     let priority: Play | null = null;
-    if (patience > 0) {
+    if (patience > 0 && ready.length > 0) {
       const efficiencyLeader = ready[0]!; // most efficient ready play
-      // The highest-impact ready play, if it is materially more valuable than
-      // the efficiency leader (else efficiency already picks the best play).
+      // The highest-impact play worth planning around — searched over the whole
+      // kit within a cooldown lookahead, not just what is castable this instant.
+      // A kingdom's best ability usually carries its longest cooldown, so
+      // considering only ready plays meant the AI never banked for it.
+      const lookahead = SAVINGS_LOOKAHEAD_TICKS * patience;
+      const qualifies = (p: Play, best: Play | null) =>
+        p.value >= efficiencyLeader.value * SAVINGS_MARGIN &&
+        (!best || p.value > best.value);
+
+      // A play that is castable RIGHT NOW always wins the slot: acting beats
+      // banking. Only when nothing ready is worth prioritising does the AI look
+      // ahead over cooldowns to decide what to save for.
       let impact: Play | null = null;
-      for (const p of ready) {
-        if (
-          p.value >= efficiencyLeader.value * SAVINGS_MARGIN &&
-          (!impact || p.value > impact.value)
-        ) {
-          impact = p;
+      for (const p of ready) if (qualifies(p, impact)) impact = p;
+      if (!impact) {
+        for (const p of plays) {
+          if (p.readyInTicks === 0 || p.readyInTicks > lookahead) continue;
+          if (qualifies(p, impact)) impact = p;
         }
       }
       if (impact) {
         const need = impact.cost * castBudgetFactor;
         const spendableNow = this.spendable(player, reserved);
-        if (spendableNow >= need) {
+        if (impact.readyInTicks === 0 && spendableNow >= need) {
           priority = impact; // afford it now → cast it before the cheap spam
-        } else if (
-          impact.ability.kind === "ultimate" &&
-          spendableNow >= need * SAVINGS_NEAR_FRACTION
-        ) {
-          // A finisher I am most of the way to affording — hold for the final
-          // push. Safe from stalling because ultimates only pass their gate in
-          // the low-HP kill window, i.e. the endgame.
-          hold = need;
+        } else if (spendableNow < need) {
+          // Bank toward it — whether it is ready now or still cooling down.
+          // Only when the gap is genuinely closable, so a play priced far
+          // beyond this economy never freezes spending.
+          const income = player.economy.incomePerTick;
+          const ticksToAfford =
+            income > 0 ? (need - spendableNow) / income : Infinity;
+          const reachable =
+            ticksToAfford <= SAVINGS_LOOKAHEAD_TICKS * patience ||
+            spendableNow >= need * SAVINGS_NEAR_FRACTION;
+          if (reachable) hold = need;
         }
       }
     }
@@ -943,6 +1050,14 @@ export class PersonalityAI implements AIController {
           if (enemyHits === 0) break;
           value +=
             chance * VALUE.enemyControlPerSecond * 2 * enemyHits;
+          break;
+        }
+        default: {
+          // Every other engine primitive: field entities, delayed strikes,
+          // meter charge/spend, wagers, redirects, castle links. Valued from
+          // whatever numbers the effect itself carries, so this stays generic —
+          // no effect type and no kingdom is named.
+          value += chance * genericEffectValue(effect, mode, enemyHits, toSelf);
           break;
         }
       }
