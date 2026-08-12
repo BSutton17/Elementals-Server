@@ -305,6 +305,18 @@ export class PersonalityAI implements AIController {
   /** Distinct elements this kit's attacks deal — used to spot targets its
    *  damage hits harder (vulnerabilities/amplifiers), fully via metadata. */
   private readonly attackElements: readonly string[];
+  /**
+   * Upgrade-resolved abilities, keyed by `id:level`.
+   *
+   * `resolveAbility` deep-copies an ability and re-applies every upgrade tier
+   * and parameter override; the controller called it for the whole kit on every
+   * decision, which made it the largest single allocator in the AI hot path
+   * (~74% of simulation runtime is AI decisions). The result depends only on
+   * the ability, its level, and the active parameter set — all fixed for the
+   * life of one controller — so it is safe to memoise per match. Consumers only
+   * read the resolved copy; casts still pass the original definition.
+   */
+  private readonly resolved = new Map<string, AbilityDefinition>();
 
   constructor(
     private readonly profile: PersonalityProfile,
@@ -376,6 +388,22 @@ export class PersonalityAI implements AIController {
           break;
       }
     }
+  }
+
+  /** Upgrade-resolved form of an ability at the player's current level, cached
+   *  for the life of this controller (see `resolved`). */
+  private effectiveAbility(
+    ability: AbilityDefinition,
+    player: PlayerState,
+  ): AbilityDefinition {
+    const level = getUpgradeLevel(player, ability.id);
+    const key = `${ability.id}:${level}`;
+    let hit = this.resolved.get(key);
+    if (!hit) {
+      hit = resolveAbility(ability, level);
+      this.resolved.set(key, hit);
+    }
+    return hit;
   }
 
   /** Gold available for normal spending, after the floor and reservations. */
@@ -662,10 +690,7 @@ export class PersonalityAI implements AIController {
         continue; // mirror the live unlock gate
       }
 
-      const effective = resolveAbility(
-        ability,
-        getUpgradeLevel(player, ability.id),
-      );
+      const effective = this.effectiveAbility(ability, player);
       if (!this.ultimateWindowOpen(ctx, effective)) {
         note(ability, "ultimateWindowClosed");
         continue;
@@ -779,9 +804,22 @@ export class PersonalityAI implements AIController {
       // A kingdom's best ability usually carries its longest cooldown, so
       // considering only ready plays meant the AI never banked for it.
       const lookahead = SAVINGS_LOOKAHEAD_TICKS * patience;
-      const qualifies = (p: Play, best: Play | null) =>
-        p.value >= efficiencyLeader.value * SAVINGS_MARGIN &&
-        (!best || p.value > best.value);
+
+      // An ultimate that has passed its window gate IS the high-impact play, by
+      // metadata rather than by name: `ultimateWindowOpen` only lets one through
+      // at the moment the profile considers decisive. It therefore qualifies
+      // regardless of the value margin, and outranks a non-ultimate — otherwise
+      // valuing the rest of the kit properly lets ordinary abilities crowd the
+      // finisher out of the slot patience exists to protect.
+      const isUlt = (p: Play) => p.ability.kind === "ultimate";
+      const qualifies = (p: Play, best: Play | null): boolean => {
+        if (!isUlt(p) && p.value < efficiencyLeader.value * SAVINGS_MARGIN) {
+          return false;
+        }
+        if (!best) return true;
+        if (isUlt(p) !== isUlt(best)) return isUlt(p);
+        return p.value > best.value;
+      };
 
       // A play that is castable RIGHT NOW always wins the slot: acting beats
       // banking. Only when nothing ready is worth prioritising does the AI look
