@@ -96,6 +96,23 @@ export interface PersonalityProfile {
    * harder?" capability, expressed per personality.
    */
   patience: number;
+  /**
+   * Decision noise (0–1), default 0.25. Jitters the ranking of otherwise
+   * close plays so a seat explores its strategy NEIGHBOURHOOD across seeds.
+   *
+   * This is not `chaos`, which discards policy for a turn and picks at random.
+   * Exploration keeps the policy and only perturbs how ties and near-ties
+   * resolve, so play stays coherent.
+   *
+   * It exists because a fully deterministic policy makes the simulator a poor
+   * measuring instrument: every seed replays essentially the same match
+   * (measured duration spread of 1.6–2.3%), so a matchup's "win rate" is not a
+   * probability but a boolean — 40/40 or 0/40 — and it flips wholesale when the
+   * profile changes. Sampling nearby lines of play turns win rate back into an
+   * estimate of matchup strength. Determinism is unaffected: the jitter is
+   * drawn from the seat's seeded stream, so a given seed still replays exactly.
+   */
+  exploration?: number;
 
   targeting: {
     strategy: TargetingStrategy;
@@ -295,6 +312,8 @@ const SAVINGS_MARGIN = 1.25;
  * the AI arrive at that moment solvent.
  */
 const SAVINGS_LOOKAHEAD_TICKS = 500;
+/** Default decision noise when a profile does not set `exploration`. */
+const DEFAULT_EXPLORATION = 0.25;
 
 /** The generic, metadata-driven controller. One instance per seat per match. */
 export class PersonalityAI implements AIController {
@@ -318,10 +337,23 @@ export class PersonalityAI implements AIController {
    */
   private readonly resolved = new Map<string, AbilityDefinition>();
 
+  /** Tick offset at which this seat makes its decisions. Seats that all act on
+   *  the same ticks resolve in a fixed order every match, which is part of why
+   *  matches replayed identically; staggering them from the seeded stream
+   *  diversifies trajectories without giving anyone an advantage. */
+  private readonly actPhase: number;
+
   constructor(
     private readonly profile: PersonalityProfile,
     player: PlayerState,
+    rng?: Rng,
   ) {
+    // Phase 0 without a seeded stream: a controller built directly (tests,
+    // one-off harnesses) must stay reproducible. Only the simulation factory,
+    // which owns a per-seat stream, staggers its seats.
+    this.actPhase = rng
+      ? Math.floor(rng() * Math.max(1, profile.actEveryTicks))
+      : 0;
     // The kingdom's castable kit, ordered by the profile's kind preference —
     // enumerated once from data, never named.
     const rank = new Map(profile.offense.preferKinds.map((k, i) => [k, i]));
@@ -359,7 +391,7 @@ export class PersonalityAI implements AIController {
 
   act(ctx: AIContext): void {
     const { match, player, tick } = ctx;
-    if (tick % this.profile.actEveryTicks !== 0) return;
+    if ((tick + this.actPhase) % this.profile.actEveryTicks !== 0) return;
     if (match.phase !== "active" || player.eliminated) return;
 
     const hpFraction = player.castle.hp / player.castle.maxHp;
@@ -651,6 +683,8 @@ export class PersonalityAI implements AIController {
       efficiency: number;
       /** Ticks until this play is off cooldown / has a charge (0 = ready now). */
       readyInTicks: number;
+      /** Sort key: efficiency after exploration jitter. */
+      rank: number;
     }
 
     // A gentle per-personality lean by ability KIND (metadata, never names):
@@ -743,6 +777,7 @@ export class PersonalityAI implements AIController {
         value,
         efficiency,
         readyInTicks,
+        rank: efficiency,
       });
     }
     if (plays.length === 0) {
@@ -782,9 +817,17 @@ export class PersonalityAI implements AIController {
       if (tracing) this.flushTrace(ctx, traced, reserved, 0);
       return;
     }
+    // Exploration: perturb each play's ranking key before sorting, so plays of
+    // similar merit trade places between seeds. A clearly better play still
+    // wins; only near-ties are resampled.
+    const explore = this.profile.exploration ?? DEFAULT_EXPLORATION;
+    if (explore > 0) {
+      for (const p of ready) p.rank = p.efficiency * (1 + explore * (rng() * 2 - 1));
+    } else {
+      for (const p of ready) p.rank = p.efficiency;
+    }
     ready.sort(
-      (a, b) =>
-        b.efficiency - a.efficiency || a.ability.id.localeCompare(b.ability.id),
+      (a, b) => b.rank - a.rank || a.ability.id.localeCompare(b.ability.id),
     );
 
     // Opportunity cost (#savings model). A patient AI does not just spam the
@@ -1129,5 +1172,5 @@ export class PersonalityAI implements AIController {
 /** Factory: bind a profile to the runner's AIFactory contract (#205). New
  *  personalities are new profiles — the simulator never changes. */
 export function personalityAI(profile: PersonalityProfile): AIFactory {
-  return (player) => new PersonalityAI(profile, player);
+  return (player, rng) => new PersonalityAI(profile, player, rng);
 }
