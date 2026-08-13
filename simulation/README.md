@@ -251,6 +251,75 @@ npm run sim -- history
 alongside the report — the reviewable configuration that a human applies by
 editing the listed file:line locations.
 
+## 6.8 Balance evaluation system (Step 4)
+
+`simulation/src/evaluation/` is the **measuring instrument** the Balance AI will
+sit on top of. It answers one question — *given this engine and this balance
+configuration, how balanced is the game?* — and deliberately stops there. It
+reports; it never judges, and it never writes production data.
+
+### The one rule
+
+**A reading is taken over a POPULATION of strategies, never a single
+personality.** A deterministic policy replays essentially the same match on
+every seed (measured duration spread 1.6–2.3%), so one profile's "win rate" is
+not a probability but a boolean — 40/40 or 0/40 — and it flips wholesale when
+the profile changes. Aggregated over all 36 **ordered** pairings of the six
+profiles, the same measurement is stable to within **4.6 percentage points**
+across disjoint seed pools. That aggregate is the balance signal.
+
+Pairings are ordered, not combinations: A-vs-B is not B-vs-A, because the two
+controllers decide differently and seat index drives intent order and RNG
+streams. Mirrors are kept as a diagnostic for controller-induced asymmetry.
+
+### Layout
+
+```
+evaluation/
+├── index.ts        ← public surface
+├── evaluator.ts    ← evaluate(): duels, 4-FFA, 7-FFA
+├── population.ts   ← StrategyPopulation, ordered pairings (versioned)
+├── seeds.ts        ← training / validation / final pools, provably disjoint
+├── samplers.ts     ← FFA composition sampling (exhaustive, coverage-balanced)
+├── provenance.ts   ← engine SHA, balance hashes, comparability
+├── stats.ts        ← Wilson intervals, placement distributions, spread
+├── compare.ts      ← baseline vs candidate deltas
+└── report.ts       ← JSON (for the optimizer) + text (for a designer)
+```
+
+### Properties that make a reading trustworthy
+
+- **Reproducible.** Same engine, balance, population, pool and counts ⇒ byte-identical
+  reading (timestamp and wall-clock duration aside). Locked by test.
+- **Disjoint seed pools.** Training, validation and final occupy separate regions of
+  the seed space *by construction*, so a search can never be judged on the dice it
+  trained against.
+- **Honest sample sizes.** Every rate carries its counts and a 95% Wilson interval, so
+  45% from 100 matches is distinguishable from 45% from 10,000. Wilson rather than the
+  normal approximation because 0-win matchups are exactly what needs describing.
+- **Provenance.** Every reading records the engine SHA, whether the tree was dirty, and
+  a hash of the whole tunable space. Comparing readings from different engines is
+  **refused**, not silently averaged — a balance result is only valid for the engine
+  that produced it.
+- **Coverage-balanced FFA sampling.** Kingdom appearances stay within one of each other,
+  so no kingdom's FFA numbers are quietly noise.
+
+Profile disagreement and mirror skew are recorded as **diagnostics**. A wide
+spread means a matchup is strategy-sensitive, which is information about the
+game rather than necessarily a defect — so nothing optimises against it.
+
+### Usage
+
+```
+npm run sim -- evaluate                        # full baseline, validation pool
+npm run sim -- evaluate --quick                # 6 matchups, tiny FFA sample
+npm run sim -- evaluate --seeds 3 --ffa4 32    # deeper reading
+npm run sim -- evaluate --candidate cand.json --baseline runs/<dir>/evaluation.json
+```
+
+Each run writes `evaluation.json` (the optimizer's input — never scrape console
+output) and `report.txt` under `simulation/runs/`.
+
 ## 7. Performance notes
 
 One match is pure synchronous computation — no timers, no I/O, no rendering.
