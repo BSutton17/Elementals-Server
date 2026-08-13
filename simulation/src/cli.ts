@@ -31,6 +31,7 @@ import {
   compare,
   defaultWorkerCount,
   planEvaluation,
+  SAMPLERS,
   comparisonText,
   evaluate,
   reportText,
@@ -524,6 +525,13 @@ async function commandEvaluate(flags: Map<string, string>): Promise<void> {
     ? (JSON.parse(readFileSync(candidatePath, "utf8")) as Record<string, number>)
     : null;
 
+  const sampler = flags.get("sampler") ?? "coverage";
+  if (!SAMPLERS[sampler]) {
+    throw new Error(
+      `--sampler must be one of ${Object.keys(SAMPLERS).join(", ")}`,
+    );
+  }
+
   const quick = flags.has("quick");
   const config: EvaluationConfig = {
     balanceConfigId: flags.get("id") ?? (candidatePath ? path.basename(candidatePath) : "baseline"),
@@ -538,11 +546,13 @@ async function commandEvaluate(flags: Map<string, string>): Promise<void> {
       enabled: !flags.has("no-ffa"),
       seedsPerPairing,
       compositions: num(flags, "ffa4", quick ? 2 : 24),
+      sampler,
     },
     ffa7: {
       enabled: !flags.has("no-ffa"),
       seedsPerPairing,
       compositions: num(flags, "ffa7", quick ? 2 : 16),
+      sampler,
     },
     workers: flags.has("workers") ? num(flags, "workers", 1) : undefined,
     onProgress: progressReporter(),
@@ -554,6 +564,7 @@ async function commandEvaluate(flags: Map<string, string>): Promise<void> {
   console.log(`  config    ${config.balanceConfigId}`);
   console.log(`  pool      ${poolName} (${seedsPerPairing} seed(s) per ordered pairing)`);
   console.log(`  workers   ${workerCount}`);
+  console.log(`  sampler   ${sampler} v${SAMPLERS[sampler]!.version}`);
   console.log(`  jobs      ${planned.toLocaleString()}`);
   console.log("");
   const result = await evaluate(config);
