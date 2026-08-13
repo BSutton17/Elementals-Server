@@ -180,8 +180,8 @@ test("samplers are deterministic in their seed", () => {
 
 // --- evaluation -------------------------------------------------------------
 
-test("an evaluation aggregates over the whole strategy population", () => {
-  const result = evaluate(ffaConfig());
+test("an evaluation aggregates over the whole strategy population", async () => {
+  const result = await evaluate(ffaConfig());
   const pairings = orderedPairings(POPULATION_V1).length;
 
   assert.equal(result.duel!.matchups.length, 1);
@@ -197,18 +197,18 @@ test("an evaluation aggregates over the whole strategy population", () => {
   assert.equal(result.population.version, POPULATION_V1.version);
 });
 
-test("evaluation is reproducible: same inputs, identical reading", () => {
-  const a = evaluate(smallConfig());
-  const b = evaluate(smallConfig());
+test("evaluation is reproducible: same inputs, identical reading", async () => {
+  const a = await evaluate(smallConfig());
+  const b = await evaluate(smallConfig());
   // Everything except wall-clock duration must match byte for byte.
   const strip = (r: EvaluationResult) =>
     JSON.parse(toJson(r), (key, value) => (key === "durationMs" ? 0 : value));
   assert.deepEqual(strip(a), strip(b));
 });
 
-test("baseline versus baseline shows no difference", () => {
-  const a = evaluate(smallConfig());
-  const b = evaluate(smallConfig());
+test("baseline versus baseline shows no difference", async () => {
+  const a = await evaluate(smallConfig());
+  const b = await evaluate(smallConfig());
   const diff = compare(a, b);
   assert.equal(diff.incomparable, null);
   for (const d of Object.values(diff.duel!.kingdoms)) {
@@ -218,10 +218,10 @@ test("baseline versus baseline shows no difference", () => {
   assert.equal(diff.duel!.significant.length, 0);
 });
 
-test("a candidate configuration is evaluated through the same path", () => {
-  const baseline = evaluate(smallConfig());
+test("a candidate configuration is evaluated through the same path", async () => {
+  const baseline = await evaluate(smallConfig());
   // A deliberately large change, purely to prove the plumbing carries it.
-  const candidate = evaluate({
+  const candidate = await evaluate({
     ...smallConfig(),
     balanceConfigId: "candidate",
     balance: { "castle.startingHp": 4000 },
@@ -239,10 +239,10 @@ test("a candidate configuration is evaluated through the same path", () => {
   assert.equal(diff.duel!.matchups.length, baseline.duel!.matchups.length);
 });
 
-test("production balance data is never mutated by an evaluation", () => {
-  const before = evaluate(smallConfig());
-  evaluate({ ...smallConfig(), balance: { "castle.startingHp": 1234 } });
-  const after = evaluate(smallConfig());
+test("production balance data is never mutated by an evaluation", async () => {
+  const before = await evaluate(smallConfig());
+  await evaluate({ ...smallConfig(), balance: { "castle.startingHp": 1234 } });
+  const after = await evaluate(smallConfig());
   assert.equal(
     before.provenance.balanceBaselineHash,
     after.provenance.balanceBaselineHash,
@@ -252,8 +252,8 @@ test("production balance data is never mutated by an evaluation", () => {
 
 // --- provenance -------------------------------------------------------------
 
-test("every reading records the engine it was taken against", () => {
-  const result = evaluate(smallConfig());
+test("every reading records the engine it was taken against", async () => {
+  const result = await evaluate(smallConfig());
   const p = result.provenance;
   assert.ok(p.engineSha.length > 0);
   assert.ok(p.balanceBaselineHash.length > 0);
@@ -262,9 +262,9 @@ test("every reading records the engine it was taken against", () => {
   assert.equal(typeof p.engineDirty, "boolean");
 });
 
-test("readings from different engines refuse to be compared", () => {
-  const a = evaluate(smallConfig());
-  const b = evaluate(smallConfig());
+test("readings from different engines refuse to be compared", async () => {
+  const a = await evaluate(smallConfig());
+  const b = await evaluate(smallConfig());
   const stale = {
     ...b,
     provenance: { ...b.provenance, engineSha: "0000000000000000000000000000000000000000" },
@@ -286,9 +286,9 @@ test("parameter sets hash stably and order-independently", () => {
   assert.notEqual(hashParameterSet({ a: 1 }), hashParameterSet({ a: 2 }));
 });
 
-test("comparability ignores the configuration under test", () => {
-  const a = evaluate(smallConfig());
-  const b = evaluate({ ...smallConfig(), balanceConfigId: "other" });
+test("comparability ignores the configuration under test", async () => {
+  const a = await evaluate(smallConfig());
+  const b = await evaluate({ ...smallConfig(), balanceConfigId: "other" });
   // Different candidate, same engine and population — comparison is the whole
   // point, so this must be allowed.
   assert.equal(comparabilityProblem(a.provenance, b.provenance), null);
@@ -296,8 +296,8 @@ test("comparability ignores the configuration under test", () => {
 
 // --- output -----------------------------------------------------------------
 
-test("the reading serialises to JSON an optimizer can consume", () => {
-  const result = evaluate(ffaConfig());
+test("the reading serialises to JSON an optimizer can consume", async () => {
+  const result = await evaluate(ffaConfig());
   const parsed = JSON.parse(toJson(result)) as EvaluationResult;
   assert.equal(parsed.provenance.balanceConfigId, "test");
   assert.equal(parsed.duel!.matchups.length, result.duel!.matchups.length);
@@ -305,8 +305,8 @@ test("the reading serialises to JSON an optimizer can consume", () => {
   assert.ok(parsed.ffa4!.coverage);
 });
 
-test("the human report describes without judging", () => {
-  const text = reportText(evaluate(smallConfig()));
+test("the human report describes without judging", async () => {
+  const text = reportText(await evaluate(smallConfig()));
   assert.ok(text.includes("BALANCE EVALUATION"));
   assert.ok(text.includes("Observed win rate by kingdom"));
   // Neutral language is a deliberate contract: the evaluator has no access to

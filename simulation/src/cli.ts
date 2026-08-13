@@ -29,11 +29,14 @@ import { fileURLToPath } from "node:url";
 import {
   allDuelPairings,
   compare,
+  defaultWorkerCount,
+  planEvaluation,
   comparisonText,
   evaluate,
   reportText,
   toJson,
   SEED_POOLS,
+  type EvaluationConfig,
   type EvaluationResult,
   type SeedPoolName,
 } from "./evaluation/index.js";
@@ -472,13 +475,43 @@ Run via: npm run sim -- <command> [flags]`);
 }
 
 /**
+ * Live progress for long evaluations. A 16-minute run that printed nothing
+ * until it finished was the single worst usability problem of the first
+ * baseline — there was no way to tell a slow run from a hung one.
+ */
+function progressReporter(): (done: number, total: number) => void {
+  const started = Date.now();
+  let lastDrawn = 0;
+  return (done, total) => {
+    const now = Date.now();
+    // Redraw at most a few times a second; the callback fires per batch.
+    if (done < total && now - lastDrawn < 400) return;
+    lastDrawn = now;
+    const elapsed = (now - started) / 1000;
+    const rate = done > 0 ? done / elapsed : 0;
+    const remaining = rate > 0 ? (total - done) / rate : 0;
+    const pct = total > 0 ? (done / total) * 100 : 0;
+    process.stdout.write(
+      `
+  [${done}/${total}] ${pct.toFixed(1).padStart(5)}%  ` +
+        `${rate.toFixed(1)}/s  elapsed ${fmtClock(elapsed)}  eta ${fmtClock(remaining)}   `,
+    );
+  };
+}
+
+const fmtClock = (seconds: number): string => {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+};
+
+/**
  * Balance evaluation (Step 4): a population-aggregate reading of the current
  * game, or of a candidate configuration supplied as JSON.
  *
  * Writes both a machine-readable reading — the optimizer's input, so it never
  * has to scrape console output — and a designer-facing report.
  */
-function commandEvaluate(flags: Map<string, string>): void {
+async function commandEvaluate(flags: Map<string, string>): Promise<void> {
   const seedsPerPairing = num(flags, "seeds", 1);
   const poolName = (flags.get("pool") ?? "validation") as SeedPoolName;
   if (!SEED_POOLS.includes(poolName)) {
@@ -492,7 +525,7 @@ function commandEvaluate(flags: Map<string, string>): void {
     : null;
 
   const quick = flags.has("quick");
-  const config = {
+  const config: EvaluationConfig = {
     balanceConfigId: flags.get("id") ?? (candidatePath ? path.basename(candidatePath) : "baseline"),
     balance,
     pool: poolName,
@@ -516,11 +549,15 @@ function commandEvaluate(flags: Map<string, string>): void {
     },
   };
 
-  console.log(
-    `Evaluating "${config.balanceConfigId}" on the ${poolName} seed pool ` +
-      `(${seedsPerPairing} seed(s) per ordered strategy pairing)…`,
-  );
-  const result = evaluate(config);
+  const planned = planEvaluation(config).length;
+  const workerCount = config.workers ?? defaultWorkerCount();
+  console.log(`Evaluation started`);
+  console.log(`  config    ${config.balanceConfigId}`);
+  console.log(`  pool      ${poolName} (${seedsPerPairing} seed(s) per ordered pairing)`);
+  console.log(`  workers   ${workerCount}`);
+  console.log(`  jobs      ${planned.toLocaleString()}`);
+  console.log("");
+  const result = await evaluate(config);
   process.stdout.write("\r".padEnd(40) + "\r");
   console.log(reportText(result));
 
@@ -567,7 +604,7 @@ try {
       commandHistory();
       break;
     case "evaluate":
-      commandEvaluate(flags);
+      await commandEvaluate(flags);
       break;
     default:
       help();

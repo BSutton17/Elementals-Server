@@ -14,8 +14,10 @@
 
 export {
   evaluate,
+  planEvaluation,
   allDuelPairings,
   poolMatchups,
+  defaultWorkerCount,
   type EvaluationConfig,
   type EvaluationResult,
   type DuelResults,
@@ -74,6 +76,17 @@ export {
   type Spread,
   type PlacementStats,
 } from "./stats.js";
+
+export {
+  planJobs,
+  planCompositions,
+  runJob,
+  type MatchJob,
+  type MatchOutcome,
+  type MatchFormat,
+} from "./jobs.js";
+
+export { executeJobs, type ExecuteOptions, type ExecuteResult } from "./pool.js";
 
 export { compare, type Comparison, type Delta, type MatchupDelta } from "./compare.js";
 export { toJson, reportText, comparisonText, matrixText } from "./report.js";

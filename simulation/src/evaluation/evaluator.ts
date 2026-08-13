@@ -1,25 +1,21 @@
-import { withParameterSet } from "../../../src/engine/parameters.js";
 import type { ParameterSet } from "../../../src/engine/parameters.js";
-import { KINGDOM_IDS } from "../../../src/data/kingdoms.js";
 import type { KingdomId } from "../../../src/data/kingdoms.js";
-import { runHeadlessMatch } from "../headless.js";
-import type { MatchRecord } from "../types.js";
 import {
   POPULATION_V1,
-  factoryFor,
   orderedPairings,
-  seatProfiles,
-  type ProfilePairing,
   type StrategyPopulation,
 } from "./population.js";
-import { seedsFor, type SeedPoolName } from "./seeds.js";
+import type { SeedPoolName } from "./seeds.js";
 import { captureProvenance, type Provenance } from "./provenance.js";
+import { coverageOf } from "./samplers.js";
 import {
-  SAMPLERS,
-  coverageOf,
-  samplerSeed,
-  type CompositionSampler,
-} from "./samplers.js";
+  allDuelPairings,
+  planCompositions,
+  planJobs,
+  type MatchJob,
+  type MatchOutcome,
+} from "./jobs.js";
+import { executeJobs, defaultWorkerCount } from "./pool.js";
 import {
   placementStats,
   pool,
@@ -40,15 +36,15 @@ import {
  *
  * The central rule, from Step 3: a reading is always taken over a POPULATION of
  * strategies across ordered pairings, never a single personality.
+ *
+ * Execution is a three-stage pipeline — plan, execute, aggregate. The plan is a
+ * pure function of the configuration and aggregation walks it in order, so
+ * running across one thread or twelve produces the same reading.
  */
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
 
 export interface FormatConfig {
   enabled: boolean;
-  /** Seeds per (composition × ordered strategy pairing). */
+  /** Seeds per (matchup or composition × ordered strategy pairing). */
   seedsPerPairing: number;
   /** FFA only: how many compositions to sample. */
   compositions?: number;
@@ -57,57 +53,46 @@ export interface FormatConfig {
 }
 
 export interface EvaluationConfig {
-  /** Name for the configuration under test (free text, recorded). */
   balanceConfigId?: string;
-  /** Overrides to evaluate under; omit for the production baseline. */
   balance?: ParameterSet | null;
   pool?: SeedPoolName;
   population?: StrategyPopulation;
-  /** Per-match tick cap. */
   maxTicks?: number;
-  duel?: Partial<FormatConfig> & {
-    /** Restrict to these pairings; omit for all 120. */
-    pairings?: [KingdomId, KingdomId][];
-  };
+  duel?: Partial<FormatConfig> & { pairings?: [KingdomId, KingdomId][] };
   ffa4?: Partial<FormatConfig>;
   ffa7?: Partial<FormatConfig>;
-  /** Progress callback; receives completed matches and the total planned. */
+  /** Threads to run matches on. 1 runs in-process. */
+  workers?: number;
+  batchSize?: number;
   onProgress?: (done: number, total: number) => void;
-  /** Injected clock, so reproducibility tests can pin the timestamp. */
+  /** Outcomes already computed (resume). */
+  resume?: Map<string, MatchOutcome>;
+  onBatch?: (outcomes: MatchOutcome[]) => void;
   now?: () => string;
 }
 
 const DEFAULT_DUEL: FormatConfig = { enabled: true, seedsPerPairing: 1 };
 const DEFAULT_FFA4: FormatConfig = {
-  enabled: true,
-  seedsPerPairing: 1,
-  compositions: 24,
-  sampler: "coverage",
+  enabled: true, seedsPerPairing: 1, compositions: 24, sampler: "coverage",
 };
 const DEFAULT_FFA7: FormatConfig = {
-  enabled: true,
-  seedsPerPairing: 1,
-  compositions: 16,
-  sampler: "coverage",
+  enabled: true, seedsPerPairing: 1, compositions: 16, sampler: "coverage",
 };
 
 // ---------------------------------------------------------------------------
 // Result shapes
 // ---------------------------------------------------------------------------
 
-/** One cell of the duel matrix: kingdom A's results against kingdom B. */
 export interface MatchupResult {
   a: KingdomId;
   b: KingdomId;
   /** A's win rate pooled over every ordered strategy pairing. THE number. */
   aggregate: Rate;
-  /** Per-ordered-pairing win rate, keyed "profileA/profileB". Diagnostic. */
   byPairing: Record<string, Rate>;
   /** How much the result moves with strategy — diagnostic, never a fitness
    *  input. A wide spread means the matchup is strategy-sensitive, which is
    *  information about the game, not necessarily a defect. */
   profileSpread: Spread;
-  /** Matches that hit the tick cap without a winner. */
   timeouts: number;
   meanTicks: number;
 }
@@ -115,14 +100,10 @@ export interface MatchupResult {
 export interface DuelResults {
   pairings: number;
   matches: number;
-  /** Every evaluated matchup, ordered a<b. */
   matchups: MatchupResult[];
-  /** Per-kingdom win rate pooled across all its matchups. */
   kingdoms: Record<string, Rate>;
-  /** Per-strategy win rate pooled across every matchup it played. */
   profiles: Record<string, Rate>;
-  /** Mirror pairings (same profile both seats) — seat-0 win rate. Diagnostic
-   *  for controller-induced asymmetry; 0.5 is neutral. */
+  /** Mirror pairings — seat-0 win rate. Diagnostic for controller asymmetry. */
   mirrors: Record<string, Rate>;
 }
 
@@ -135,13 +116,11 @@ export interface FfaResults {
   seats: number;
   sampler: string;
   compositions: KingdomId[][];
-  /** Per-kingdom appearances across the sample. */
   coverage: Record<string, number>;
   matches: number;
   timeouts: number;
   meanTicks: number;
   kingdoms: Record<string, FfaKingdomResult>;
-  /** Per-strategy first-place rate across the sample. */
   profiles: Record<string, Rate>;
 }
 
@@ -150,6 +129,9 @@ export interface EvaluationResult {
   pool: SeedPoolName;
   population: { version: string; profiles: string[] };
   totals: { matches: number; ticks: number; timeouts: number; durationMs: number };
+  /** Infrastructure diagnostics. Excluded from equality comparisons because
+   *  worker count legitimately varies between runs of the same evaluation. */
+  execution: { workers: number; failures: { id: string; error: string }[] };
   duel: DuelResults | null;
   ffa4: FfaResults | null;
   ffa7: FfaResults | null;
@@ -159,287 +141,106 @@ export interface EvaluationResult {
 // Evaluation
 // ---------------------------------------------------------------------------
 
-/** All C(16,2) = 120 unordered kingdom pairings. */
-export function allDuelPairings(): [KingdomId, KingdomId][] {
-  const out: [KingdomId, KingdomId][] = [];
-  for (let i = 0; i < KINGDOM_IDS.length; i++) {
-    for (let j = i + 1; j < KINGDOM_IDS.length; j++) {
-      out.push([KINGDOM_IDS[i]!, KINGDOM_IDS[j]!]);
-    }
-  }
-  return out;
+export { allDuelPairings };
+
+function resolveConfig(config: EvaluationConfig) {
+  return {
+    population: config.population ?? POPULATION_V1,
+    seedPool: config.pool ?? ("validation" as SeedPoolName),
+    maxTicks: config.maxTicks ?? 24_000,
+    duel: { ...DEFAULT_DUEL, ...config.duel },
+    ffa4: { ...DEFAULT_FFA4, ...config.ffa4 } as Required<FormatConfig>,
+    ffa7: { ...DEFAULT_FFA7, ...config.ffa7 } as Required<FormatConfig>,
+  };
 }
 
-/** Placement per player id: winner 1, then reverse death order, survivors of a
- *  timeout ranked by remaining HP. Mirrors the analytics convention. */
-function placements(record: MatchRecord): Map<string, number> {
-  const order = [...record.players].sort((x, y) => {
-    if (x.id === record.winnerId) return -1;
-    if (y.id === record.winnerId) return 1;
-    const xd = x.eliminatedAtTick;
-    const yd = y.eliminatedAtTick;
-    if (xd === null && yd === null) return y.hp - x.hp;
-    if (xd === null) return -1;
-    if (yd === null) return 1;
-    return yd - xd;
-  });
-  return new Map(order.map((p, i) => [p.id, i + 1]));
-}
-
-/** Runs one match and returns its record. */
-function runOne(
-  kingdoms: KingdomId[],
-  profiles: string[],
-  population: StrategyPopulation,
-  seed: number,
-  maxTicks: number,
-): MatchRecord {
-  return runHeadlessMatch({
-    players: kingdoms.map((kingdomId, i) => ({
-      kingdomId,
-      ai: factoryFor(population, profiles[i]!),
-    })),
-    seed,
-    maxTicks,
-    createAI: factoryFor(population, profiles[0]!),
-    telemetry: false,
+/** The jobs an evaluation would run — useful for cost estimates and resume. */
+export function planEvaluation(config: EvaluationConfig = {}): MatchJob[] {
+  const c = resolveConfig(config);
+  return planJobs({
+    pool: c.seedPool,
+    population: c.population,
+    maxTicks: c.maxTicks,
+    duel: {
+      enabled: c.duel.enabled,
+      seedsPerPairing: c.duel.seedsPerPairing,
+      pairings: config.duel?.pairings,
+    },
+    ffa4: c.ffa4,
+    ffa7: c.ffa7,
   });
 }
 
-/**
- * Evaluates a balance configuration and returns a reading.
- *
- * The whole evaluation runs inside one `withParameterSet` scope, so production
- * data is never mutated and overrides cannot leak into a neighbouring run.
- */
-export function evaluate(config: EvaluationConfig = {}): EvaluationResult {
-  const population = config.population ?? POPULATION_V1;
-  const seedPool = config.pool ?? "validation";
-  const maxTicks = config.maxTicks ?? 24_000;
-  const duelCfg = { ...DEFAULT_DUEL, ...config.duel };
-  const ffa4Cfg = { ...DEFAULT_FFA4, ...config.ffa4 };
-  const ffa7Cfg = { ...DEFAULT_FFA7, ...config.ffa7 };
-  const pairings = orderedPairings(population);
+/** Evaluates a balance configuration and returns a reading. */
+export async function evaluate(
+  config: EvaluationConfig = {},
+): Promise<EvaluationResult> {
+  const c = resolveConfig(config);
+  const jobs = planEvaluation(config);
 
   const provenance = captureProvenance({
     balanceConfigId: config.balanceConfigId ?? "baseline",
     balance: config.balance,
-    strategyPopulationVersion: population.version,
+    strategyPopulationVersion: c.population.version,
     now: config.now,
   });
 
-  // Plan the work up front so progress is meaningful.
-  const duelList = duelCfg.pairings ?? allDuelPairings();
-  const ffa4Sampler = pickSampler(ffa4Cfg.sampler);
-  const ffa7Sampler = pickSampler(ffa7Cfg.sampler);
-  const ffa4Comps = ffa4Cfg.enabled
-    ? ffa4Sampler.sample(4, ffa4Cfg.compositions ?? 0, samplerSeed(seedPool, 4))
-    : [];
-  const ffa7Comps = ffa7Cfg.enabled
-    ? ffa7Sampler.sample(7, ffa7Cfg.compositions ?? 0, samplerSeed(seedPool, 7))
-    : [];
-  const total =
-    (duelCfg.enabled ? duelList.length * pairings.length * duelCfg.seedsPerPairing : 0) +
-    ffa4Comps.length * pairings.length * ffa4Cfg.seedsPerPairing +
-    ffa7Comps.length * pairings.length * ffa7Cfg.seedsPerPairing;
+  const startedAt = performance.now();
+  const execution = await executeJobs(jobs, {
+    balance: config.balance ?? null,
+    population: c.population,
+    workers: config.workers,
+    batchSize: config.batchSize,
+    onProgress: config.onProgress,
+    completed: config.resume,
+    onBatch: config.onBatch,
+  });
+  const durationMs = performance.now() - startedAt;
 
-  let done = 0;
+  // Aggregate by walking the PLAN, not the results: completion order is
+  // irrelevant and every reading is assembled in the same sequence.
+  const outcome = (job: MatchJob): MatchOutcome | undefined =>
+    execution.outcomes.get(job.id);
+
   let ticks = 0;
   let timeouts = 0;
-  const tick = (record: MatchRecord): void => {
-    done += 1;
-    ticks += record.endedAtTick;
-    if (record.timedOut) timeouts += 1;
-    if (config.onProgress && done % 200 === 0) config.onProgress(done, total);
-  };
+  let counted = 0;
+  for (const job of jobs) {
+    const o = outcome(job);
+    if (!o) continue;
+    ticks += o.endedAtTick;
+    if (o.timedOut) timeouts += 1;
+    counted += 1;
+  }
 
-  const startedAt = performance.now();
-  const result = withParameterSet(config.balance ?? null, () => {
-    const duel = duelCfg.enabled
-      ? evaluateDuels(duelList, pairings, population, seedPool, duelCfg, maxTicks, tick)
-      : null;
-    const ffa4 = ffa4Cfg.enabled
-      ? evaluateFfa(4, ffa4Comps, ffa4Sampler.name, pairings, population, seedPool, ffa4Cfg, maxTicks, tick)
-      : null;
-    const ffa7 = ffa7Cfg.enabled
-      ? evaluateFfa(7, ffa7Comps, ffa7Sampler.name, pairings, population, seedPool, ffa7Cfg, maxTicks, tick)
-      : null;
-    return { duel, ffa4, ffa7 };
-  });
-
-  config.onProgress?.(done, total);
   return {
     provenance,
-    pool: seedPool,
-    population: { version: population.version, profiles: population.profiles.map((p) => p.id) },
-    totals: {
-      matches: done,
-      ticks,
-      timeouts,
-      durationMs: performance.now() - startedAt,
+    pool: c.seedPool,
+    population: {
+      version: c.population.version,
+      profiles: c.population.profiles.map((p) => p.id),
     },
-    ...result,
+    totals: { matches: counted, ticks, timeouts, durationMs },
+    execution: { workers: execution.workers, failures: execution.failures },
+    duel: c.duel.enabled ? aggregateDuels(jobs, execution.outcomes, c.population) : null,
+    ffa4: c.ffa4.enabled
+      ? aggregateFfa("ffa4", 4, jobs, execution.outcomes, c, config)
+      : null,
+    ffa7: c.ffa7.enabled
+      ? aggregateFfa("ffa7", 7, jobs, execution.outcomes, c, config)
+      : null,
   };
 }
 
-function pickSampler(name: string | undefined): CompositionSampler {
-  const sampler = SAMPLERS[name ?? "coverage"];
-  if (!sampler) throw new Error(`unknown sampler "${name}"`);
-  return sampler;
-}
-
-function evaluateDuels(
-  duelList: [KingdomId, KingdomId][],
-  pairings: ProfilePairing[],
-  population: StrategyPopulation,
-  seedPool: SeedPoolName,
-  cfg: FormatConfig,
-  maxTicks: number,
-  tick: (r: MatchRecord) => void,
-): DuelResults {
-  const matchups: MatchupResult[] = [];
-  const kingdomWins = new Map<string, { w: number; n: number }>();
-  const profileWins = new Map<string, { w: number; n: number }>();
-  const mirrorWins = new Map<string, { w: number; n: number }>();
-  let matches = 0;
-
-  const bump = (m: Map<string, { w: number; n: number }>, key: string, won: boolean) => {
-    const e = m.get(key) ?? { w: 0, n: 0 };
-    e.n += 1;
-    if (won) e.w += 1;
-    m.set(key, e);
-  };
-
-  for (const [a, b] of duelList) {
-    const label = `${a}-vs-${b}`;
-    const byPairing: Record<string, Rate> = {};
-    const perPairingRates: number[] = [];
-    let aWins = 0;
-    let n = 0;
-    let mTimeouts = 0;
-    let mTicks = 0;
-
-    for (const pairing of pairings) {
-      const seeds = seedsFor(seedPool, label, pairing.key, cfg.seedsPerPairing);
-      let pairWins = 0;
-      for (const seed of seeds) {
-        const record = runOne([a, b], seatProfiles(pairing, 2), population, seed, maxTicks);
-        tick(record);
-        matches += 1;
-        n += 1;
-        mTicks += record.endedAtTick;
-        if (record.timedOut) mTimeouts += 1;
-        const aWon = record.winnerKingdom === a;
-        if (aWon) {
-          aWins += 1;
-          pairWins += 1;
-        }
-        // Kingdom + strategy aggregates. A win credits the kingdom and the
-        // strategy that was driving it.
-        bump(kingdomWins, a, aWon);
-        bump(kingdomWins, b, record.winnerKingdom === b);
-        bump(profileWins, pairing.a, aWon);
-        bump(profileWins, pairing.b, record.winnerKingdom === b);
-        if (pairing.mirror) bump(mirrorWins, pairing.a, record.winnerId === "p0");
-      }
-      const r = rate(pairWins, seeds.length);
-      byPairing[pairing.key] = r;
-      perPairingRates.push(r.rate);
-    }
-
-    matchups.push({
-      a,
-      b,
-      aggregate: rate(aWins, n),
-      byPairing,
-      profileSpread: spreadOf(perPairingRates),
-      timeouts: mTimeouts,
-      meanTicks: n > 0 ? mTicks / n : 0,
-    });
-  }
-
-  return {
-    pairings: duelList.length,
-    matches,
-    matchups,
-    kingdoms: toRates(kingdomWins),
-    profiles: toRates(profileWins),
-    mirrors: toRates(mirrorWins),
-  };
-}
-
-function evaluateFfa(
-  seats: number,
-  compositions: KingdomId[][],
-  samplerName: string,
-  pairings: ProfilePairing[],
-  population: StrategyPopulation,
-  seedPool: SeedPoolName,
-  cfg: FormatConfig,
-  maxTicks: number,
-  tick: (r: MatchRecord) => void,
-): FfaResults {
-  const byKingdom = new Map<string, number[]>();
-  const profileFirsts = new Map<string, { w: number; n: number }>();
-  let matches = 0;
-  let timeouts = 0;
-  let ticks = 0;
-
-  for (const composition of compositions) {
-    const label = composition.join("+");
-    for (const pairing of pairings) {
-      const seeds = seedsFor(seedPool, label, pairing.key, cfg.seedsPerPairing);
-      const profiles = seatProfiles(pairing, seats);
-      for (const seed of seeds) {
-        // Rotate the roster by match index so no kingdom is pinned to a seat:
-        // seat order drives intent resolution, targeting and RNG streams.
-        const rotation = matches % seats;
-        const rotated = composition.map((_, i) => composition[(i + rotation) % seats]!);
-        const record = runOne(rotated, profiles, population, seed, maxTicks);
-        tick(record);
-        matches += 1;
-        ticks += record.endedAtTick;
-        if (record.timedOut) timeouts += 1;
-
-        const place = placements(record);
-        for (const p of record.players) {
-          if (!p.kingdomId) continue;
-          const list = byKingdom.get(p.kingdomId) ?? [];
-          list.push(place.get(p.id)!);
-          byKingdom.set(p.kingdomId, list);
-        }
-        // Credit the first place to the strategy that was driving that seat.
-        const winner = record.players.find((p) => p.id === record.winnerId);
-        for (let i = 0; i < profiles.length; i++) {
-          const id = profiles[i]!;
-          const e = profileFirsts.get(id) ?? { w: 0, n: 0 };
-          e.n += 1;
-          if (winner && record.players[i]?.id === winner.id) e.w += 1;
-          profileFirsts.set(id, e);
-        }
-      }
-    }
-  }
-
-  const kingdoms: Record<string, FfaKingdomResult> = {};
-  for (const [kingdom, list] of byKingdom) {
-    kingdoms[kingdom] = {
-      kingdom: kingdom as KingdomId,
-      placement: placementStats(list, seats),
-    };
-  }
-
-  return {
-    seats,
-    sampler: samplerName,
-    compositions,
-    coverage: coverageOf(compositions),
-    matches,
-    timeouts,
-    meanTicks: matches > 0 ? ticks / matches : 0,
-    kingdoms,
-    profiles: toRates(profileFirsts),
-  };
+function bump(
+  m: Map<string, { w: number; n: number }>,
+  key: string,
+  won: boolean,
+): void {
+  const e = m.get(key) ?? { w: 0, n: 0 };
+  e.n += 1;
+  if (won) e.w += 1;
+  m.set(key, e);
 }
 
 function toRates(m: Map<string, { w: number; n: number }>): Record<string, Rate> {
@@ -450,7 +251,149 @@ function toRates(m: Map<string, { w: number; n: number }>): Record<string, Rate>
   return out;
 }
 
+function aggregateDuels(
+  jobs: MatchJob[],
+  outcomes: Map<string, MatchOutcome>,
+  population: StrategyPopulation,
+): DuelResults {
+  const pairings = orderedPairings(population);
+  const kingdomWins = new Map<string, { w: number; n: number }>();
+  const profileWins = new Map<string, { w: number; n: number }>();
+  const mirrorWins = new Map<string, { w: number; n: number }>();
+
+  // Group duel jobs by matchup, preserving plan order.
+  const order: string[] = [];
+  const grouped = new Map<string, MatchJob[]>();
+  for (const job of jobs) {
+    if (job.format !== "duel") continue;
+    const key = `${job.duelA}|${job.duelB}`;
+    let list = grouped.get(key);
+    if (!list) { list = []; grouped.set(key, list); order.push(key); }
+    list.push(job);
+  }
+
+  const matchups: MatchupResult[] = [];
+  let matches = 0;
+
+  for (const key of order) {
+    const group = grouped.get(key)!;
+    const a = group[0]!.duelA!;
+    const b = group[0]!.duelB!;
+    const byPairingCounts = new Map<string, { w: number; n: number }>();
+    let aWins = 0;
+    let n = 0;
+    let mTimeouts = 0;
+    let mTicks = 0;
+
+    for (const job of group) {
+      const o = outcomes.get(job.id);
+      if (!o) continue;
+      matches += 1;
+      n += 1;
+      mTicks += o.endedAtTick;
+      if (o.timedOut) mTimeouts += 1;
+
+      const aWon = o.winnerKingdom === a;
+      const bWon = o.winnerKingdom === b;
+      if (aWon) aWins += 1;
+      bump(byPairingCounts, job.pairingKey, aWon);
+      bump(kingdomWins, a, aWon);
+      bump(kingdomWins, b, bWon);
+      // Seat 0 plays profile A, seat 1 profile B.
+      bump(profileWins, job.pairingA, aWon);
+      bump(profileWins, job.pairingB, bWon);
+      if (job.mirror) bump(mirrorWins, job.pairingA, o.winnerSeat === 0);
+    }
+
+    // Pairing order follows the population, not insertion, so the serialised
+    // object is byte-stable.
+    const byPairing: Record<string, Rate> = {};
+    const perPairingRates: number[] = [];
+    for (const pairing of pairings) {
+      const c = byPairingCounts.get(pairing.key);
+      if (!c) continue;
+      const r = rate(c.w, c.n);
+      byPairing[pairing.key] = r;
+      perPairingRates.push(r.rate);
+    }
+
+    matchups.push({
+      a, b,
+      aggregate: rate(aWins, n),
+      byPairing,
+      profileSpread: spreadOf(perPairingRates),
+      timeouts: mTimeouts,
+      meanTicks: n > 0 ? mTicks / n : 0,
+    });
+  }
+
+  return {
+    pairings: matchups.length,
+    matches,
+    matchups,
+    kingdoms: toRates(kingdomWins),
+    profiles: toRates(profileWins),
+    mirrors: toRates(mirrorWins),
+  };
+}
+
+function aggregateFfa(
+  format: "ffa4" | "ffa7",
+  seats: number,
+  jobs: MatchJob[],
+  outcomes: Map<string, MatchOutcome>,
+  c: ReturnType<typeof resolveConfig>,
+  config: EvaluationConfig,
+): FfaResults {
+  const cfg = format === "ffa4" ? c.ffa4 : c.ffa7;
+  const compositions = planCompositions(seats, cfg, c.seedPool);
+  const byKingdom = new Map<string, number[]>();
+  const profileFirsts = new Map<string, { w: number; n: number }>();
+  let matches = 0;
+  let timeouts = 0;
+  let ticks = 0;
+
+  for (const job of jobs) {
+    if (job.format !== format) continue;
+    const o = outcomes.get(job.id);
+    if (!o) continue;
+    matches += 1;
+    ticks += o.endedAtTick;
+    if (o.timedOut) timeouts += 1;
+
+    job.kingdoms.forEach((kingdom, seat) => {
+      const list = byKingdom.get(kingdom) ?? [];
+      list.push(o.placements[seat]!);
+      byKingdom.set(kingdom, list);
+      bump(profileFirsts, job.profiles[seat]!, o.winnerSeat === seat);
+    });
+  }
+  void config;
+
+  const kingdoms: Record<string, FfaKingdomResult> = {};
+  for (const [kingdom, list] of [...byKingdom].sort(([x], [y]) => x.localeCompare(y))) {
+    kingdoms[kingdom] = {
+      kingdom: kingdom as KingdomId,
+      placement: placementStats(list, seats),
+    };
+  }
+
+  return {
+    seats,
+    sampler: cfg.sampler,
+    compositions,
+    coverage: coverageOf(compositions),
+    matches,
+    timeouts,
+    meanTicks: matches > 0 ? ticks / matches : 0,
+    kingdoms,
+    profiles: toRates(profileFirsts),
+  };
+}
+
 /** Pools a set of matchup aggregates — used by reporting and comparison. */
 export function poolMatchups(matchups: readonly MatchupResult[]): Rate {
   return pool(matchups.map((m) => m.aggregate));
 }
+
+export { defaultWorkerCount };
