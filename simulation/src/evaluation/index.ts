@@ -23,6 +23,7 @@ export {
   type DuelResults,
   type FfaResults,
   type FfaKingdomResult,
+  type FfaKingdomSeatStats,
   type MatchupResult,
   type FormatConfig,
 } from "./evaluator.js";
@@ -58,11 +59,18 @@ export {
 export {
   SAMPLERS,
   allCombinations,
+  compositionSpace,
   coverageOf,
+  coverageQuality,
   coverageSampler,
+  diagnosticSampler,
   exhaustiveSampler,
+  randomSampler,
   samplerSeed,
+  stratifiedSampler,
   type CompositionSampler,
+  type CoverageQuality,
+  type SamplerContext,
 } from "./samplers.js";
 
 export {
@@ -80,6 +88,7 @@ export {
 export {
   planJobs,
   planCompositions,
+  samplerFor,
   runJob,
   type MatchJob,
   type MatchOutcome,
@@ -89,4 +98,11 @@ export {
 export { executeJobs, type ExecuteOptions, type ExecuteResult } from "./pool.js";
 
 export { compare, type Comparison, type Delta, type MatchupDelta } from "./compare.js";
+export {
+  benchmarkSamplers,
+  benchmarkText,
+  type SamplerTrial,
+  type SamplerBenchmarkOptions,
+} from "./samplerBenchmark.js";
+
 export { toJson, reportText, comparisonText, matrixText } from "./report.js";

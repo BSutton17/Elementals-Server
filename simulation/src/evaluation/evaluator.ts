@@ -7,11 +7,17 @@ import {
 } from "./population.js";
 import type { SeedPoolName } from "./seeds.js";
 import { captureProvenance, type Provenance } from "./provenance.js";
-import { coverageOf } from "./samplers.js";
+import {
+  coverageOf,
+  coverageQuality,
+  type CoverageQuality,
+  type SamplerContext,
+} from "./samplers.js";
 import {
   allDuelPairings,
   planCompositions,
   planJobs,
+  samplerFor,
   type MatchJob,
   type MatchOutcome,
 } from "./jobs.js";
@@ -64,6 +70,8 @@ export interface EvaluationConfig {
   /** Threads to run matches on. 1 runs in-process. */
   workers?: number;
   batchSize?: number;
+  /** Bias for context-aware samplers (e.g. `diagnostic`). */
+  samplerContext?: SamplerContext;
   onProgress?: (done: number, total: number) => void;
   /** Outcomes already computed (resume). */
   resume?: Map<string, MatchOutcome>;
@@ -112,11 +120,24 @@ export interface FfaKingdomResult {
   placement: PlacementStats;
 }
 
+export interface FfaKingdomSeatStats {
+  /** Appearances per seat index. */
+  appearances: number[];
+  /** Mean placement when occupying each seat index. */
+  meanPlacement: number[];
+}
+
 export interface FfaResults {
   seats: number;
   sampler: string;
+  /** Sampler algorithm version — samples are not comparable across versions. */
+  samplerVersion: number;
   compositions: KingdomId[][];
   coverage: Record<string, number>;
+  /** How evenly the sample spreads across kingdoms and co-occurrences. */
+  coverageQuality: CoverageQuality;
+  /** Per-kingdom seat occupancy, so seat bias is visible rather than assumed. */
+  seats_: Record<string, FfaKingdomSeatStats>;
   matches: number;
   timeouts: number;
   meanTicks: number;
@@ -168,6 +189,7 @@ export function planEvaluation(config: EvaluationConfig = {}): MatchJob[] {
     },
     ffa4: c.ffa4,
     ffa7: c.ffa7,
+    samplerContext: config.samplerContext,
   });
 }
 
@@ -346,9 +368,13 @@ function aggregateFfa(
   config: EvaluationConfig,
 ): FfaResults {
   const cfg = format === "ffa4" ? c.ffa4 : c.ffa7;
-  const compositions = planCompositions(seats, cfg, c.seedPool);
+  const compositions = planCompositions(seats, cfg, c.seedPool, config.samplerContext);
   const byKingdom = new Map<string, number[]>();
   const profileFirsts = new Map<string, { w: number; n: number }>();
+  // Seat occupancy and placement-by-seat: rotation is supposed to neutralise
+  // positional advantage, and this is how we check that it did.
+  const seatAppear = new Map<string, number[]>();
+  const seatPlaceSum = new Map<string, number[]>();
   let matches = 0;
   let timeouts = 0;
   let ticks = 0;
@@ -366,6 +392,13 @@ function aggregateFfa(
       list.push(o.placements[seat]!);
       byKingdom.set(kingdom, list);
       bump(profileFirsts, job.profiles[seat]!, o.winnerSeat === seat);
+
+      const appear = seatAppear.get(kingdom) ?? new Array<number>(seats).fill(0);
+      appear[seat] = (appear[seat] ?? 0) + 1;
+      seatAppear.set(kingdom, appear);
+      const sums = seatPlaceSum.get(kingdom) ?? new Array<number>(seats).fill(0);
+      sums[seat] = (sums[seat] ?? 0) + o.placements[seat]!;
+      seatPlaceSum.set(kingdom, sums);
     });
   }
   void config;
@@ -378,11 +411,23 @@ function aggregateFfa(
     };
   }
 
+  const seats_: Record<string, FfaKingdomSeatStats> = {};
+  for (const [kingdom, appear] of [...seatAppear].sort(([x], [y]) => x.localeCompare(y))) {
+    const sums = seatPlaceSum.get(kingdom)!;
+    seats_[kingdom] = {
+      appearances: appear,
+      meanPlacement: appear.map((n, i) => (n > 0 ? sums[i]! / n : 0)),
+    };
+  }
+
   return {
     seats,
     sampler: cfg.sampler,
+    samplerVersion: samplerFor(cfg.sampler).version,
     compositions,
     coverage: coverageOf(compositions),
+    coverageQuality: coverageQuality(compositions, seats),
+    seats_,
     matches,
     timeouts,
     meanTicks: matches > 0 ? ticks / matches : 0,

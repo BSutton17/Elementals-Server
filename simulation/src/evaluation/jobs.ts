@@ -8,7 +8,12 @@ import {
   type StrategyPopulation,
 } from "./population.js";
 import { seedsFor, type SeedPoolName } from "./seeds.js";
-import { SAMPLERS, samplerSeed, type CompositionSampler } from "./samplers.js";
+import {
+  SAMPLERS,
+  samplerSeed,
+  type CompositionSampler,
+  type SamplerContext,
+} from "./samplers.js";
 
 /**
  * Job planning and execution — the atomic unit of evaluation work.
@@ -69,6 +74,8 @@ export interface PlanOptions {
   duel: { enabled: boolean; seedsPerPairing: number; pairings?: [KingdomId, KingdomId][] };
   ffa4: { enabled: boolean; seedsPerPairing: number; compositions: number; sampler: string };
   ffa7: { enabled: boolean; seedsPerPairing: number; compositions: number; sampler: string };
+  /** Optional bias for context-aware samplers. */
+  samplerContext?: SamplerContext;
 }
 
 /** All C(16,2) = 120 unordered kingdom pairings. */
@@ -93,9 +100,20 @@ export function planCompositions(
   seats: number,
   cfg: { enabled: boolean; compositions: number; sampler: string },
   pool: SeedPoolName,
+  context?: SamplerContext,
 ): KingdomId[][] {
   if (!cfg.enabled) return [];
-  return pickSampler(cfg.sampler).sample(seats, cfg.compositions, samplerSeed(pool, seats));
+  return pickSampler(cfg.sampler).sample(
+    seats,
+    cfg.compositions,
+    samplerSeed(pool, seats),
+    context,
+  );
+}
+
+/** The sampler an FFA format will use, for provenance. */
+export function samplerFor(name: string): CompositionSampler {
+  return pickSampler(name);
 }
 
 /**
@@ -139,7 +157,7 @@ export function planJobs(options: PlanOptions): MatchJob[] {
     ["ffa7", 7, options.ffa7],
   ] as const) {
     if (!cfg.enabled) continue;
-    const compositions = planCompositions(seats, cfg, options.pool);
+    const compositions = planCompositions(seats, cfg, options.pool, options.samplerContext);
     compositions.forEach((composition, compositionIndex) => {
       const label = composition.join("+");
       pairings.forEach((pairing, pairingIndex) => {
