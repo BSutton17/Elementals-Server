@@ -36,4 +36,15 @@ export {
 } from "./metrics.js";
 
 export { syntheticEvaluation, type SyntheticSpec } from "./scenarios.js";
+
+export {
+  abilityCoverage,
+  coverageText,
+  coverageRegression,
+  totalAbilities,
+  type CoverageReport,
+  type KingdomCoverage,
+  type AbilityUsage,
+  type UsageBand,
+} from "./coverage.js";
 export { fitnessText, fitnessComparisonText } from "./report.js";

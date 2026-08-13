@@ -209,7 +209,27 @@ export interface FitnessProvenance {
 }
 
 export interface FitnessResult {
+  /**
+   * The authoritative verdict, capped when a constraint is violated. This is
+   * the number a human reads and the gate a candidate must pass to be promoted.
+   */
   overall: number;
+  /**
+   * What an optimizer should climb: the same score WITHOUT the constraint cap.
+   *
+   * `overall` is deliberately discontinuous — any violation pins it to the cap,
+   * which is correct for a verdict and useless as a search signal. Measured in
+   * Step 8: every candidate in every generation scored exactly 0.6000, so
+   * CMA-ES had no information about which direction improved the game and spent
+   * 114,588 matches drifting.
+   *
+   * This value still carries the full per-violation penalty, so fixing two of
+   * three violations scores better than fixing one — it simply does not flatten
+   * everything that remains imperfect onto a single number. It is NOT a weaker
+   * definition of balance: thresholds, weights and what counts as a violation
+   * are identical. Only the discontinuity is removed.
+   */
+  searchObjective: number;
   /** Weighted sum before penalties, for transparency. */
   weightedScore: number;
   penalty: number;
@@ -476,7 +496,10 @@ export function scoreFitness(
 
   const violations = findViolations(result, formats, limits);
   const penalty = Math.min(0.5, violations.length * limits.penaltyPerViolation);
-  let overall = clamp01(weightedScore - penalty);
+  // The continuous signal: penalised but never capped, so partial progress is
+  // visible to a search. The cap is applied only to `overall` below.
+  const searchObjective = clamp01(weightedScore - penalty);
+  let overall = searchObjective;
 
   // A hard ceiling on top of the penalty: catastrophic imbalance in one format
   // must not be rescued by excellence elsewhere, which weighted averaging alone
@@ -490,6 +513,7 @@ export function scoreFitness(
 
   return {
     overall,
+    searchObjective,
     weightedScore,
     penalty,
     capped,

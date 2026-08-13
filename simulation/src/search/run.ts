@@ -117,13 +117,19 @@ export interface SearchResult {
   optimizerVersion: string;
   seed: number;
   schema: BalanceSchema;
+  /** Search objective (uncapped) at each tier. */
   baseline: { screen: number | null; full: number | null; validation: number | null };
+  /** Authoritative capped verdict at each tier. */
+  baselineVerdict: { full: number | null; validation: number | null };
   generations: GenerationRecord[];
   best: {
     candidate: Candidate;
     screen: number | null;
     full: number | null;
     validation: number | null;
+    /** Capped verdicts — a candidate is only a real improvement if these hold up. */
+    fullVerdict: number | null;
+    validationVerdict: number | null;
   } | null;
   /** Every full/validation evaluation, for the report. */
   evaluations: CandidateEvaluation[];
@@ -220,9 +226,26 @@ async function evaluateCandidate(
   return evaluation;
 }
 
-/** Fitness for ranking; a failed candidate sinks to the bottom deterministically. */
+/**
+ * What the search climbs.
+ *
+ * `searchObjective`, not `overall`: the capped verdict pins every candidate
+ * with a violation to the same number, which measured in Step 8 as a perfectly
+ * flat landscape — 0.6000 in every generation, no gradient at all. The
+ * uncapped score still carries the full per-violation penalty, so reducing two
+ * violations beats reducing one; it simply does not collapse everything
+ * imperfect onto one value.
+ *
+ * A failed candidate sinks to the bottom deterministically.
+ */
 function rankOf(evaluation: CandidateEvaluation): number {
-  return evaluation.failure !== null ? -1 : (evaluation.fitness?.overall ?? -1);
+  return evaluation.failure !== null ? -1 : (evaluation.fitness?.searchObjective ?? -1);
+}
+
+/** The authoritative verdict — what a candidate must pass to be promoted to a
+ *  real balance change. Never used to steer the search. */
+function verdictOf(evaluation: CandidateEvaluation): number {
+  return evaluation.failure !== null ? 0 : (evaluation.fitness?.overall ?? 0);
 }
 
 /** Runs a CMA-ES balance search. */
@@ -384,13 +407,19 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
       full: rankOf(baselineFull),
       validation: baselineValidation ? rankOf(baselineValidation) : null,
     },
+    baselineVerdict: {
+      full: verdictOf(baselineFull),
+      validation: baselineValidation ? verdictOf(baselineValidation) : null,
+    },
     generations: generationRecords,
     best: bestFull
       ? {
           candidate: bestFull.candidate,
-          screen: cache.get(bestFull.candidate.hash, "screen")?.fitness?.overall ?? null,
+          screen: cache.get(bestFull.candidate.hash, "screen")?.fitness?.searchObjective ?? null,
           full: rankOf(bestFull),
           validation: bestValidation ? rankOf(bestValidation) : null,
+          fullVerdict: verdictOf(bestFull),
+          validationVerdict: bestValidation ? verdictOf(bestValidation) : null,
         }
       : null,
     evaluations,

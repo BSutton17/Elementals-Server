@@ -43,7 +43,8 @@ export function fitnessText(f: FitnessResult): string {
   L.push(`  weighted score   ${f.weightedScore.toFixed(4)}`);
   if (f.penalty > 0) L.push(`  penalty          −${f.penalty.toFixed(4)}  (${f.violations.length} violation(s))`);
   if (f.capped) L.push(`  CAPPED           constraint violation limits the score`);
-  L.push(`  OVERALL          ${f.overall.toFixed(4)}`);
+  L.push(`  OVERALL          ${f.overall.toFixed(4)}   (the verdict)`);
+  L.push(`  search objective ${f.searchObjective.toFixed(4)}   (what an optimizer climbs — uncapped)`);
 
   if (f.violations.length > 0) {
     L.push("");
