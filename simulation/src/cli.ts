@@ -23,6 +23,23 @@ import { telemetryOf } from "./metrics.js";
 import { personalityAI, type PersonalityProfile } from "./personality.js";
 import { PERSONALITIES, type PersonalityName } from "./personalities.js";
 import type { MatchRecord, PlayerSpec } from "./types.js";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  allDuelPairings,
+  compare,
+  comparisonText,
+  evaluate,
+  reportText,
+  toJson,
+  SEED_POOLS,
+  type EvaluationResult,
+  type SeedPoolName,
+} from "./evaluation/index.js";
+
+/** Where evaluation readings are written (alongside simulation run history). */
+const RUNS_DIR = fileURLToPath(new URL("../runs/", import.meta.url));
 
 /**
  * Balance dashboard CLI (ticket #210) — the designer's entry point.
@@ -454,6 +471,77 @@ Commands:
 Run via: npm run sim -- <command> [flags]`);
 }
 
+/**
+ * Balance evaluation (Step 4): a population-aggregate reading of the current
+ * game, or of a candidate configuration supplied as JSON.
+ *
+ * Writes both a machine-readable reading — the optimizer's input, so it never
+ * has to scrape console output — and a designer-facing report.
+ */
+function commandEvaluate(flags: Map<string, string>): void {
+  const seedsPerPairing = num(flags, "seeds", 1);
+  const poolName = (flags.get("pool") ?? "validation") as SeedPoolName;
+  if (!SEED_POOLS.includes(poolName)) {
+    throw new Error(`--pool must be one of ${SEED_POOLS.join(", ")}`);
+  }
+
+  // A candidate configuration is a plain {parameterId: value} JSON file.
+  const candidatePath = flags.get("candidate");
+  const balance = candidatePath
+    ? (JSON.parse(readFileSync(candidatePath, "utf8")) as Record<string, number>)
+    : null;
+
+  const quick = flags.has("quick");
+  const config = {
+    balanceConfigId: flags.get("id") ?? (candidatePath ? path.basename(candidatePath) : "baseline"),
+    balance,
+    pool: poolName,
+    duel: {
+      enabled: !flags.has("no-duel"),
+      seedsPerPairing,
+      pairings: quick ? allDuelPairings().slice(0, 6) : undefined,
+    },
+    ffa4: {
+      enabled: !flags.has("no-ffa"),
+      seedsPerPairing,
+      compositions: num(flags, "ffa4", quick ? 2 : 24),
+    },
+    ffa7: {
+      enabled: !flags.has("no-ffa"),
+      seedsPerPairing,
+      compositions: num(flags, "ffa7", quick ? 2 : 16),
+    },
+    onProgress: (done: number, total: number) => {
+      process.stdout.write(`\r  ${done}/${total} matches…`);
+    },
+  };
+
+  console.log(
+    `Evaluating "${config.balanceConfigId}" on the ${poolName} seed pool ` +
+      `(${seedsPerPairing} seed(s) per ordered strategy pairing)…`,
+  );
+  const result = evaluate(config);
+  process.stdout.write("\r".padEnd(40) + "\r");
+  console.log(reportText(result));
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const dir = path.join(RUNS_DIR, `${stamp}-evaluation-${config.balanceConfigId}`.slice(0, 80));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "evaluation.json"), toJson(result));
+  writeFileSync(path.join(dir, "report.txt"), reportText(result));
+
+  // Optional comparison against a previously saved reading.
+  const basePath = flags.get("baseline");
+  if (basePath) {
+    const baseline = JSON.parse(readFileSync(basePath, "utf8")) as EvaluationResult;
+    const diff = compare(baseline, result);
+    console.log("");
+    console.log(comparisonText(diff));
+    writeFileSync(path.join(dir, "comparison.json"), JSON.stringify(diff, null, 2));
+  }
+  console.log(`\nSaved: ${dir}`);
+}
+
 const { command, flags } = parseArgs(process.argv.slice(2));
 try {
   switch (command) {
@@ -477,6 +565,9 @@ try {
       break;
     case "history":
       commandHistory();
+      break;
+    case "evaluate":
+      commandEvaluate(flags);
       break;
     default:
       help();
