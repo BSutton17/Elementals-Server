@@ -544,9 +544,8 @@ async function commandEvaluate(flags: Map<string, string>): Promise<void> {
       seedsPerPairing,
       compositions: num(flags, "ffa7", quick ? 2 : 16),
     },
-    onProgress: (done: number, total: number) => {
-      process.stdout.write(`\r  ${done}/${total} matches…`);
-    },
+    workers: flags.has("workers") ? num(flags, "workers", 1) : undefined,
+    onProgress: progressReporter(),
   };
 
   const planned = planEvaluation(config).length;
