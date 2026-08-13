@@ -1,4 +1,5 @@
 import { DARK } from "../data/balance.js";
+import { param } from "./parameters.js";
 import type { PlayerState } from "../match/playerState.js";
 
 /**
@@ -91,7 +92,11 @@ export function applyDamage(
   // each system having to remember. Tracked for everyone; only Dark reads it.
   const taken = absorbedByShield + dealtToHp;
   if (taken > 0) {
-    target.rageMeter = Math.min(DARK.RAGE_FULL, target.rageMeter + taken);
+    // Read through the parameter gate, exactly as the cast check in
+    // abilities.ts does. Capping with the raw constant while the cast gate
+    // honoured an override meant a raised threshold could never be reached.
+    const rageFull = param("dark.rageFull", DARK.RAGE_FULL);
+    target.rageMeter = Math.min(rageFull, target.rageMeter + taken);
     // Insects' "Fruit Fly" heals only once this is far enough behind the
     // current tick. Stamped in the same place Rage charges, so EVERY source of
     // damage resets it — a DoT tick has to keep the regeneration suppressed

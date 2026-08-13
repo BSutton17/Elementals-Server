@@ -150,8 +150,9 @@ test("the rage meter fills by exactly the damage absorbed", () => {
   assert.equal(a.rageMeter, 400);
 
   // A bigger hit is worth proportionally more — the total is what matters.
-  applyDamage(a, 1_100, { tick: 2 });
-  assert.equal(a.rageMeter, 1_500);
+  // Kept below RAGE_FULL so this checks accumulation, not the cap.
+  applyDamage(a, 600, { tick: 2 });
+  assert.equal(a.rageMeter, 1_000);
 });
 
 test("damage eaten by a shield still feeds the meter, and it caps at full", () => {
@@ -367,15 +368,17 @@ test("without the buff Dark still only strikes one kingdom", () => {
   assert.equal(c.castle.hp, c.castle.maxHp, "a second target was hit without the buff");
 });
 
-test("the meter fills at 2000 absorbed and returns 1500", () => {
+test("the meter fills at 1250 absorbed and returns 1500", () => {
   // Both numbers are tuning the user set explicitly, so they are pinned rather
-  // than left to "it dealt some damage".
-  assert.equal(DARK.RAGE_FULL, 2000);
+  // than left to "it dealt some damage". The threshold was lowered from 2000
+  // to make the ability reachable more often; the payload deliberately did not
+  // change, so Rage arrives sooner rather than hitting harder.
+  assert.equal(DARK.RAGE_FULL, 1250);
 
   const { match, a, b } = darkMatch();
   // Exactly the stated punishment fills it — no more, no less.
-  applyDamage(a, 1_999, { tick: 1 });
-  assert.equal(a.rageMeter, 1_999);
+  applyDamage(a, 1_249, { tick: 1 });
+  assert.equal(a.rageMeter, 1_249);
   assert.equal(cast(match, a, UNLIMITED_RAGE).ok, false, "fired below full");
 
   applyDamage(a, 1, { tick: 2 });

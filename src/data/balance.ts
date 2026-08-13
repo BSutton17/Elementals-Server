@@ -197,8 +197,12 @@ export const DARK = {
    * Total damage Dark must absorb for Unlimited Rage to reach full charge.
    * The meter fills by exactly the damage taken, so a big hit is worth
    * proportionally more than a poke — but the total is all that matters.
+   *
+   * Lowered from 2000 so the meter fills roughly a third sooner; Unlimited
+   * Rage's payload is deliberately unchanged at 1500, so this makes the
+   * ability reachable more often rather than stronger when it lands.
    */
-  RAGE_FULL: 2000,
+  RAGE_FULL: 1250,
 } as const;
 
 /** Kitsune kingdom — the "Ancient Memory" meter ("Swift Tails"). */
