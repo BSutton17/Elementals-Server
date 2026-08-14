@@ -5,8 +5,9 @@ import { KINGDOM_ABILITIES } from "../src/data/kingdomAbilities.js";
 import {
   WEIGHT_PRESETS,
   abilityCoverage,
-  coverageRegression,
+  compareCoverage,
   coverageText,
+  type CoverageCheckpoint,
   scoreFitness,
   syntheticEvaluation,
   totalAbilities,
@@ -197,11 +198,49 @@ test("usage bands separate reachable from understood", () => {
   assert.ok(report.abilities.some((a) => a.band === "never"), "expected unused abilities");
 });
 
+const checkpoint = (used: number, over: Partial<CoverageCheckpoint> = {}): CoverageCheckpoint => ({
+  used,
+  total: 80,
+  matches: 400,
+  balanceConfigHash: "base",
+  seedLabel: "cov",
+  ...over,
+});
+
 test("a coverage regression is flagged, not silently accepted", () => {
-  assert.equal(coverageRegression(63, 63), null);
-  assert.equal(coverageRegression(63, 61), null, "small drift is tolerated");
-  const warning = coverageRegression(63, 52);
-  assert.ok(warning && warning.includes("regression"), `expected a warning, got ${warning}`);
+  assert.equal(compareCoverage(checkpoint(63), checkpoint(63)).regression, null);
+  assert.equal(
+    compareCoverage(checkpoint(63), checkpoint(61)).regression,
+    null,
+    "small drift is tolerated",
+  );
+  const drop = compareCoverage(checkpoint(63), checkpoint(52));
+  assert.ok(drop.regression?.includes("regression"), `expected a warning, got ${drop.regression}`);
+});
+
+test("coverage readings taken under different conditions are not compared", () => {
+  // This is the Step 10 smoke-test mistake: a baseline reading held up against
+  // a reading taken under a candidate's parameters, reported as a -5 regression.
+  const across = compareCoverage(checkpoint(66, { balanceConfigHash: "cand" }), checkpoint(61));
+  assert.equal(across.comparable, false);
+  assert.equal(across.regression, null, "must not claim a regression across balance configs");
+  assert.equal(across.delta, null);
+  assert.match(across.caveat ?? "", /different balance/);
+
+  const seeds = compareCoverage(checkpoint(66, { seedLabel: "other" }), checkpoint(61));
+  assert.equal(seeds.comparable, false);
+  assert.match(seeds.caveat ?? "", /different seeds/);
+});
+
+test("a thin sample cannot support a regression claim", () => {
+  const thin = { matches: 24 };
+  const drop = compareCoverage(checkpoint(66, thin), checkpoint(52, thin));
+  assert.equal(drop.regression, null, "24 matches cannot establish a coverage regression");
+  assert.match(drop.caveat ?? "", /too thin/);
+  assert.equal(drop.delta, -14, "the delta is still reported, just not as a verdict");
+
+  // The same drop on an adequate sample IS a regression.
+  assert.ok(compareCoverage(checkpoint(66), checkpoint(52)).regression);
 });
 
 test("coverage never reaches the fitness score", () => {
@@ -219,9 +258,11 @@ test("the coverage report reads as a diagnostic", () => {
     matches: 2, seed: "text", players: [{ kingdomId: "joker" }, { kingdomId: "dark" }],
     telemetry: true,
   });
-  const text = coverageText(abilityCoverage(result.records.map((r) => r.telemetry!)), 63);
+  const report = abilityCoverage(result.records.map((r) => r.telemetry!));
+  const text = coverageText(report);
   assert.ok(text.includes("diagnostic, never part of fitness"));
   assert.ok(text.includes("By kingdom"));
   assert.ok(text.includes("Usage bands"));
-  assert.ok(text.includes("baseline 63/80"));
+  // A two-match sample must say so rather than present its total as a finding.
+  assert.match(text, /below the \d+ needed for a stable count/);
 });

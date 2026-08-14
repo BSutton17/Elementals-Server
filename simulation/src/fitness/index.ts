@@ -40,11 +40,26 @@ export { syntheticEvaluation, type SyntheticSpec } from "./scenarios.js";
 export {
   abilityCoverage,
   coverageText,
-  coverageRegression,
+  compareCoverage,
+  MIN_MATCHES_FOR_STABLE_COVERAGE,
   totalAbilities,
   type CoverageReport,
+  type CoverageCheckpoint,
+  type CoverageComparison,
   type KingdomCoverage,
   type AbilityUsage,
   type UsageBand,
 } from "./coverage.js";
 export { fitnessText, fitnessComparisonText } from "./report.js";
+
+export {
+  checkConstraints,
+  classify,
+  promotionVerdict,
+  promotionText,
+  REQUIRED_POOLS,
+  type ConstraintCheck,
+  type ConstraintStatus,
+  type PromotionVerdict,
+  type PromotionDecision,
+} from "./promotion.js";

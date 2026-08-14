@@ -130,4 +130,34 @@ export class CandidateCache {
   get stats(): { hits: number; misses: number; size: number } {
     return { hits: this.hits, misses: this.misses, size: this.entries.size };
   }
+
+  /** The cache's contents, for checkpointing. The key travels WITH the entry —
+   *  it is the record of the context the score was earned under. */
+  dump(): { key: string; evaluation: CandidateEvaluation }[] {
+    return [...this.entries].map(([key, evaluation]) => ({ key, evaluation }));
+  }
+
+  /**
+   * Repopulates from a checkpoint, dropping anything earned under a different
+   * context.
+   *
+   * The stored key must equal the key this cache would compute today. Rebuilding
+   * keys from the live context instead would do the exact opposite of what the
+   * cache is for: a score measured on another engine would be filed under the
+   * current engine's key and served as if it were current. The run-level
+   * identity check should already prevent that combination from reaching here,
+   * so this is a second lock on the same door — cheap, and the failure it guards
+   * against is silent.
+   *
+   * Hit/miss counters are left alone: they describe this process's work.
+   */
+  load(entries: { key: string; evaluation: CandidateEvaluation }[]): number {
+    let loaded = 0;
+    for (const { key, evaluation } of entries) {
+      if (key !== this.key(evaluation.candidate.hash, evaluation.tier)) continue;
+      this.entries.set(key, evaluation);
+      loaded += 1;
+    }
+    return loaded;
+  }
 }

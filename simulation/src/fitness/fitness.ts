@@ -140,7 +140,7 @@ const DEFAULT_COMPONENTS: ComponentWeights = {
   ffaDistribution: 0.15,
 };
 
-const DEFAULT_CONSTRAINTS: Constraints = {
+export const DEFAULT_CONSTRAINTS: Constraints = {
   catastrophicFormat: 0.35,
   duelWinRateBound: 0.2, // outside 20–80%
   ffaFirstFloorRatio: 0.35, // below 35% of fair share

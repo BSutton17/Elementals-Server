@@ -132,31 +132,131 @@ export function abilityCoverage(telemetry: readonly MatchTelemetry[]): CoverageR
   };
 }
 
-/** Flags a meaningful drop against a previous checkpoint. */
-export function coverageRegression(
-  baseline: number,
-  current: number,
-  tolerance = 4,
-): string | null {
-  if (current >= baseline - tolerance) return null;
-  return `AI coverage regression: ${current}/${totalAbilities()} against a baseline of ${baseline}`;
+/**
+ * A coverage reading plus the context that makes it comparable to another one.
+ *
+ * Bare counts are not comparable, and treating them as if they were produces
+ * confident nonsense: the Step 10 smoke test reported a "regression" from 66 to
+ * 61 that was really a baseline reading held up against a reading taken under a
+ * candidate's parameters, on different seeds, from 24 matches. Every one of
+ * those differences moves the number on its own.
+ */
+export interface CoverageCheckpoint {
+  used: number;
+  total: number;
+  matches: number;
+  /** Hash of the parameter overrides in force. Readings taken under different
+   *  balance are not comparable. */
+  balanceConfigHash: string;
+  /** Seed label, so same-config readings on different seeds are flagged. */
+  seedLabel: string;
 }
 
-export function coverageText(report: CoverageReport, baselineUsed?: number): string {
+/**
+ * Below this, a coverage count is dominated by sampling.
+ *
+ * Coverage is per-ability, so what matters is how often each KINGDOM is drawn:
+ * with 16 kingdoms and two seats, a 24-match sample gives each kingdom about
+ * three appearances, and a situational ability can easily miss all three
+ * without anything having changed. 160 duel-matches puts each kingdom in
+ * roughly twenty, which is where the count starts to mean something.
+ */
+export const MIN_MATCHES_FOR_STABLE_COVERAGE = 160;
+
+export interface CoverageComparison {
+  comparable: boolean;
+  /** Why a comparison was refused, or why it is weak. Null when clean. */
+  caveat: string | null;
+  delta: number | null;
+  /** Set only for a real, comparable, beyond-tolerance drop. */
+  regression: string | null;
+}
+
+/**
+ * Compares two coverage checkpoints, refusing the comparison when the readings
+ * were not taken under the same conditions.
+ *
+ * Refusing is the point. A coverage number is a health check on the measuring
+ * instrument; a false regression alarm sends someone hunting a controller bug
+ * that does not exist, which is a worse outcome than no reading at all.
+ */
+export function compareCoverage(
+  before: CoverageCheckpoint,
+  after: CoverageCheckpoint,
+  tolerance = 4,
+): CoverageComparison {
+  if (before.balanceConfigHash !== after.balanceConfigHash) {
+    return {
+      comparable: false,
+      caveat:
+        `not comparable: different balance (${before.balanceConfigHash} vs ${after.balanceConfigHash}). ` +
+        `Compare baseline-to-baseline or candidate-to-the-same-candidate.`,
+      delta: null,
+      regression: null,
+    };
+  }
+  if (before.seedLabel !== after.seedLabel) {
+    return {
+      comparable: false,
+      caveat: `not comparable: different seeds ("${before.seedLabel}" vs "${after.seedLabel}")`,
+      delta: null,
+      regression: null,
+    };
+  }
+
+  const delta = after.used - before.used;
+  const thin = Math.min(before.matches, after.matches) < MIN_MATCHES_FOR_STABLE_COVERAGE;
+  if (delta >= -tolerance) {
+    return { comparable: true, caveat: thin ? thinCaveat(before, after) : null, delta, regression: null };
+  }
+  // A drop past tolerance on a thin sample is reported as inconclusive rather
+  // than as a regression — the sample cannot support the claim.
+  if (thin) {
+    return { comparable: true, caveat: thinCaveat(before, after), delta, regression: null };
+  }
+  return {
+    comparable: true,
+    caveat: null,
+    delta,
+    regression: `AI coverage regression: ${after.used}/${after.total} against ${before.used}/${before.total}`,
+  };
+}
+
+function thinCaveat(before: CoverageCheckpoint, after: CoverageCheckpoint): string {
+  return (
+    `sample too thin to judge a change: ${Math.min(before.matches, after.matches)} matches ` +
+    `(need ${MIN_MATCHES_FOR_STABLE_COVERAGE} for each kingdom to appear often enough)`
+  );
+}
+
+/**
+ * Renders a coverage report.
+ *
+ * A comparison is only shown when one was actually made. Passing a bare
+ * "baseline number" is deliberately not supported any more: that signature is
+ * what allowed two incomparable readings to be printed side by side with a
+ * delta between them.
+ */
+export function coverageText(report: CoverageReport, comparison?: CoverageComparison): string {
   const L: string[] = [];
   L.push("=".repeat(70));
   L.push("AI ABILITY COVERAGE — diagnostic, never part of fitness");
   L.push("=".repeat(70));
+  const delta =
+    comparison?.comparable && comparison.delta !== null
+      ? `   (${comparison.delta >= 0 ? "+" : ""}${comparison.delta} vs previous)`
+      : "";
   L.push(
-    `  ${report.used}/${report.total} = ${(report.fraction * 100).toFixed(1)}%` +
-      (baselineUsed !== undefined
-        ? `   (baseline ${baselineUsed}/${report.total}, ${report.used - baselineUsed >= 0 ? "+" : ""}${report.used - baselineUsed})`
-        : "") +
+    `  ${report.used}/${report.total} = ${(report.fraction * 100).toFixed(1)}%${delta}` +
       `   from ${report.matches} matches`,
   );
-  if (baselineUsed !== undefined) {
-    const warning = coverageRegression(baselineUsed, report.used);
-    if (warning) L.push(`  ⚠ ${warning}`);
+  if (comparison?.regression) L.push(`  ⚠ ${comparison.regression}`);
+  if (comparison?.caveat) L.push(`  · ${comparison.caveat}`);
+  if (report.matches < MIN_MATCHES_FOR_STABLE_COVERAGE) {
+    L.push(
+      `  · ${report.matches} matches is below the ${MIN_MATCHES_FOR_STABLE_COVERAGE} needed for a stable count — ` +
+        `read the bands, not the total`,
+    );
   }
   L.push("");
   L.push("  By kingdom");

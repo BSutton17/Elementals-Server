@@ -52,3 +52,14 @@ export {
   type TierConfig,
   type ProgressEvent,
 } from "./run.js";
+
+export {
+  readCheckpoint,
+  writeCheckpoint,
+  identityMismatches,
+  cacheKeyOf,
+  CHECKPOINT_VERSION,
+  type SearchCheckpoint,
+  type CheckpointIdentity,
+  type CheckpointLoad,
+} from "./checkpoint.js";

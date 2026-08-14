@@ -12,6 +12,15 @@ import {
 } from "../fitness/index.js";
 import { Cmaes } from "./cmaes.js";
 import {
+  CHECKPOINT_VERSION,
+  cacheKeyOf,
+  readCheckpoint,
+  writeCheckpoint,
+  type CheckpointIdentity,
+} from "./checkpoint.js";
+import { captureProvenance } from "../evaluation/provenance.js";
+import { hashSeed } from "../rng.js";
+import {
   CandidateCache,
   makeCandidate,
   type Candidate,
@@ -107,6 +116,11 @@ export interface SearchConfig {
   fitness?: FitnessConfig;
   onProgress?: (event: ProgressEvent) => void;
   now?: () => string;
+  /** Where to write a resumable checkpoint after each generation. Omit to
+   *  disable checkpointing entirely. */
+  checkpointPath?: string;
+  /** Ignore any checkpoint on disk and start over. */
+  restart?: boolean;
 }
 
 export interface ProgressEvent {
@@ -150,6 +164,10 @@ export interface SearchResult {
   } | null;
   /** Every full/validation evaluation, for the report. */
   evaluations: CandidateEvaluation[];
+  /** Non-null when this run continued from a checkpoint. */
+  resumedFrom: { generations: number; cacheEntries: number } | null;
+  /** Set when a checkpoint existed but was refused, with the reason. */
+  checkpointRejected: string | null;
   cache: { hits: number; misses: number; size: number };
   totals: { candidates: number; screens: number; fulls: number; validations: number; failures: number; matches: number; durationMs: number };
 }
@@ -193,6 +211,23 @@ const TIERS: Record<EvaluationTier, TierConfig> = {
   validation: VALIDATION_TIER,
 };
 
+/**
+ * Attempts per evaluation before a failure is believed.
+ *
+ * An evaluation can fail for two very different reasons: the candidate breaks
+ * the simulator, or the machine hiccuped — a worker killed by memory pressure,
+ * a thread that failed to spawn. The first is a genuine result about the
+ * candidate. The second is noise, and recording it as a result is actively
+ * harmful: the candidate sinks to the bottom of the ranking and CMA-ES learns
+ * to avoid a perfectly good region of the search space for no reason. On a
+ * hosted runner over many hours, the second kind is the one to expect.
+ *
+ * Retrying once separates them cheaply. Evaluation is deterministic, so a real
+ * candidate-caused crash reproduces and still gets recorded; a transient one
+ * usually does not.
+ */
+const EVALUATION_ATTEMPTS = 2;
+
 /** Evaluates one candidate at one tier, going through the cache. */
 async function evaluateCandidate(
   candidate: Candidate,
@@ -208,36 +243,57 @@ async function evaluateCandidate(
   // "improvement" is just the optimizer recognising its own dice.
   const pool = tier === "validation" ? "validation" : "training";
   const started = performance.now();
-  let evaluation: CandidateEvaluation;
-  try {
-    const reading = await evaluate(
-      evaluationConfig(
-        TIERS[tier],
-        pool,
-        candidate.parameters,
-        `${candidate.id}:${tier}`,
-        config.workers,
-      ),
-    );
-    evaluation = {
-      candidate,
-      tier,
-      fitness: scoreFitness(reading, fitnessConfig),
-      failure: null,
-      durationMs: performance.now() - started,
-      cached: false,
-    };
-  } catch (error) {
-    // A candidate that crashes the simulator is a result, not a gap: it is
-    // recorded, scored at the floor, and never silently skipped.
+  const attempts: string[] = [];
+  let evaluation: CandidateEvaluation | null = null;
+
+  for (let attempt = 1; attempt <= EVALUATION_ATTEMPTS; attempt++) {
+    try {
+      const reading = await evaluate(
+        evaluationConfig(
+          TIERS[tier],
+          pool,
+          candidate.parameters,
+          `${candidate.id}:${tier}`,
+          config.workers,
+        ),
+      );
+      evaluation = {
+        candidate,
+        tier,
+        fitness: scoreFitness(reading, fitnessConfig),
+        failure: null,
+        durationMs: performance.now() - started,
+        cached: false,
+      };
+      if (attempt > 1) {
+        config.onProgress?.({
+          kind: "candidate",
+          generation: candidate.generation,
+          message: `${candidate.id}:${tier} recovered on attempt ${attempt} after: ${attempts[0]}`,
+        });
+      }
+      break;
+    } catch (error) {
+      attempts.push((error as Error).message);
+    }
+  }
+
+  if (!evaluation) {
+    // Failed every attempt: this is a property of the candidate, not the
+    // machine. Recorded and scored at the floor, never silently skipped.
     evaluation = {
       candidate,
       tier,
       fitness: null,
-      failure: (error as Error).message,
+      failure: `failed ${EVALUATION_ATTEMPTS} attempts: ${[...new Set(attempts)].join(" | ")}`,
       durationMs: performance.now() - started,
       cached: false,
     };
+    config.onProgress?.({
+      kind: "candidate",
+      generation: candidate.generation,
+      message: `${candidate.id}:${tier} FAILED — ${evaluation.failure}`,
+    });
   }
   cache.set(evaluation);
   return evaluation;
@@ -278,13 +334,53 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
   const promote = config.promote ?? 3;
   const validateCount = config.validate ?? 1;
 
+  const populationSize = config.populationSize ?? null;
+  const sigma = config.sigma ?? 0.2;
+  const provenance = captureProvenance({
+    balanceConfigId: "search",
+    strategyPopulationVersion: "v1",
+    now: config.now,
+  });
+
   const cache = new CandidateCache({
-    engineSha: "pending",
+    engineSha: provenance.engineSha,
     fitnessVersion: FITNESS_VERSION,
     schemaVersion: schema.version,
     seedPool: "training",
     samplerVersions: `${SCREEN_TIER.sampler}/${FULL_TIER.sampler}`,
   });
+
+  // A checkpoint may only be resumed into an identical run. Folding the tier
+  // configs into the identity means a resume cannot silently mix scores taken
+  // at different evaluation depths, which would be invisible in the output.
+  const identity: CheckpointIdentity = {
+    engineSha: provenance.engineSha,
+    engineDirty: provenance.engineDirty,
+    schemaVersion: schema.version,
+    catalogHash: schema.catalogHash,
+    fitnessVersion: FITNESS_VERSION,
+    optimizerVersion: OPTIMIZER_VERSION,
+    weightsName: fitnessConfig.weightsName ?? "custom",
+    seed,
+    generations,
+    populationSize,
+    sigma,
+    tiersHash: hashSeed(JSON.stringify([SCREEN_TIER, FULL_TIER, VALIDATION_TIER]))
+      .toString(16)
+      .padStart(8, "0"),
+  };
+
+  const loaded =
+    config.checkpointPath && !config.restart
+      ? readCheckpoint(config.checkpointPath, identity)
+      : { checkpoint: null, rejected: null };
+  if (loaded.rejected) {
+    config.onProgress?.({
+      kind: "generation",
+      generation: -1,
+      message: `starting fresh — ${loaded.rejected}`,
+    });
+  }
 
   const started = performance.now();
   const evaluations: CandidateEvaluation[] = [];
@@ -314,6 +410,21 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
     index: 0,
     optimizer: "baseline",
   });
+  // Restoring the cache BEFORE the baseline runs is what makes a resume cheap:
+  // the baseline's two evaluations are the single most expensive thing in a
+  // short run, and they are identical every time.
+  const resumed = loaded.checkpoint;
+  const restoredEntries = resumed ? cache.load(resumed.cacheEntries) : 0;
+  if (resumed) {
+    config.onProgress?.({
+      kind: "generation",
+      generation: resumed.completedGenerations,
+      message:
+        `resuming from checkpoint at generation ${resumed.completedGenerations}/${generations} ` +
+        `(${restoredEntries} cached evaluations)`,
+    });
+  }
+
   config.onProgress?.({ kind: "generation", generation: -1, message: "evaluating baseline" });
   const baselineScreen = await evaluateCandidate(baselineCandidate, "screen", cache, config, fitnessConfig);
   record(baselineScreen);
@@ -322,19 +433,43 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
   record(baselineFull);
   evaluations.push(baselineFull);
 
-  const cma = new Cmaes({
-    dimension: params.length,
-    mean: baseVector(schema),
-    sigma: config.sigma ?? 0.2,
-    populationSize: config.populationSize,
-    seed,
-  });
+  const cma = resumed
+    ? Cmaes.restore(resumed.cma)
+    : new Cmaes({
+        dimension: params.length,
+        mean: baseVector(schema),
+        sigma,
+        populationSize: config.populationSize,
+        seed,
+      });
 
-  const generationRecords: GenerationRecord[] = [];
+  const generationRecords: GenerationRecord[] = resumed ? [...resumed.generationRecords] : [];
   let bestFull: CandidateEvaluation | null = null;
-  let candidateCount = 0;
+  let candidateCount = resumed ? resumed.counters.candidateCount : 0;
+  const firstGeneration = resumed ? resumed.completedGenerations : 0;
 
-  for (let g = 0; g < generations; g++) {
+  if (resumed) {
+    // Replay the previous run's bookkeeping so the final report describes the
+    // whole search, not just the segment after the interruption.
+    for (const e of resumed.evaluations) {
+      if (!evaluations.some((x) => x.candidate.hash === e.candidate.hash && x.tier === e.tier)) {
+        evaluations.push(e);
+      }
+    }
+    matches += resumed.counters.matches;
+    screens += resumed.counters.screens;
+    fulls += resumed.counters.fulls;
+    validations += resumed.counters.validations;
+    failures += resumed.counters.failures;
+    if (resumed.bestFullKey) {
+      bestFull =
+        resumed.cacheEntries.find(
+          (x) => cacheKeyOf(x.evaluation.candidate.hash, x.evaluation.tier) === resumed.bestFullKey,
+        )?.evaluation ?? null;
+    }
+  }
+
+  for (let g = firstGeneration; g < generations; g++) {
     const genStarted = performance.now();
     const vectors = cma.ask();
     const candidates = vectors.map((vector, index) =>
@@ -399,6 +534,38 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
         `mean ${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(4)}  ` +
         `full best ${bestFull ? rankOf(bestFull).toFixed(4) : "—"}`,
     });
+
+    // Written AFTER the generation is fully accounted for, so a checkpoint
+    // never describes a half-finished generation. A failure to write must not
+    // destroy a run that is otherwise fine — a lost checkpoint costs time, an
+    // aborted search costs everything.
+    if (config.checkpointPath) {
+      try {
+        writeCheckpoint(config.checkpointPath, {
+          version: CHECKPOINT_VERSION,
+          identity,
+          writtenAt: (config.now ?? (() => new Date().toISOString()))(),
+          completedGenerations: g + 1,
+          cma: cma.snapshot(),
+          schema,
+          generationRecords,
+          evaluations,
+          cacheEntries: cache.dump(),
+          bestFullKey: bestFull ? cacheKeyOf(bestFull.candidate.hash, bestFull.tier) : null,
+          counters: {
+            candidateCount,
+            matches, screens, fulls, validations, failures,
+            elapsedMs: performance.now() - started,
+          },
+        });
+      } catch (error) {
+        config.onProgress?.({
+          kind: "generation",
+          generation: g,
+          message: `checkpoint write failed (continuing): ${(error as Error).message}`,
+        });
+      }
+    }
   }
 
   // Validate the elite on seeds the search never saw.
@@ -440,6 +607,10 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
         }
       : null,
     evaluations,
+    resumedFrom: resumed
+      ? { generations: resumed.completedGenerations, cacheEntries: restoredEntries }
+      : null,
+    checkpointRejected: loaded.rejected,
     cache: cache.stats,
     totals: {
       candidates: candidateCount,
