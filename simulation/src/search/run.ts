@@ -1,4 +1,8 @@
-import { evaluate, allDuelPairings, type EvaluationConfig } from "../evaluation/index.js";
+import {
+  evaluate,
+  balancedDuelPairings,
+  type EvaluationConfig,
+} from "../evaluation/index.js";
 import {
   FITNESS_VERSION,
   WEIGHT_PRESETS,
@@ -47,9 +51,15 @@ export interface TierConfig {
   sampler: string;
 }
 
-/** Cheap and deliberately approximate — enough to reject the obviously bad. */
+/**
+ * Cheap and deliberately approximate — enough to reject the obviously bad.
+ *
+ * The pairing subset is balanced, never a prefix: with a prefix, Dark would be
+ * measured on a single matchup while Water got fifteen, and the search would be
+ * steered by a win rate that is not one.
+ */
 export const SCREEN_TIER: TierConfig = {
-  duelPairings: 24,
+  duelPairings: 32,
   duelSeeds: 1,
   ffa4Compositions: 8,
   ffa7Compositions: 6,
@@ -57,7 +67,14 @@ export const SCREEN_TIER: TierConfig = {
   sampler: "coverage",
 };
 
-/** What a candidate must survive to be taken seriously. */
+/**
+ * What a candidate must survive to be taken seriously.
+ *
+ * All 120 pairings: at 36 ordered strategy pairings each, that resolves a
+ * kingdom's aggregate win rate to about ±1.3pp, comfortably finer than the 20%
+ * constraint bound it is checked against. Trimming this tier is what made it
+ * disagree with reference depth in Step 9, so it is deliberately left whole.
+ */
 export const FULL_TIER: TierConfig = {
   duelSeeds: 1,
   ffa4Compositions: 24,
@@ -153,7 +170,7 @@ function evaluationConfig(
     duel: {
       enabled: true,
       seedsPerPairing: tier.duelSeeds,
-      pairings: tier.duelPairings ? allDuelPairings().slice(0, tier.duelPairings) : undefined,
+      pairings: tier.duelPairings ? balancedDuelPairings(tier.duelPairings) : undefined,
     },
     ffa4: {
       enabled: true,

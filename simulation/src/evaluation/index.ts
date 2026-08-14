@@ -88,6 +88,7 @@ export {
 export {
   planJobs,
   planCompositions,
+  balancedDuelPairings,
   samplerFor,
   runJob,
   type MatchJob,

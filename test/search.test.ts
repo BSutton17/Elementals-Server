@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listParameters } from "../src/engine/parameterCatalog.js";
+import { KINGDOM_IDS } from "../src/data/kingdoms.js";
 import {
   Cmaes,
   CandidateCache,
@@ -278,4 +279,106 @@ test("fitness rules are not reachable from the search space", () => {
       `${p.id} is not a recognised engine parameter namespace`,
     );
   }
+});
+
+// --- Step 10 hardening ----------------------------------------------------------
+
+test("a duel subset gives every kingdom equal representation", async () => {
+  const { balancedDuelPairings, allDuelPairings } = await import(
+    "../simulation/src/evaluation/index.js"
+  );
+  // Never take a prefix: allDuelPairings() comes from nested i<j loops, so
+  // slice(0,24) gives Water fifteen matchups and Dark exactly one. A cheap tier
+  // built that way does not measure a late-roster kingdom at all.
+  const prefix = allDuelPairings().slice(0, 24);
+  const prefixCounts = new Map<string, number>(KINGDOM_IDS.map((k) => [k as string, 0]));
+  for (const [a, b] of prefix) {
+    prefixCounts.set(a, prefixCounts.get(a)! + 1);
+    prefixCounts.set(b, prefixCounts.get(b)! + 1);
+  }
+  const prefixValues = [...prefixCounts.values()];
+  assert.ok(
+    Math.max(...prefixValues) - Math.min(...prefixValues) > 5,
+    "the prefix should be badly skewed — that is the bug this replaces",
+  );
+
+  for (const n of [24, 32, 60]) {
+    const counts = new Map<string, number>(KINGDOM_IDS.map((k) => [k as string, 0]));
+    for (const [a, b] of balancedDuelPairings(n)) {
+      counts.set(a, counts.get(a)! + 1);
+      counts.set(b, counts.get(b)! + 1);
+    }
+    const values = [...counts.values()];
+    assert.ok(
+      Math.max(...values) - Math.min(...values) <= 1,
+      `balanced(${n}) spread ${Math.min(...values)}–${Math.max(...values)}`,
+    );
+  }
+});
+
+test("a duel subset is deterministic and never duplicates a pairing", async () => {
+  const { balancedDuelPairings } = await import("../simulation/src/evaluation/index.js");
+  const a = balancedDuelPairings(40);
+  assert.deepEqual(a, balancedDuelPairings(40));
+  assert.equal(new Set(a.map((p) => p.join("|"))).size, a.length);
+  assert.equal(balancedDuelPairings(999).length, 120, "asking for everything returns everything");
+});
+
+test("a checkpointed search resumes into the identical run", () => {
+  // A checkpoint missing any internal state would resume into a DIFFERENT
+  // search while looking continuous, which is worse than not resuming at all.
+  const fitness = (x: number[]) => -x.reduce((s, v) => s + (v - 0.6) ** 2, 0);
+  const straight: number[] = [];
+  const a = new Cmaes({ dimension: 10, mean: new Array(10).fill(0.3), sigma: 0.25, seed: 42 });
+  for (let g = 0; g < 6; g++) {
+    const pop = a.ask();
+    a.tell(pop, pop.map(fitness));
+    straight.push(...pop.flat());
+  }
+
+  const resumed: number[] = [];
+  const b = new Cmaes({ dimension: 10, mean: new Array(10).fill(0.3), sigma: 0.25, seed: 42 });
+  for (let g = 0; g < 3; g++) {
+    const pop = b.ask();
+    b.tell(pop, pop.map(fitness));
+    resumed.push(...pop.flat());
+  }
+  // Round-trip through JSON, as a real checkpoint file would.
+  const restored = Cmaes.restore(JSON.parse(JSON.stringify(b.snapshot())));
+  for (let g = 0; g < 3; g++) {
+    const pop = restored.ask();
+    restored.tell(pop, pop.map(fitness));
+    resumed.push(...pop.flat());
+  }
+  assert.deepEqual(resumed, straight);
+});
+
+test("a snapshot carries every piece of state the next draw depends on", () => {
+  const cma = new Cmaes({ dimension: 6, mean: new Array(6).fill(0.5), sigma: 0.2, seed: 5 });
+  const pop = cma.ask();
+  cma.tell(pop, pop.map(() => Math.random()));
+  const snap = cma.snapshot();
+  for (const key of ["dimension", "lambda", "mean", "sigma", "C", "pc", "ps", "generation", "rngState"]) {
+    assert.ok(key in snap, `snapshot is missing ${key}`);
+  }
+  assert.equal(snap.C.length, 6, "the covariance matrix must be included");
+  assert.equal(snap.generation, 1);
+});
+
+test("widened bounds are still sane game states", () => {
+  const schema = buildSchema();
+  const byId = new Map(schema.parameters.map((p) => [p.id, p]));
+  // Widened on evidence in Step 10; each must still describe an ordinary game.
+  const shield = byId.get("shield.cost")!;
+  assert.ok(shield.min >= 100, `a ${shield.min}-gold shield is not a balance change`);
+  const repair = byId.get("castle.repairAmount")!;
+  assert.ok(repair.max <= 2000, "a repair should not approach the castle's full HP");
+  for (const p of searchable(schema)) {
+    if (!/chance$/i.test(p.id)) continue;
+    assert.ok(p.min >= 0 && p.max <= 1, `${p.id} escaped [0,1] after widening`);
+  }
+  // Ice was deliberately left at the default spread: it pinned at a bound too,
+  // but its direction of benefit is not explainable from the baseline.
+  const ice = byId.get("passive.ice.0.pct")!;
+  assert.ok(Math.abs((ice.min - ice.base) / ice.base) < 0.45, "ice should not have been widened");
 });

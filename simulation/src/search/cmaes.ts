@@ -1,4 +1,4 @@
-import { mulberry32, type Rng } from "../rng.js";
+
 
 /**
  * CMA-ES — Covariance Matrix Adaptation Evolution Strategy.
@@ -52,7 +52,8 @@ export class Cmaes {
   private readonly cmu: number;
   private readonly damps: number;
   private readonly chiN: number;
-  private readonly rng: Rng;
+  /** mulberry32 position, so the stream can be checkpointed and resumed. */
+  private rngState: number;
 
   private mean: number[];
   private sigma: number;
@@ -72,7 +73,7 @@ export class Cmaes {
     this.dimension = n;
     this.lambda = options.populationSize ?? 4 + Math.floor(3 * Math.log(n));
     this.mu = Math.floor(this.lambda / 2);
-    this.rng = mulberry32(options.seed >>> 0);
+    this.rngState = options.seed >>> 0;
     this.mean = [...options.mean];
     this.sigma = options.sigma;
 
@@ -102,6 +103,53 @@ export class Cmaes {
     this.D = new Array<number>(n).fill(1);
     this.pc = new Array<number>(n).fill(0);
     this.ps = new Array<number>(n).fill(0);
+  }
+
+  /**
+   * Complete internal state, for checkpointing.
+   *
+   * Includes the covariance matrix, both evolution paths, the generation
+   * counter and the RNG position — everything the next `ask()` depends on. A
+   * checkpoint missing any of these would resume into a different search than
+   * the one that was interrupted, which is worse than not resuming at all
+   * because the run would look continuous.
+   */
+  snapshot(): CmaSnapshot {
+    return {
+      dimension: this.dimension,
+      lambda: this.lambda,
+      mean: [...this.mean],
+      sigma: this.sigma,
+      C: this.C.map((row) => [...row]),
+      pc: [...this.pc],
+      ps: [...this.ps],
+      generation: this.generation,
+      rngState: this.rngState,
+      spare: this.spare,
+    };
+  }
+
+  /** Restores a checkpointed search. */
+  static restore(snapshot: CmaSnapshot): Cmaes {
+    const cma = new Cmaes({
+      dimension: snapshot.dimension,
+      mean: snapshot.mean,
+      sigma: snapshot.sigma,
+      populationSize: snapshot.lambda,
+      seed: 0,
+    });
+    cma.mean = [...snapshot.mean];
+    cma.sigma = snapshot.sigma;
+    cma.C = snapshot.C.map((row) => [...row]);
+    cma.pc = [...snapshot.pc];
+    cma.ps = [...snapshot.ps];
+    cma.generation = snapshot.generation;
+    cma.rngState = snapshot.rngState;
+    cma.spare = snapshot.spare;
+    // Force a fresh decomposition: B and D must match the restored C.
+    cma.eigenAge = 1;
+    cma.refreshEigen();
+    return cma;
   }
 
   get state(): CmaState {
@@ -244,6 +292,14 @@ export class Cmaes {
     return out;
   }
 
+  /** One draw from the resumable mulberry32 stream. */
+  private next(): number {
+    this.rngState = (this.rngState + 0x6d2b79f5) | 0;
+    let t = Math.imul(this.rngState ^ (this.rngState >>> 15), 1 | this.rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
   /** Standard normal from the seeded stream (Box-Muller, cached pair). */
   private gaussian(): number {
     if (this.spare !== null) {
@@ -254,12 +310,26 @@ export class Cmaes {
     let u = 0;
     let v = 0;
     // Guard against log(0).
-    while (u <= 1e-12) u = this.rng();
-    v = this.rng();
+    while (u <= 1e-12) u = this.next();
+    v = this.next();
     const mag = Math.sqrt(-2 * Math.log(u));
     this.spare = mag * Math.sin(2 * Math.PI * v);
     return mag * Math.cos(2 * Math.PI * v);
   }
+}
+
+/** Snapshot of a search in progress. */
+export interface CmaSnapshot {
+  dimension: number;
+  lambda: number;
+  mean: number[];
+  sigma: number;
+  C: number[][];
+  pc: number[];
+  ps: number[];
+  generation: number;
+  rngState: number;
+  spare: number | null;
 }
 
 function identity(n: number): number[][] {

@@ -15,6 +15,7 @@ import {
 } from "./samplers.js";
 import {
   allDuelPairings,
+  balancedDuelPairings,
   planCompositions,
   planJobs,
   samplerFor,
@@ -162,7 +163,7 @@ export interface EvaluationResult {
 // Evaluation
 // ---------------------------------------------------------------------------
 
-export { allDuelPairings };
+export { allDuelPairings, balancedDuelPairings };
 
 function resolveConfig(config: EvaluationConfig) {
   return {

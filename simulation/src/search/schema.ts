@@ -110,6 +110,35 @@ function p(
   return { id, type, step: type === "integer" ? 1 : 0, locked, category, description };
 }
 
+/**
+ * Parameters given more room than the default, with the evidence for each.
+ *
+ * Step 9 ended with 5 of 20 parameters pinned at +/-40%, which is the signature
+ * of a search that wants to go further than it is allowed. Widening is applied
+ * case by case rather than across the board: a bound is only loosened where the
+ * direction of travel is explainable from the baseline diagnosis AND the wider
+ * value still describes a sane game.
+ */
+const WIDENED: Record<string, { spread: number; reason: string }> = {
+  // Nature is the strongest kingdom in the game at 73.9% in 1v1, and the search
+  // drove its passive to the floor from two independent starting points.
+  // Weakening it is exactly what the baseline calls for.
+  "passive.nature.0.pct": { spread: 0.6, reason: "strongest kingdom (73.9% 1v1); pinned at MIN" },
+  // Space posts the best 4-FFA placement in the game (2.16 against a fair 2.5)
+  // and the search pinned it low for the same reason.
+  "passive.space.1.pct": { spread: 0.6, reason: "best 4-FFA placement (2.16); pinned at MIN" },
+  // Both survivability levers moved the same way — cheaper shields, larger
+  // repairs — which plausibly compresses FFA placement spread by making early
+  // eliminations rarer. A 240-gold shield and a 1400 HP repair against a 10,000
+  // HP castle are still ordinary game states.
+  "shield.cost": { spread: 0.6, reason: "pinned at MIN; consistent with the repair lever" },
+  "castle.repairAmount": { spread: 0.6, reason: "pinned at MAX; consistent with the shield lever" },
+  // passive.ice.0.pct is deliberately NOT widened. It also pinned at MIN, but it
+  // is a negative status-duration modifier whose direction of benefit is not
+  // obvious from the baseline, and Ice is mid-table rather than an outlier. No
+  // evidence, no widening.
+};
+
 /** Default search room around a base value. */
 const DEFAULT_SPREAD = 0.4;
 
@@ -164,9 +193,10 @@ export function buildSchema(spread = DEFAULT_SPREAD): BalanceSchema {
         `schema references "${entry.id}", which the engine no longer exposes`,
       );
     }
+    const widened = WIDENED[entry.id];
     const { min, max } = entry.locked
       ? { min: base, max: base }
-      : boundsFor(entry.id, base, spread);
+      : boundsFor(entry.id, base, widened?.spread ?? spread);
     parameters.push({ ...entry, base, min, max });
   }
   return { version: SCHEMA_VERSION, catalogHash, parameters };

@@ -22,7 +22,13 @@ export {
   type ParameterType,
 } from "./schema.js";
 
-export { Cmaes, jacobiEigen, type CmaOptions, type CmaState } from "./cmaes.js";
+export {
+  Cmaes,
+  jacobiEigen,
+  type CmaOptions,
+  type CmaState,
+  type CmaSnapshot,
+} from "./cmaes.js";
 
 export {
   CandidateCache,
