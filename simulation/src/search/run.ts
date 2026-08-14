@@ -121,6 +121,15 @@ export interface SearchConfig {
   checkpointPath?: string;
   /** Ignore any checkpoint on disk and start over. */
   restart?: boolean;
+  /**
+   * Wall-clock budget in milliseconds. When it runs out the search stops at the
+   * next generation boundary and returns normally.
+   *
+   * Hosted runners kill a session on a hard clock. Being killed is survivable —
+   * the checkpoint is one generation old at worst — but it forfeits the
+   * validation stage and the final artifacts. Stopping deliberately keeps them.
+   */
+  budgetMs?: number;
 }
 
 export interface ProgressEvent {
@@ -166,6 +175,9 @@ export interface SearchResult {
   evaluations: CandidateEvaluation[];
   /** Non-null when this run continued from a checkpoint. */
   resumedFrom: { generations: number; cacheEntries: number } | null;
+  /** Set when the wall-clock budget ended the run before `generations`. The
+   *  checkpoint is complete, so a later session resumes from here. */
+  stoppedEarly: { afterGeneration: number; of: number; reason: string } | null;
   /** Set when a checkpoint existed but was refused, with the reason. */
   checkpointRejected: string | null;
   cache: { hits: number; misses: number; size: number };
@@ -444,6 +456,7 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
       });
 
   const generationRecords: GenerationRecord[] = resumed ? [...resumed.generationRecords] : [];
+  let stoppedEarly: SearchResult["stoppedEarly"] = null;
   let bestFull: CandidateEvaluation | null = null;
   let candidateCount = resumed ? resumed.counters.candidateCount : 0;
   const firstGeneration = resumed ? resumed.completedGenerations : 0;
@@ -566,12 +579,31 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
         });
       }
     }
+
+    // Checked AFTER the checkpoint, so the work just finished is never the work
+    // that gets lost.
+    if (config.budgetMs !== undefined && performance.now() - started >= config.budgetMs && g + 1 < generations) {
+      stoppedEarly = {
+        afterGeneration: g + 1,
+        of: generations,
+        reason: `wall-clock budget of ${(config.budgetMs / 3600000).toFixed(2)}h reached`,
+      };
+      config.onProgress?.({
+        kind: "generation",
+        generation: g,
+        message: `stopping at generation ${g + 1}/${generations} — ${stoppedEarly.reason}; resume from the checkpoint`,
+      });
+      break;
+    }
   }
 
   // Validate the elite on seeds the search never saw.
   let bestValidation: CandidateEvaluation | null = null;
   let baselineValidation: CandidateEvaluation | null = null;
-  if (bestFull && validateCount > 0) {
+  // A truncated run skips validation: the budget that ended it is the same
+  // budget validation would have to come out of, and the elite it would
+  // validate is provisional anyway. The resumed session validates the real one.
+  if (bestFull && validateCount > 0 && !stoppedEarly) {
     config.onProgress?.({ kind: "generation", generation: generations, message: "validating elite on disjoint seeds" });
     baselineValidation = await evaluateCandidate(baselineCandidate, "validation", cache, config, fitnessConfig);
     record(baselineValidation);
@@ -610,6 +642,7 @@ export async function runSearch(config: SearchConfig = {}): Promise<SearchResult
     resumedFrom: resumed
       ? { generations: resumed.completedGenerations, cacheEntries: restoredEntries }
       : null,
+    stoppedEarly,
     checkpointRejected: loaded.rejected,
     cache: cache.stats,
     totals: {

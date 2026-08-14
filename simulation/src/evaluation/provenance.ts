@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { KINGDOM_IDS } from "../../../src/data/kingdoms.js";
 import { listParameters } from "../../../src/engine/parameterCatalog.js";
 import type { ParameterSet } from "../../../src/engine/parameters.js";
@@ -47,6 +49,43 @@ function git(args: string[]): string | null {
   }
 }
 
+/**
+ * Engine identity for a VENDORED copy of the engine.
+ *
+ * When the simulator is exported into a standalone repository — for cloud
+ * training, say — `git rev-parse HEAD` reports that repository's commit, which
+ * is not the engine the reading was actually taken against. Left alone, every
+ * cloud result would carry a different `engineSha` from the equivalent local
+ * one, and `comparabilityProblem` would refuse to compare them: two readings of
+ * the identical game, declared incomparable by their own provenance.
+ *
+ * The export records the upstream commit in `engine-source.json`, and that
+ * value wins here. `ELEMENTALS_ENGINE_SHA` overrides both, for CI that builds
+ * from a tarball with no git metadata at all.
+ */
+interface VendoredEngine {
+  engineSha: string;
+  engineDirty: boolean;
+}
+
+function vendoredEngine(): VendoredEngine | null {
+  const fromEnv = process.env.ELEMENTALS_ENGINE_SHA?.trim();
+  if (fromEnv) {
+    return { engineSha: fromEnv, engineDirty: process.env.ELEMENTALS_ENGINE_DIRTY === "1" };
+  }
+  try {
+    const file = fileURLToPath(new URL("../../engine-source.json", import.meta.url));
+    if (!existsSync(file)) return null;
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<VendoredEngine>;
+    if (typeof parsed.engineSha !== "string" || parsed.engineSha.length === 0) return null;
+    return { engineSha: parsed.engineSha, engineDirty: parsed.engineDirty === true };
+  } catch {
+    // A malformed marker must not be treated as an identity — fall through to
+    // git, and let the reading be stamped with whatever this repo really is.
+    return null;
+  }
+}
+
 /** Stable hash of a parameter set (order-independent). */
 export function hashParameterSet(set: ParameterSet | null | undefined): string {
   if (!set) return "baseline";
@@ -71,12 +110,13 @@ export function captureProvenance(options: {
   strategyPopulationVersion: string;
   now?: () => string;
 }): Provenance {
-  const sha = git(["rev-parse", "HEAD"]);
-  const status = git(["status", "--porcelain"]);
+  const vendored = vendoredEngine();
+  const sha = vendored ? vendored.engineSha : git(["rev-parse", "HEAD"]);
+  const status = vendored ? null : git(["status", "--porcelain"]);
   return {
     formatVersion: EVALUATION_FORMAT_VERSION,
     engineSha: sha ?? "unknown",
-    engineDirty: status === null ? false : status.length > 0,
+    engineDirty: vendored ? vendored.engineDirty : status === null ? false : status.length > 0,
     balanceBaselineHash: hashBaseline(),
     balanceConfigId: options.balanceConfigId,
     balanceConfigHash: hashParameterSet(options.balance),
