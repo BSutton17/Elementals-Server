@@ -475,9 +475,35 @@ export function registerLobbyHandlers(
   // connected seats, so a bot marked disconnected would be silently skipped by
   // the readiness gate and the match would start with an unready seat.
 
-  const BOT_NAMES = [
-    "Ember", "Cinder", "Frost", "Gale", "Quartz", "Volt", "Thistle", "Onyx",
-  ];
+const BOT_NAMES = [
+  "Ember",
+  "Cinder",
+  "Frost",
+  "Gale",
+  "Quartz",
+  "Nøkken",
+  "Thistle",
+  "Onyx",
+  "Blaze",
+  "Nimbus",
+  "Rook",
+  "Bramble",
+  "Sparx",
+  "Mistral",
+  "Flint",
+  "Echo",
+  "Anubis",
+  "Pebble",
+  "Zephyr",
+  "Moss",
+  "Bo Longma",
+  "Ash",
+  "Tempest",
+  "Vex",
+  "Tundra",
+  "Kydos",
+  "Ky'el"
+];
 
   function isBotDifficulty(value: unknown): value is BotDifficulty {
     return value === "easy" || value === "medium" || value === "hard";
