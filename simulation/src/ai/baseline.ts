@@ -1,6 +1,6 @@
-import { personalityAI } from "./personality.js";
-import { BALANCED } from "./personalities.js";
-import type { AIFactory } from "./types.js";
+import { personalityAI } from "../personality.js";
+import { BALANCED } from "../personalities.js";
+import type { AIFactory } from "../types.js";
 
 /**
  * Default controller factory (ticket #205): the balanced personality.

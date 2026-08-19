@@ -1,5 +1,6 @@
 import { GameLoop } from "./GameLoop.js";
 import { tickMatch } from "./tick.js";
+import { BotRunner } from "../ai/botRunner.js";
 import type { Match } from "../match/Match.js";
 import type { MatchManager } from "../match/MatchManager.js";
 import type { GameplayEvent } from "./events.js";
@@ -36,6 +37,9 @@ export class GameLoopManager {
     private readonly options: GameLoopManagerOptions = {},
   ) {}
 
+  /** One bot driver per live match, torn down with the loop. */
+  private readonly bots = new Map<string, BotRunner>();
+
   start(match: Match): void {
     if (this.loops.has(match.roomCode)) return;
 
@@ -59,6 +63,19 @@ export class GameLoopManager {
       }
     };
 
+    // Built once per match. Bots act through the same engine calls the socket
+    // handlers use, so nothing downstream can tell a bot's action from a
+    // person's — which is exactly the property we want.
+    const runner = new BotRunner(match);
+    const botStatus = runner.start();
+    if (botStatus.failed.length > 0) {
+      console.error(
+        `[bots] ${match.roomCode}: ${botStatus.failed.length} seat(s) could not load a model — ` +
+          botStatus.failed.map((f) => `${f.id}: ${f.error}`).join("; "),
+      );
+    }
+    this.bots.set(match.roomCode, runner);
+
     const loop = new GameLoop({
       tickRate,
       onTick: (tick) => {
@@ -67,6 +84,11 @@ export class GameLoopManager {
           this.stop(match.roomCode);
           return;
         }
+
+        // Bots decide BEFORE the tick advances, in the same window a human's
+        // queued intent would drain — see GAME_TICK.md. Acting after the tick
+        // would give them a half-tick of newer information than a person.
+        runner.tick(tick);
 
         // The tick may end the match (last kingdom standing).
         const ended = tickMatch(live, tick);
@@ -88,6 +110,7 @@ export class GameLoopManager {
   }
 
   stop(roomCode: string): void {
+    this.bots.delete(roomCode);
     const loop = this.loops.get(roomCode);
     if (loop) {
       loop.stop();

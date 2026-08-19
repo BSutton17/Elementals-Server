@@ -1,15 +1,17 @@
 import type { Server, Socket } from "socket.io";
 import type { GameLoopManager } from "../engine/GameLoopManager.js";
 import type { MatchManager } from "../match/MatchManager.js";
-import type { MatchPlayer } from "../match/types.js";
+import type { BotDifficulty, MatchPlayer } from "../match/types.js";
 import type { ReconnectionManager } from "./ReconnectionManager.js";
 import { fail, ok, respond } from "./ack.js";
 import { broadcastLobbyUpdate, removePlayerFromMatch } from "./lobbyRoom.js";
 import { ensureSessionId } from "./sessionHandlers.js";
 import { buildMatchSnapshot } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
-import { isKingdomId } from "../data/kingdoms.js";
+import { isKingdomId, KINGDOM_IDS } from "../data/kingdoms.js";
+import type { PerkId } from "../data/perks.js";
 import {
+  PERK_IDS,
   hasFullPerkSelection,
   normalizePerks,
   perksAllowedFor,
@@ -459,6 +461,145 @@ export function registerLobbyHandlers(
     // Begin the authoritative game loop for this match.
     gameLoops.start(match);
     respond(ack, ok({ phase: match.phase }));
+  });
+
+
+  // ── Bots ──────────────────────────────────────────────────────────────────
+  //
+  // A bot is a normal MatchPlayer with `isBot` set. It occupies a real seat,
+  // counts toward capacity, and must satisfy the same start conditions as a
+  // person — so the server picks its kingdom and perks on its behalf, because
+  // `canStart()` refuses a seat without them and a bot cannot click.
+  //
+  // `connected: true` is deliberate and load-bearing: `canStart()` only counts
+  // connected seats, so a bot marked disconnected would be silently skipped by
+  // the readiness gate and the match would start with an unready seat.
+
+  const BOT_NAMES = [
+    "Ember", "Cinder", "Frost", "Gale", "Quartz", "Volt", "Thistle", "Onyx",
+  ];
+
+  function isBotDifficulty(value: unknown): value is BotDifficulty {
+    return value === "easy" || value === "medium" || value === "hard";
+  }
+
+  /** A kingdom nobody in the lobby has taken, or null when all are spoken for. */
+  function freeKingdom(match: ReturnType<MatchManager["getMatch"]>): string | null {
+    if (!match) return null;
+    const taken = new Set(match.getPlayers().map((p) => p.kingdomId).filter(Boolean));
+    return KINGDOM_IDS.find((k) => !taken.has(k)) ?? null;
+  }
+
+  /**
+   * A random legal perk selection.
+   *
+   * Taking the first N off the canonical list gave every bot in every lobby the
+   * identical loadout, which is both dull to play against and quietly
+   * misleading: a room of three bots looked like three different opponents and
+   * played like one. Shuffled rather than sampled with repeats, so the draw is
+   * always distinct ids, and sized by the per-kingdom allowance (Kitsune gets
+   * three) rather than a constant.
+   */
+  function randomPerks(kingdomId: string): PerkId[] {
+    const pool = [...PERK_IDS];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+    return pool.slice(0, perksAllowedFor(kingdomId));
+  }
+
+  function freeBotName(match: ReturnType<MatchManager["getMatch"]>): string {
+    const used = new Set(match?.getPlayers().map((p) => p.name) ?? []);
+    return BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${Date.now() % 1000}`;
+  }
+
+  socket.on("lobby:addBot", (payload: { difficulty?: unknown }, ack: unknown) => {
+    const roomCode = typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId = typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) return respond(ack, fail("INVALID_PHASE", "Not in a room"));
+
+    const match = matches.getMatch(roomCode);
+    if (!match) return respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+    if (!match.isHost(playerId)) return respond(ack, fail("NOT_HOST", "Only the host can add bots"));
+    if (match.phase !== "lobby") return respond(ack, fail("INVALID_PHASE", "Match already started"));
+    if (match.isFull()) return respond(ack, fail("ROOM_FULL", "The lobby is full"));
+    if (match.activePlayerCount >= MATCH.MAX_ACTIVE_PLAYERS) {
+      return respond(ack, fail("ROOM_FULL", "All playing seats are taken"));
+    }
+
+    const kingdomId = freeKingdom(match);
+    if (kingdomId === null) return respond(ack, fail("ROOM_FULL", "No kingdoms left"));
+
+    // Hard by default: it is the strongest trained model and the one the game
+    // should show off. A host who wants an easier game says so explicitly.
+    const difficulty: BotDifficulty = isBotDifficulty(payload?.difficulty)
+      ? payload.difficulty
+      : "hard";
+
+    // Unique by construction and namespaced, so a bot id can never collide with
+    // a session-derived human id.
+    const id = `bot-${roomCode}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const bot: MatchPlayer = {
+      id,
+      socketId: null,
+      name: freeBotName(match),
+      kingdomId: kingdomId as MatchPlayer["kingdomId"],
+      perks: randomPerks(kingdomId),
+      ready: true,
+      connected: true,
+      isBot: true,
+      botDifficulty: difficulty,
+    };
+    try {
+      match.addPlayer(bot);
+    } catch (error) {
+      return respond(ack, fail("ROOM_FULL", (error as Error).message));
+    }
+
+    logger.info("Bot added", { roomCode, botId: id, difficulty });
+    broadcastLobbyUpdate(io, match);
+    respond(ack, ok({ botId: id, difficulty }));
+  });
+
+  socket.on("lobby:setBotDifficulty", (payload: { botId?: unknown; difficulty?: unknown }, ack: unknown) => {
+    const roomCode = typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId = typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) return respond(ack, fail("INVALID_PHASE", "Not in a room"));
+
+    const match = matches.getMatch(roomCode);
+    if (!match) return respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+    if (!match.isHost(playerId)) return respond(ack, fail("NOT_HOST", "Only the host can change bots"));
+    if (match.phase !== "lobby") return respond(ack, fail("INVALID_PHASE", "Match already started"));
+    if (!isBotDifficulty(payload?.difficulty)) {
+      return respond(ack, fail("INVALID_PAYLOAD", "difficulty must be easy, medium or hard"));
+    }
+
+    const bot = match.getPlayers().find((p) => p.id === payload.botId && p.isBot);
+    if (!bot) return respond(ack, fail("PLAYER_NOT_FOUND", "No such bot"));
+
+    bot.botDifficulty = payload.difficulty;
+    broadcastLobbyUpdate(io, match);
+    respond(ack, ok({ botId: bot.id, difficulty: bot.botDifficulty }));
+  });
+
+  socket.on("lobby:removeBot", (payload: { botId?: unknown }, ack: unknown) => {
+    const roomCode = typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+    const playerId = typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+    if (!roomCode || !playerId) return respond(ack, fail("INVALID_PHASE", "Not in a room"));
+
+    const match = matches.getMatch(roomCode);
+    if (!match) return respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+    if (!match.isHost(playerId)) return respond(ack, fail("NOT_HOST", "Only the host can remove bots"));
+    if (match.phase !== "lobby") return respond(ack, fail("INVALID_PHASE", "Match already started"));
+
+    const bot = match.getPlayers().find((p) => p.id === payload?.botId && p.isBot);
+    if (!bot) return respond(ack, fail("PLAYER_NOT_FOUND", "No such bot"));
+
+    match.removePlayer(bot.id);
+    logger.info("Bot removed", { roomCode, botId: bot.id });
+    broadcastLobbyUpdate(io, match);
+    respond(ack, ok({ botId: bot.id }));
   });
 
   // Voluntarily leave a room before the match begins.

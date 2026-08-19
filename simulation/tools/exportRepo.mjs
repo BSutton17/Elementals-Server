@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { builtinModules } from "node:module";
-import { cpSync, existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 /**
@@ -210,20 +210,85 @@ const testEngineFiles = testClosure.filter((f) => f.startsWith("src/"));
 
 // --- 3. lay down the tree ---------------------------------------------------
 /**
- * Files the export repository owns and this script must never destroy.
+ * Paths the export repository owns and this script must never destroy.
  *
- * `--clean` wipes `test/` so a test deleted upstream does not linger downstream.
- * The boundary guard lives only in the export — it asserts properties that are
- * FALSE upstream, where src/net and socket.io legitimately exist — so without
- * this it would be deleted by the very next re-export.
+ * `--clean` wipes `src/`, `simulation/` and `test/` so anything deleted
+ * upstream does not linger downstream. Two kinds of thing must survive that.
+ *
+ * The boundary guard asserts properties that are FALSE upstream, where src/net
+ * and socket.io legitimately exist, so it can only live downstream.
+ *
+ * The AI subsystem is developed IN the export repository — that is where the
+ * distributed infrastructure and the training environment live — so upstream
+ * has no copy to restore it from. Without these entries the first re-export
+ * would silently delete the entire subsystem and its tests.
+ *
+ * A trailing `/` marks a directory: everything beneath it is preserved.
  */
-const REPO_OWNED = ["test/boundary.test.ts"];
+const REPO_OWNED = [
+  "test/boundary.test.ts",
+  // The AI runtime and (from Phase 2) the NEAT algorithm and training loop.
+  "simulation/src/ai/",
+  "simulation/src/neat/",
+  "simulation/src/training/",
+  // Their tests.
+  "test/aiBoundary.test.ts",
+  "test/aiVisibility.test.ts",
+  "test/aiObservation.test.ts",
+  "test/aiActions.test.ts",
+  "test/aiLegality.test.ts",
+  "test/aiModel.test.ts",
+  "test/aiRuntime.test.ts",
+];
+
+/** Every file beneath a repo-owned path that currently exists downstream. */
+const collectOwned = (rel) => {
+  const path = join(out, rel);
+  if (!existsSync(path)) return [];
+  if (!rel.endsWith("/")) return [[rel, readFileSync(path, "utf8")]];
+  const found = [];
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const child = join(dir, entry.name);
+      const childRel = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) walk(child, `${childRel}/`);
+      else found.push([childRel, readFileSync(child, "utf8")]);
+    }
+  };
+  walk(path, rel);
+  return found;
+};
+
+/**
+ * A module and a directory of the same name resolve differently under NodeNext
+ * (`./ai.js` vs `./ai/index.js`) and are a trap worth refusing outright. The
+ * export repository moved `simulation/src/ai.ts` into `simulation/src/ai/
+ * baseline.ts`; if upstream has not made the same move, exporting would drop
+ * the old module back in beside the directory and leave two live definitions of
+ * the same factory.
+ *
+ * Refuse rather than pick a winner: this is a divergence between the two
+ * repositories that a person has to resolve.
+ */
+const ownedDirs = REPO_OWNED.filter((r) => r.endsWith("/"));
+for (const dir of ownedDirs) {
+  const sibling = `${dir.slice(0, -1)}.ts`;
+  if (existsSync(resolve(root, sibling)) && existsSync(join(out, dir))) {
+    console.error(
+      `REFUSING TO EXPORT — upstream still has ${sibling}, but the export repo owns ${dir}.`,
+    );
+    console.error(
+      "  Under NodeNext those are different modules and both would be live downstream.",
+    );
+    console.error(`  Resolve by making the same move upstream: ${sibling} -> ${dir}baseline.ts`);
+    process.exit(1);
+  }
+}
 
 if (clean && existsSync(out)) {
   const preserved = new Map();
   for (const rel of REPO_OWNED) {
-    const path = join(out, rel);
-    if (existsSync(path)) preserved.set(rel, readFileSync(path, "utf8"));
+    for (const [path, contents] of collectOwned(rel)) preserved.set(path, contents);
   }
   for (const entry of ["src", "simulation", "test"]) rmSync(join(out, entry), { recursive: true, force: true });
   for (const [rel, contents] of preserved) {
