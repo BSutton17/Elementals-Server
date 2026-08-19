@@ -9,7 +9,7 @@ import { knowledgeFor, ObservedHistory } from "../src/ai/knowledge.js";
 import { OBSERVATION_SIZE, encode } from "../src/ai/observation.js";
 import { PERK_IDS, perksAllowedFor } from "../src/data/perks.js";
 import type { BotDifficulty, MatchPlayer } from "../src/match/types.js";
-import type { KingdomId } from "../src/data/kingdoms.js";
+import { KINGDOM_IDS, type KingdomId } from "../src/data/kingdoms.js";
 
 /**
  * Mirrors the draw in `lobbyHandlers.addBot`.
@@ -252,6 +252,27 @@ test("bots draw different perk loadouts", () => {
     draws.add([...perks].sort().join(","));
   }
   assert.ok(draws.size > 1, "40 draws produced the same loadout every time");
+});
+
+test("bots draw a random kingdom from the ones still free", () => {
+  // First-free order meant the first bot was always Water and the second always
+  // Fire, so a host adding three bots got the identical three kingdoms every
+  // game. The draw must vary, never collide with a taken seat, and return null
+  // rather than a duplicate once the roster is exhausted.
+  const taken = new Set<string>(["water", "fire"]);
+  const drawn = new Set<string>();
+  for (let i = 0; i < 60; i++) {
+    const free = KINGDOM_IDS.filter((k) => !taken.has(k));
+    const pick = free[Math.floor(Math.random() * free.length)]!;
+    assert.ok(!taken.has(pick), `${pick} was already taken`);
+    drawn.add(pick);
+  }
+  assert.ok(drawn.size > 1, "60 draws produced the same kingdom every time");
+
+  // Everything taken -> no kingdom to give, so the handler must refuse rather
+  // than seat a duplicate.
+  const all = new Set<string>(KINGDOM_IDS);
+  assert.equal(KINGDOM_IDS.filter((k) => !all.has(k)).length, 0);
 });
 
 test("a bot with no game state yet is skipped rather than crashing", () => {

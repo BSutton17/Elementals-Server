@@ -483,11 +483,20 @@ export function registerLobbyHandlers(
     return value === "easy" || value === "medium" || value === "hard";
   }
 
-  /** A kingdom nobody in the lobby has taken, or null when all are spoken for. */
+  /**
+   * A random kingdom nobody in the lobby has taken, or null when all are gone.
+   *
+   * Random rather than first-free: taking them in roster order meant the first
+   * bot was always Water, the second always Fire, and a host adding three bots
+   * got the same three kingdoms every single game. Chosen from the free ones
+   * only, so it can never collide with a human's pick or another bot's.
+   */
   function freeKingdom(match: ReturnType<MatchManager["getMatch"]>): string | null {
     if (!match) return null;
     const taken = new Set(match.getPlayers().map((p) => p.kingdomId).filter(Boolean));
-    return KINGDOM_IDS.find((k) => !taken.has(k)) ?? null;
+    const free = KINGDOM_IDS.filter((k) => !taken.has(k));
+    if (free.length === 0) return null;
+    return free[Math.floor(Math.random() * free.length)]!;
   }
 
   /**
