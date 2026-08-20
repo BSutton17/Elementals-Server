@@ -246,6 +246,10 @@ const REPO_OWNED = [
   // of the last three exports before it was worth fixing properly.
   "simulation/src/search/",
   "simulation/src/evaluation/",
+  // Balance fitness: judgement about what a good game IS. Downstream-only, and
+  // the export overwrote the v4 usage terms the first time it ran after they
+  // were written.
+  "simulation/src/fitness/",
   "simulation/src/distributed/",
   "simulation/src/tools/",
   "simulation/src/kaggleSearch.ts",
@@ -258,6 +262,17 @@ const REPO_OWNED = [
   "test/distributedProtocol.test.ts",
   "test/distributedQueue.test.ts",
   "test/distributedEquivalence.test.ts",
+  // Tests for all of the above. Same story: the export carried stale upstream
+  // copies over the downstream originals and quietly deleted work.
+  "test/fitness.test.ts",
+  "test/searchObjective.test.ts",
+  "test/schemaExpanded.test.ts",
+  "test/schema.test.ts",
+  "test/allocationV2.test.ts",
+  "test/optimizer.test.ts",
+  "test/aiEquivalence.test.ts",
+  "test/coverage.test.ts",
+  "test/promotion.test.ts",
 ];
 
 /** Every file beneath a repo-owned path that currently exists downstream. */
