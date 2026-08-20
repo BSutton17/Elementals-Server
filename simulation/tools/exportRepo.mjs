@@ -239,6 +239,25 @@ const REPO_OWNED = [
   "test/aiLegality.test.ts",
   "test/aiModel.test.ts",
   "test/aiRuntime.test.ts",
+  // The balance search and its distributed coordinator. These live ONLY
+  // downstream — this repository has no CMA-ES — so every export was
+  // overwriting them with whatever stale copy the upstream tree happened to
+  // carry, silently reverting work. It cost a manual `git checkout` after each
+  // of the last three exports before it was worth fixing properly.
+  "simulation/src/search/",
+  "simulation/src/evaluation/",
+  "simulation/src/distributed/",
+  "simulation/src/tools/",
+  "simulation/src/kaggleSearch.ts",
+  // Downstream carries profiling work on the heuristic controller that upstream
+  // does not have; exporting it reverted a measured optimisation.
+  "simulation/src/personality.ts",
+  "test/checkpoint.test.ts",
+  "test/evaluation.test.ts",
+  "test/evaluationParallel.test.ts",
+  "test/distributedProtocol.test.ts",
+  "test/distributedQueue.test.ts",
+  "test/distributedEquivalence.test.ts",
 ];
 
 /** Every file beneath a repo-owned path that currently exists downstream. */
@@ -298,7 +317,25 @@ if (clean && existsSync(out)) {
 }
 mkdirSync(out, { recursive: true });
 
+/**
+ * Does the export repository own this path?
+ *
+ * Ownership used to be honoured ONLY under `--clean`, where the preserve/wipe/
+ * restore dance consults REPO_OWNED. A plain export skipped that path entirely
+ * and copied straight over the top, so every ordinary export silently reverted
+ * the downstream-only work — the balance search, the distributed coordinator,
+ * PersonalityAI's profiling — and it had to be found and undone by hand
+ * afterwards. Checked here so it holds for every export, clean or not.
+ */
+const isOwned = (rel) =>
+  REPO_OWNED.some((owned) => (owned.endsWith("/") ? rel.startsWith(owned) : rel === owned));
+
+const skippedOwned = [];
 const copy = (rel) => {
+  if (isOwned(rel)) {
+    skippedOwned.push(rel);
+    return;
+  }
   const target = join(out, rel);
   mkdirSync(dirname(target), { recursive: true });
   cpSync(resolve(root, rel), target);
@@ -350,6 +387,9 @@ writeFileSync(
   "utf8",
 );
 
+if (skippedOwned.length > 0) {
+  console.log(`  kept ${skippedOwned.length} export-repo-owned file(s) untouched`);
+}
 console.log(`exported to ${out}`);
 console.log(`  engine  ${allEngineFiles.length} files  (${sha ?? "unknown"}${dirty ? ", DIRTY" : ""})`);
 console.log(`  sim     ${simFiles.length} files`);

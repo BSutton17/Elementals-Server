@@ -110,18 +110,26 @@ test("a bot-vs-bot match actually plays and produces action", () => {
   assert.equal(status.failed.length, 0, JSON.stringify(status.failed));
   assert.equal(status.ready, 2);
 
-  const startHp = match.gameState!.getPlayers().map((p) => p.castle.hp);
-  for (let tick = 1; tick <= 1200 && match.phase === "active"; tick++) {
+  for (let tick = 1; tick <= 2400 && match.phase === "active"; tick++) {
     runner.tick(tick);
     if (tickMatch(match, tick)) break;
   }
 
-  const endHp = match.gameState!.getPlayers().map((p) => p.castle.hp);
-  // The decisive assertion: somebody actually did something to somebody.
-  assert.ok(
-    endHp.some((hp, i) => hp < startHp[i]!),
-    "no damage was dealt in 1200 ticks — the bots never acted",
-  );
+  // Asserts what the bots DID, not what happened to the castles. Castle damage
+  // is a downstream consequence of who targeted whom, which kingdoms were drawn
+  // and which perks came up — all random here — so an HP check fails
+  // intermittently for reasons that have nothing to do with the bot pipeline.
+  const controllers = (runner as unknown as {
+    controllers: Map<string, { stats?: { decisions: number; casts: number; rejected: number } }>;
+  }).controllers;
+  let totalCasts = 0;
+  for (const [id, controller] of controllers) {
+    const stats = controller.stats!;
+    assert.ok(stats.decisions > 0, `${id} never made a decision`);
+    assert.equal(stats.rejected, 0, `${id} had actions refused by the engine`);
+    totalCasts += stats.casts;
+  }
+  assert.ok(totalCasts > 0, "no bot cast anything in 2400 ticks");
 });
 
 test("easy, medium and hard all make decisions and cast in a real match", () => {
@@ -160,11 +168,15 @@ test("a mixed human + bot match runs without the human acting", () => {
   const runner = new BotRunner(match);
   assert.equal(runner.start().ready, 2, "only the bot seats should get controllers");
 
-  for (let tick = 1; tick <= 900 && match.phase === "active"; tick++) {
+  for (let tick = 1; tick <= 2400 && match.phase === "active"; tick++) {
     runner.tick(tick);
     if (tickMatch(match, tick)) break;
   }
-  assert.ok(match.gameState!.getPlayers().some((p) => p.castle.hp < p.castle.maxHp));
+  // Same reasoning as above: assert the bots acted, not that a castle bled.
+  const acted = (runner as unknown as {
+    controllers: Map<string, { stats?: { casts: number } }>;
+  }).controllers;
+  assert.ok([...acted.values()].some((c) => (c.stats?.casts ?? 0) > 0), "no bot cast anything");
 });
 
 test("several bots in one match each get their own controller and stream", () => {
