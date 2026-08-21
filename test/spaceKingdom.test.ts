@@ -21,6 +21,21 @@ import {
   ORIONS_BELT,
   BLACK_HOLE,
 } from "../src/data/spaceAbilities.js";
+import { baseDamage } from "./support/derive.js";
+
+/**
+ * Shooting Star's damage, read from the ability.
+ *
+ * Space's suite pinned 250 in eight places — as a hit, as a Black Hole pool
+ * total, as an Orion's Belt near-miss. The balance search moved it to 138 and
+ * every one of them failed, though none was about the figure: they are about
+ * absorption, redirection and who the collapse pays out to.
+ */
+const STAR = baseDamage(SHOOTING_STAR);
+/** Saturn's Rings lands as one resolved figure, however many rings it draws. */
+const RINGS = SATURNS_RINGS.effects
+  .filter((e) => e.type === "damage")
+  .reduce((n, e) => n + (e.params.amount as number), 0);
 
 // Space kingdom — the offensive bully. Its kit revolves around a shared
 // Supernova meter (Shooting Star / Saturn's Rings / Orion's Belt misses fill
@@ -98,9 +113,9 @@ test("Shooting Star: damage, cost, cooldown, and Supernova charge", () => {
 
   const r = activateAbility(match, a, SHOOTING_STAR, { targetId: "p1", rng: noCrit });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
-  assert.equal(before - a.economy.currency, 100);
-  assert.equal(getCooldown(a, "shootingStar"), 3 * TICK.RATE);
+  assert.equal(b.castle.hp, b.castle.maxHp - STAR);
+  assert.equal(before - a.economy.currency, SHOOTING_STAR.cost);
+  assert.equal(getCooldown(a, "shootingStar"), SHOOTING_STAR.cooldownTicks);
   assert.equal(a.supernovaMeter, 25); // trickles meter xp
 });
 
@@ -112,7 +127,7 @@ test("the Supernova meter cannot charge until Supernova is unlocked", () => {
   // Every charge source is a no-op while locked — damage still lands normally.
   activateAbility(match, a, SHOOTING_STAR, { targetId: "p1", rng: noCrit });
   assert.equal(a.supernovaMeter, 0);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
+  assert.equal(b.castle.hp, b.castle.maxHp - STAR);
 
   activateAbility(match, a, SATURNS_RINGS, { targetId: "p1", rng: noCrit });
   assert.equal(a.supernovaMeter, 0);
@@ -142,7 +157,7 @@ test("Saturn's Rings deals 9x50 and charges 45 xp", () => {
   a.unlocked.supernova = true;
   const r = activateAbility(match, a, SATURNS_RINGS, { targetId: "p1", rng: noCrit });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 450); // 9 rings x 50
+  assert.equal(b.castle.hp, b.castle.maxHp - RINGS);
   assert.equal(a.supernovaMeter, 45); // 9 x 5 — just shy of level 1
   assert.equal(supernovaLevel(a.supernovaMeter), 0);
 });
@@ -226,10 +241,10 @@ test("Orion's Belt: a landed attack still hits (chance not met)", () => {
   const { match, players } = arena(["space", "space"]);
   const [belted, attacker] = players;
   activateAbility(match, belted, ORIONS_BELT);
-  // rng 0.9: no miss (>=0.5), no crit (>=0.05) — a clean hit for 250.
+  // rng 0.9: no miss (>=0.5), no crit (>=0.05) — a clean, full-damage hit.
   const hit = activateAbility(match, attacker, SHOOTING_STAR, { targetId: belted.id, rng: () => 0.9 });
   assert.equal(hit.ok, true);
-  assert.equal(belted.castle.hp, belted.castle.maxHp - 250);
+  assert.equal(belted.castle.hp, belted.castle.maxHp - STAR);
 });
 
 test("Black Hole swallows every attack, then dumps on a kingdom that stayed out", () => {
@@ -245,7 +260,7 @@ test("Black Hole swallows every attack, then dumps on a kingdom that stayed out"
   const swing = activateAbility(match, attacker, SHOOTING_STAR, { targetId: bystander.id, rng: () => 0.9 });
   assert.equal(swing.ok, true);
   assert.equal(bystander.castle.hp, bystander.castle.maxHp); // absorbed, no damage
-  assert.equal(match.gameState!.blackHole!.accumulated, 250);
+  assert.equal(match.gameState!.blackHole!.accumulated, STAR);
   assert.equal(match.gameState!.blackHole!.lastAttackerId, attacker.id);
   assert.deepEqual(match.gameState!.blackHole!.fedBy, [attacker.id]);
 
@@ -254,7 +269,7 @@ test("Black Hole swallows every attack, then dumps on a kingdom that stayed out"
   // out is the one the collapse is for.
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(match.gameState!.blackHole, null);
-  assert.equal(bystander.castle.hp, bystander.castle.maxHp - 250);
+  assert.equal(bystander.castle.hp, bystander.castle.maxHp - STAR);
   assert.equal(attacker.castle.hp, attacker.castle.maxHp, "the feeder was taxed twice");
 });
 
@@ -276,7 +291,8 @@ test("Black Hole falls back to the last feeder when the whole field engaged", ()
   assert.equal(match.gameState!.blackHole!.lastAttackerId, second.id);
 
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
-  assert.equal(second.castle.hp, second.castle.maxHp - 500);
+  // Two Shooting Stars went into the pool, so the collapse pays out both.
+  assert.equal(second.castle.hp, second.castle.maxHp - 2 * STAR);
   assert.equal(first.castle.hp, first.castle.maxHp);
 });
 
@@ -291,7 +307,7 @@ test("Black Hole never dumps on Space — its owner or any other", () => {
     activateAbility(match, otherSpace, SHOOTING_STAR, { targetId: owner.id, rng: () => 0.9 }).ok,
     true,
   );
-  assert.equal(match.gameState!.blackHole!.accumulated, 250);
+  assert.equal(match.gameState!.blackHole!.accumulated, STAR);
 
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(match.gameState!.blackHole, null);
@@ -321,6 +337,6 @@ test("Black Hole skips Space and dumps on a kingdom that can take it", () => {
 
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(otherSpace.castle.hp, otherSpace.castle.maxHp, "Space took the dump");
-  assert.equal(plains.castle.hp, plains.castle.maxHp - 500);
+  assert.equal(plains.castle.hp, plains.castle.maxHp - 2 * STAR);
 });
 

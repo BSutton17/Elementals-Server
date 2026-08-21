@@ -8,6 +8,7 @@ import {
   diagnoseRecords,
   renderConcerns,
   telemetryOf,
+  kingdomMetrics,
   type PlayerSpec,
 } from "../simulation/src/index.js";
 
@@ -60,10 +61,31 @@ test("a dominant kingdom is flagged overpowered with its primary damage cause", 
 });
 
 test("a losing kingdom is flagged underpowered", () => {
-  const diag = diagnose(batch());
-  const up = diag.concerns.filter((c) => c.category === "underpowered" && c.kingdomId && !c.abilityId);
-  // Fire collapses in a 5-way brawl (established earlier), so something is under.
-  assert.ok(up.length > 0, "a below-fair-share kingdom was flagged");
+  const telemetry = batch();
+  const diag = diagnose(telemetry);
+  const up = diag.concerns.filter(
+    (c) => c.category === "underpowered" && c.kingdomId && !c.abilityId,
+  );
+
+  // ⚠️ ASSERT THE DETECTOR AGAINST THE DATA, not against a balance outcome.
+  // This used to rely on Fire collapsing in a 5-way brawl. That stopped
+  // being true when the besieged comeback was doubled — being focused now
+  // pays, so nobody fell below fair share and a test about DETECTION failed
+  // because the game got more even, which is the opposite of a defect.
+  //
+  // The rule is `winRate <= fairShare * 0.4`. Whatever the balance, the set
+  // of kingdoms the detector flags must be exactly the set that breaks it.
+  const metrics = kingdomMetrics(telemetry);
+  const fair = 1 / metrics.length;
+  const expected = metrics
+    .filter((k) => k.winRate <= fair * 0.4)
+    .map((k) => k.kingdomId)
+    .sort();
+  assert.deepEqual(
+    up.map((c) => c.kingdomId).sort(),
+    expected,
+    "the flagged kingdoms must be exactly those below 40% of fair share",
+  );
 });
 
 test("unlocked-but-unused abilities are flagged (grouped per kingdom) with a value reason", () => {

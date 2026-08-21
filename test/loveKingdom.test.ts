@@ -20,6 +20,11 @@ import {
   EMPATHY,
   LOVE_GALORE,
 } from "../src/data/loveAbilities.js";
+import { baseDamage } from "./support/derive.js";
+
+/** Tough Love's damage, read from the ability — every split, reflect and
+ *  heal figure below is a fraction OF THIS, not of a number typed in 2024. */
+const TOUGH = baseDamage(TOUGH_LOVE);
 
 // Love kingdom — a social, manipulative kit: it borrows resources, redirects
 // damage, and ties enemy fates together rather than simply out-damaging them.
@@ -126,9 +131,9 @@ test("Tough Love: damage, cost, cooldown", () => {
 
   const r = activateAbility(match, a, TOUGH_LOVE, { targetId: "p1", rng: noCrit });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
-  assert.equal(before - a.economy.currency, 100);
-  assert.equal(getCooldown(a, "toughLove"), 3 * TICK.RATE);
+  assert.equal(b.castle.hp, b.castle.maxHp - TOUGH);
+  assert.equal(before - a.economy.currency, TOUGH_LOVE.cost);
+  assert.equal(getCooldown(a, "toughLove"), TOUGH_LOVE.cooldownTicks);
 });
 
 test("Cupid's Arrow: damage, marks 'infatuated', borrows 2 citizens, and returns them on expiry", () => {
@@ -139,7 +144,7 @@ test("Cupid's Arrow: damage, marks 'infatuated', borrows 2 citizens, and returns
 
   const r = activateAbility(match, love, CUPIDS_ARROW, { targetId: "p1", rng: noCrit });
   assert.equal(r.ok, true);
-  assert.equal(target.castle.hp, target.castle.maxHp - 400);
+  assert.equal(target.castle.hp, target.castle.maxHp - baseDamage(CUPIDS_ARROW));
   assert.equal(hasStatus(target, "infatuated"), true);
   assert.equal(target.economy.citizens, targetCitizensBefore - 2);
   assert.equal(love.economy.citizens, loveCitizensBefore + 2);
@@ -160,10 +165,10 @@ test("Cupid's Arrow: while infatuated, 20% of damage aimed at Love redirects to 
   const targetHpBefore = target.castle.hp;
   const hit = activateAbility(match, attacker, TOUGH_LOVE, { targetId: love.id, rng: noCrit });
   assert.equal(hit.ok, true);
-  // Split, not additive: Love takes 80% of the 250, the target absorbs the
-  // other 20% — 250 total damage dealt across the two castles, not 300.
-  assert.equal(love.castle.hp, love.castle.maxHp - Math.round(250 * 0.8));
-  assert.equal(target.castle.hp, targetHpBefore - Math.round(250 * 0.2));
+  // Split, not additive: Love takes 80% of the hit and the target absorbs the
+  // other 20% — one hit's worth of damage across two castles, not 1.2x.
+  assert.equal(love.castle.hp, love.castle.maxHp - Math.round(TOUGH * 0.8));
+  assert.equal(target.castle.hp, targetHpBefore - Math.round(TOUGH * 0.2));
 });
 
 test("BFFS!!!: damages BOTH player-selected castles and links their fates", () => {
@@ -215,7 +220,7 @@ test("BFFS!!!: damage and statuses landing on a linked castle mirror onto its pa
   const secondHpBefore = second.castle.hp;
   const hit = activateAbility(match, love, TOUGH_LOVE, { targetId: primary.id, rng: noCrit });
   assert.equal(hit.ok, true);
-  assert.equal(second.castle.hp, secondHpBefore - 250);
+  assert.equal(second.castle.hp, secondHpBefore - TOUGH);
 
   // A status landing on the primary also lands on its partner.
   activateAbility(match, love, CUPIDS_ARROW, { targetId: primary.id, rng: noCrit });
@@ -234,8 +239,8 @@ test("Have some Empathy!: unconditional 100% reflection while active", () => {
   const attackerHpBefore = attacker.castle.hp;
   const hit = activateAbility(match, attacker, TOUGH_LOVE, { targetId: love.id, rng: noCrit });
   assert.equal(hit.ok, true);
-  assert.equal(love.castle.hp, love.castle.maxHp - 250); // still takes the hit
-  assert.equal(attacker.castle.hp, attackerHpBefore - 250); // reflected in full
+  assert.equal(love.castle.hp, love.castle.maxHp - TOUGH); // still takes the hit
+  assert.equal(attacker.castle.hp, attackerHpBefore - TOUGH); // reflected in full
 });
 
 test("Love Galore: incoming damage is fully negated and converted into healing (halved)", () => {
@@ -249,8 +254,8 @@ test("Love Galore: incoming damage is fully negated and converted into healing (
   const before = love.castle.hp;
   const hit = activateAbility(match, attacker, TOUGH_LOVE, { targetId: love.id, rng: noCrit });
   assert.equal(hit.ok, true);
-  // No damage landed; instead healed for half of the 250 that would have hit.
-  assert.equal(love.castle.hp, before + 125);
+  // No damage landed; instead healed for HALF of what would have hit.
+  assert.equal(love.castle.hp, before + Math.round(TOUGH * 0.5));
 });
 
 test("Love Galore stealth: enemies see a phantom hit, the heal is silent, no reveal yet", () => {
@@ -265,8 +270,8 @@ test("Love Galore stealth: enemies see a phantom hit, the heal is silent, no rev
   const before = love.castle.hp;
   activateAbility(match, attacker, TOUGH_LOVE, { targetId: love.id, rng: noCrit });
 
-  // Still healed (silently) for half the 250 that would have hit.
-  assert.equal(love.castle.hp, before + 125);
+  // Still healed (silently) for half of what would have hit.
+  assert.equal(love.castle.hp, before + Math.round(TOUGH * 0.5));
   // A phantom damage event was emitted (the decoy), and NO heal event.
   const dmg = events.find((e) => e.type === "damage" && e.targetId === love.id);
   assert.ok(dmg, "a phantom damage event should be emitted during stealth");

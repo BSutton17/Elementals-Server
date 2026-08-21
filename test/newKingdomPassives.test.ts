@@ -143,11 +143,15 @@ test("Bright idea: upgrade tiers cost less, in the charge AND the quoted price",
 });
 
 test("Bright idea does not discount unlock prices — that is the perk's job", () => {
-  const plain = activeMatch("water");
+  // ⚠️ COMPARE LIGHT AGAINST LIGHT'S OWN LISTED PRICE, not against Water's.
+  // Water and Light own different abilities at different prices, so the old
+  // cross-kingdom comparison only held while the two happened to cost the
+  // same — which balance ended the moment it retuned either kingdom.
   const lit = activeMatch("light");
+  const ability = abilitiesForKingdom("light")[0]!;
   assert.equal(
-    abilityPrices(lit.a)[abilitiesForKingdom("light")[0]!.id]!.unlock,
-    abilityPrices(plain.a)[abilitiesForKingdom("water")[0]!.id]!.unlock,
+    abilityPrices(lit.a)[ability.id]!.unlock,
+    ability.unlockCost ?? Math.ceil(ability.cost * 0.5),
   );
 });
 

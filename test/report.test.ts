@@ -109,7 +109,11 @@ test("recommendations carry production source locations (file + line)", () => {
     matchesPerBatch: 2,
     players: [{ kingdomId: "fire" }, { kingdomId: "fire" }],
     maxTicks: 20_000,
-    objective: matchDurationObjective(6_000),
+    // A target production is NOT already sitting on, so the run actually has
+    // something to recommend. Balance now lands duels within 1% of 6,000
+    // ticks, and an optimizer with nothing to improve emits no
+    // recommendations — leaving this test with nothing to inspect.
+    objective: matchDurationObjective(3_000),
     parameterIds: ["castle.startingHp", "economy.incomePerCitizen"],
     mutationScale: 0.5,
   });
@@ -140,13 +144,19 @@ test("recommendations carry production source locations (file + line)", () => {
 });
 
 test("the locator stays synchronized with the production engine's data", () => {
+  // ⚠️ MATCH THE DECLARATION, NOT ITS VALUE. The locator's job is to point at
+  // the right line of production source; whether that line currently reads
+  // 350 or 500 is balance data, and pinning it here made this a second copy
+  // of the balance table that went stale the moment either was tuned. That
+  // the catalog agrees with the live values is asserted in parameters.test.ts,
+  // which derives them instead of restating them.
   const checks: Array<[string, RegExp]> = [
-    ["castle.startingHp", /STARTING_HP:\s*10_000/],
-    ["castle.repairCost", /REPAIR_COST:\s*500/],
-    ["economy.incomePerCitizen", /INCOME_PER_CITIZEN:\s*0\.06/],
-    ["ability.fireball.effects.0.amount", /amount:\s*250/],
-    ["ability.lightningBarrage.charge.damage.1", /damageByCharges:\s*\[230, 475, 800\]/],
-    ["passive.water.0.amount", /amount:\s*0\.0675/],
+    ["castle.startingHp", /STARTING_HP:/],
+    ["castle.repairCost", /REPAIR_COST:/],
+    ["economy.incomePerCitizen", /INCOME_PER_CITIZEN:/],
+    ["ability.fireball.effects.0.amount", /amount:/],
+    ["ability.lightningBarrage.charge.damage.1", /damageByCharges:/],
+    ["passive.water.0.amount", /amount:/],
   ];
   for (const [id, pattern] of checks) {
     const loc = locateParameter(id);

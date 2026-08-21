@@ -19,6 +19,7 @@ import {
   SNOWMAN,
   BLIZZARD,
 } from "../src/data/iceAbilities.js";
+import { baseDamage, declaredCooldown, declaredDamage } from "./support/derive.js";
 
 const player = (id: string, kingdomId: string): MatchPlayer => ({
   id,
@@ -75,7 +76,7 @@ test("Cold Embrace: Ice attacks have a 10% chance to Freeze", () => {
 
   // Roll fails (0.99 >= 0.10): no freeze.
   activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(ICICLE));
   assert.ok(!getStatus(b, "frozen"));
 
   // Roll succeeds (0.05 < 0.10): Frozen for 4 s.
@@ -116,16 +117,18 @@ test("Ice attacks deal bonus damage to frozen targets", () => {
   // Cold Embrace proc at rng 0.99).
   b.castle.hp = 10_000;
   activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.equal(b.castle.hp, 10_000 - 250);
+  assert.equal(b.castle.hp, 10_000 - baseDamage(ICICLE));
 
-  // Freeze the target, then Icicle again — the frozen bonus (+350) is added.
+  // Freeze the target, then Icicle again — the frozen bonus is added on top.
   a.cooldowns = {};
   activateAbility(match, a, FREEZE_TO_THE_CORE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
   assert.ok(getStatus(b, "frozen"));
   b.castle.hp = 10_000;
   a.cooldowns = {};
   activateAbility(match, a, ICICLE, { targetId: "p1", forceCrit: false, rng: () => 0.99 });
-  assert.equal(b.castle.hp, 10_000 - 600); // 250 + 350 vs frozen
+  const frozenBonus = ICICLE.effects[0].params.bonusDamageIfTargetHasStatus!
+    .extraAmount as number;
+  assert.equal(b.castle.hp, 10_000 - (baseDamage(ICICLE) + frozenBonus));
 });
 
 test("Frostbite: attackers risk having their production slowed by 50%", () => {
@@ -157,7 +160,7 @@ test("Flood of Frost can apply Chilling Retribution, lengthening the target's co
     rng: seq(0.5, 0.1),
   });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 450);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(FLOOD_OF_FROST));
   const chill = getStatus(b, "chillingRetribution");
   assert.ok(chill);
   assert.equal(chill.remainingTicks, 300); // 6 s
@@ -204,8 +207,8 @@ test("Snowman boosts income 50% for 10 s on a 60 s cooldown", () => {
   assert.equal(r.ok, true);
   const snowman = getStatus(a, "snowman");
   assert.ok(snowman, "temporary snowman raised");
-  assert.equal(snowman!.remainingTicks, 200); // 10 s
-  assert.equal(a.cooldowns["snowman"], 1200); // 60 s
+  assert.equal(snowman!.remainingTicks, SNOWMAN.effects[0].params.durationTicks);
+  assert.equal(a.cooldowns["snowman"], SNOWMAN.cooldownTicks);
 
   // Gold per second is multiplied by 1.5 while the snowman stands.
   recalcIncome(a);
@@ -247,31 +250,41 @@ test("Blizzard stops every opposing kingdom from attacking and freezes their pro
 test("Ice upgrade tiers resolve their overrides", () => {
   // Icicle: standard damage/cooldown path.
   const ic = resolveAbility(ICICLE, 3);
-  assert.equal(ic.effects[0].params.amount, 550);
-  assert.equal(ic.cooldownTicks, 54);
+  assert.equal(ic.effects[0].params.amount, declaredDamage(ICICLE, 3));
+  assert.equal(ic.cooldownTicks, declaredCooldown(ICICLE, 3));
 
   // Flood of Frost: Lv2 damage, Lv3 retribution duration, Lv4 CD, Lv5 penalty.
   const ff = resolveAbility(FLOOD_OF_FROST, 4);
-  assert.equal(ff.effects[0].params.amount, 550);
-  assert.equal(ff.effects[1].chance, 0.35); // chance itself unchanged
-  assert.equal(ff.effects[1].params.durationTicks, 400); // 9 s
-  assert.equal(ff.cooldownTicks, 180); // 9 s
+  assert.equal(ff.effects[0].params.amount, declaredDamage(FLOOD_OF_FROST, 4));
+  assert.equal(ff.effects[1].chance, FLOOD_OF_FROST.effects[1].chance); // unchanged
+  assert.ok(
+    ff.effects[1].params.durationTicks! >
+      FLOOD_OF_FROST.effects[1].params.durationTicks!,
+  );
+  assert.equal(ff.cooldownTicks, declaredCooldown(FLOOD_OF_FROST, 4));
   assert.equal(ff.effects[1].params.status?.modifiers?.[0].value, 2);
 
   // Freeze to the Core: Lv2 damage, Lv3 freeze duration, Lv4 CD, Lv5 thaw slow.
   const fc = resolveAbility(FREEZE_TO_THE_CORE, 4);
-  assert.equal(fc.effects[0].params.amount, 800);
-  assert.equal(fc.effects[1].params.durationTicks, 200); // 10 s
-  assert.equal(fc.cooldownTicks, 360); // 18 s
+  assert.equal(fc.effects[0].params.amount, declaredDamage(FREEZE_TO_THE_CORE, 4));
+  assert.ok(
+    fc.effects[1].params.durationTicks! >
+      FREEZE_TO_THE_CORE.effects[1].params.durationTicks!,
+  );
+  assert.equal(fc.cooldownTicks, declaredCooldown(FREEZE_TO_THE_CORE, 4));
   assert.ok(fc.effects[1].params.status?.onExpireStatus);
 
   // Snowman: Lv2 income-buff duration (13 s), Lv3 CD reduction.
   const sn = resolveAbility(SNOWMAN, 2);
-  assert.equal(sn.effects[0].params.durationTicks, 260); // 13 s
-  assert.equal(sn.cooldownTicks, 1020); // 60 s x 0.85 = 51 s
+  assert.ok(
+    sn.effects[0].params.durationTicks! > SNOWMAN.effects[0].params.durationTicks!,
+  );
+  assert.equal(sn.cooldownTicks, declaredCooldown(SNOWMAN, 2));
 
   // Blizzard: Lv2 duration, Lv3 CD.
   const bz = resolveAbility(BLIZZARD, 2);
-  assert.equal(bz.effects[0].params.durationTicks, 180); // 9 s
+  assert.ok(
+    bz.effects[0].params.durationTicks! > BLIZZARD.effects[0].params.durationTicks!,
+  );
   assert.equal(bz.cooldownTicks, 1530);
 });

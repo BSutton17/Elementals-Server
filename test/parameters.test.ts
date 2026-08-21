@@ -66,9 +66,11 @@ test("withParameterSet scopes overrides and always restores", () => {
 
 test("ability values resolve through the registry (damage, cost, cooldown)", () => {
   // Production baseline.
+  // Resolving at tier 0 must return production untouched — the POINT is that
+  // the registry does not alter a base ability, not what the base happens to be.
   const base = resolveAbility(FIREBALL, 0);
-  assert.equal(base.effects[0]!.params.amount, 250);
-  assert.equal(base.cost, 100);
+  assert.equal(base.effects[0]!.params.amount, FIREBALL.effects[0]!.params.amount);
+  assert.equal(base.cost, FIREBALL.cost);
 
   withParameterSet(
     {
@@ -154,10 +156,25 @@ test("the catalog enumerates the tunable space with production bases", () => {
   assert.equal(byId.get("shield.cost"), SHIELD.COST);
 
   // Ability values — including charges, unlocks, and upgrade prices.
-  assert.equal(byId.get("ability.fireball.effects.0.amount"), 250);
-  assert.equal(byId.get("ability.lightningBarrage.unlockCost"), 100);
-  assert.equal(byId.get("ability.lightningBarrage.charge.damage.1"), 475);
-  assert.equal(byId.get("ability.fireball.upgrade.1.cost"), 150);
+  // Each catalog entry must carry the LIVE production figure. Pinning the
+  // numbers here made this a second copy of the balance table, which then
+  // disagreed with the first one the moment the search wrote to it.
+  assert.equal(
+    byId.get("ability.fireball.effects.0.amount"),
+    FIREBALL.effects[0]!.params.amount,
+  );
+  assert.equal(
+    byId.get("ability.lightningBarrage.unlockCost"),
+    LIGHTNING_BARRAGE.unlockCost,
+  );
+  assert.equal(
+    byId.get("ability.lightningBarrage.charge.damage.1"),
+    LIGHTNING_BARRAGE.chargeSystem!.damageByCharges![1],
+  );
+  assert.equal(
+    byId.get("ability.fireball.upgrade.1.cost"),
+    FIREBALL.upgradePath![0]!.cost,
+  );
 
   // Passive values, discovered generically.
   assert.equal(byId.get("passive.water.0.amount"), 0.0675);
@@ -208,5 +225,10 @@ test("production stays on base values after simulation runs (leak guard)", () =>
   setActiveParameterSet(null); // belt and braces for test isolation
   const { a } = duel();
   assert.equal(computeIncome(a), 0.6);
-  assert.equal(resolveAbility(FIREBALL, 0).effects[0]!.params.amount, 250);
+  // The guard is that a simulation run leaves production ALONE, so compare
+  // against the module's own value rather than a figure balance owns.
+  assert.equal(
+    resolveAbility(FIREBALL, 0).effects[0]!.params.amount,
+    FIREBALL.effects[0]!.params.amount,
+  );
 });

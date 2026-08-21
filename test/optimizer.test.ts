@@ -98,7 +98,12 @@ test("the optimizer never modifies production balance", () => {
   assert.equal(getActiveParameterSet(), null);
   assert.equal(param("castle.startingHp", 10_000), 10_000);
   assert.equal(param("economy.incomePerCitizen", 0.0275), 0.0275);
-  assert.equal(resolveAbility(FIREBALL, 0).effects[0]!.params.amount, 250);
+  // Production, whatever balance currently says it is — the claim is that the
+  // optimizer LEFT IT ALONE, not that Fireball deals a particular number.
+  assert.equal(
+    resolveAbility(FIREBALL, 0).effects[0]!.params.amount,
+    FIREBALL.effects[0]!.params.amount,
+  );
   // The catalog's production bases are untouched.
   assert.deepEqual(listParameters(), baselineCatalog);
 });

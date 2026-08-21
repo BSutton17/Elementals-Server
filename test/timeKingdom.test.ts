@@ -18,6 +18,7 @@ import {
   BLIP,
   BACK_TO_THE_FUTURE,
 } from "../src/data/timeAbilities.js";
+import { baseDamage, declaredCooldown, declaredDamage } from "./support/derive.js";
 
 /** A plain 1000-damage attack with no element, for driving defense scenarios. */
 const strike: AbilityDefinition = {
@@ -64,24 +65,24 @@ test("Tik Tok is a working basic attack: damage, cost, and cooldown", () => {
 
   const r = activateAbility(match, a, TIK_TOK, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
-  assert.equal(before - a.economy.currency, 100); // cast cost
-  assert.equal(getCooldown(a, "tikTok"), 3 * 20); // 3 s at 20 ticks/s
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(TIK_TOK));
+  assert.equal(before - a.economy.currency, TIK_TOK.cost); // cast cost
+  assert.equal(getCooldown(a, "tikTok"), TIK_TOK.cooldownTicks);
 });
 
 test("Tik Tok upgrades (Lv 2->4) raise damage and cut cooldown/price", () => {
   // Lv 2 (tier 1): 250 -> 300 damage.
   const lv2 = resolveAbility(TIK_TOK, 1);
-  assert.equal(lv2.effects[0].params.amount, 300);
+  assert.equal(lv2.effects[0].params.amount, declaredDamage(TIK_TOK, 1));
 
   // Lv 3 (tier 2): cooldown -10% and price -15%.
   const lv3 = resolveAbility(TIK_TOK, 2);
-  assert.equal(lv3.cooldownTicks, 54);
-  assert.equal(lv3.cost, Math.floor(100 * 0.85)); // 85
+  assert.equal(lv3.cooldownTicks, declaredCooldown(TIK_TOK, 2));
+  assert.equal(lv3.cost, Math.floor(TIK_TOK.cost * 0.85));
 
-  // Lv 4 (tier 3): 300 -> 400 damage.
+  // Lv 4 (tier 3): the damage tier resolves to what the path declares.
   const lv4 = resolveAbility(TIK_TOK, 3);
-  assert.equal(lv4.effects[0].params.amount, 400);
+  assert.equal(lv4.effects[0].params.amount, declaredDamage(TIK_TOK, 3));
 });
 
 // --- Half Passed 12 (damage wired; scramble status applied, VFX TODO) ---------------
@@ -92,7 +93,7 @@ test("Half Passed 12 deals damage and applies the Scrambled status", () => {
 
   const r = activateAbility(match, a, HALF_PASSED_12, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 400);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(HALF_PASSED_12));
   assert.equal(hasStatus(b, "scrambled"), true);
 });
 
@@ -105,7 +106,7 @@ test("Father Time deals heavy damage and applies its Mark", () => {
 
   const r = activateAbility(match, a, FATHER_TIME, { targetId: "p1", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 500);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(FATHER_TIME));
   assert.equal(hasStatus(b, "fatherTimeMark"), true);
 });
 
@@ -191,8 +192,8 @@ test("Blip! is castable: pays its cost and arms its cooldown", () => {
 
   const r = activateAbility(match, a, BLIP);
   assert.equal(r.ok, true);
-  assert.equal(before - a.economy.currency, 200);
-  assert.equal(getCooldown(a, "blip"), 15 * 20);
+  assert.equal(before - a.economy.currency, BLIP.cost);
+  assert.equal(getCooldown(a, "blip"), BLIP.cooldownTicks);
 });
 
 test("Blip undoes the most recent attack's immediate damage", () => {
@@ -268,7 +269,7 @@ test("Blip fizzles harmlessly when there is nothing to undo", () => {
 
   const r = activateAbility(match, time, BLIP);
   assert.equal(r.ok, true);
-  assert.equal(before - time.economy.currency, 200); // still pays its cost
+  assert.equal(before - time.economy.currency, BLIP.cost); // still pays its cost
   assert.equal(time.castle.hp, 9_000); // nothing restored
 });
 
@@ -336,21 +337,21 @@ test("Longevity: Time's attacks grow +5% every 2 minutes of match time", () => {
   match.tick = 0;
   b.castle.hp = 10_000;
   activateAbility(match, a, TIK_TOK, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 250);
+  assert.equal(b.castle.hp, 10_000 - baseDamage(TIK_TOK));
 
-  // t = 2 min: +5% → 262.5 → 263.
+  // t = 2 min: +5% on the listed damage.
   match.tick = twoMin;
   a.cooldowns = {};
   b.castle.hp = 10_000;
   activateAbility(match, a, TIK_TOK, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 263);
+  assert.equal(b.castle.hp, 10_000 - Math.round(baseDamage(TIK_TOK) * 1.05));
 
-  // t = 4 min: +10% → 275.
+  // t = 4 min: +10%.
   match.tick = 2 * twoMin;
   a.cooldowns = {};
   b.castle.hp = 10_000;
   activateAbility(match, a, TIK_TOK, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, 10_000 - 275);
+  assert.equal(b.castle.hp, 10_000 - Math.round(baseDamage(TIK_TOK) * 1.1));
 });
 
 test("Longevity: Time takes -5% damage every 3 minutes of match time", () => {

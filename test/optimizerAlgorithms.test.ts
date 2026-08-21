@@ -28,7 +28,13 @@ test("every algorithm improves the configured objective", () => {
       matchesPerBatch: 2,
       players: DUEL,
       maxTicks: 20_000,
-      objective: matchDurationObjective(6_000),
+      // ⚠️ A TARGET THE BASELINE IS NOT ALREADY SITTING ON. The claim under
+      // test is that each algorithm MOVES the objective, which needs room to
+      // move: production balance now lands duels within 1% of 6,000 ticks, so
+      // asking for 6,000 left a baseline of 0.009 that eight hill-climb steps
+      // could not beat, and the test failed for want of headroom rather than
+      // for any fault in the search.
+      objective: matchDurationObjective(3_000),
       parameterIds: LEVERS,
       mutationScale: 0.5,
       genetic: { populationSize: 4, elites: 1 },

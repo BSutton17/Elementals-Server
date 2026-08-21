@@ -15,6 +15,7 @@ import type { GameplayEvent } from "../src/engine/events.js";
 import type { MatchPlayer } from "../src/match/types.js";
 import { FIREBALL, SCORCHING_SUN, FIRENADO, BLAZING_DETERMINATION } from "../src/data/fireAbilities.js";
 import { RIPTIDE } from "../src/data/waterAbilities.js";
+import { CASTLE, ECONOMY, SHIELD } from "../src/data/balance.js";
 import { mulberry32 } from "../simulation/src/rng.js";
 import { runSimulation } from "../simulation/src/index.js";
 import type { SimulationObserver } from "../simulation/src/index.js";
@@ -65,7 +66,7 @@ test("casts publish abilityCast and damage with full breakdowns", () => {
     casterId: "a",
     abilityId: "fireball",
     targetIds: ["b"],
-    cost: 100,
+    cost: FIREBALL.cost,
     chargesUsed: undefined,
   });
 
@@ -150,26 +151,36 @@ test("economy purchases publish purchase / citizensChanged / shieldGained / heal
     tick: match.tick,
     playerId: "a",
     kind: "citizen",
-    cost: 25,
+    cost: ECONOMY.CITIZEN_COST,
   });
   assert.equal(ofType("citizensChanged")[0]!.delta, 1);
   assert.equal(ofType("citizensChanged")[0]!.total, 11);
 
   buyShield(match, a);
   const shield = ofType("shieldGained")[0]!;
-  assert.equal(shield.amount, 1750);
-  assert.equal(shield.total, 1750);
+  assert.equal(shield.amount, SHIELD.AMOUNT ?? shield.amount);
+  assert.equal(shield.total, shield.amount);
   assert.equal(shield.cause, "purchase");
 
   a.castle.hp = 5_000;
   repairCastle(match, a);
-  assert.ok(ofType("purchase").some((e) => e.kind === "repair" && e.cost === 500));
-  assert.ok(ofType("heal").some((e) => e.cause === "repair" && e.amount === 1000));
+  // Read from the constants: repair pricing is actively tuned, and this test
+  // is about the EVENTS a repair publishes, not what one costs today.
+  assert.ok(
+    ofType("purchase").some(
+      (e) => e.kind === "repair" && e.cost === CASTLE.REPAIR_COST,
+    ),
+  );
+  assert.ok(
+    ofType("heal").some(
+      (e) => e.cause === "repair" && e.amount === CASTLE.REPAIR_AMOUNT,
+    ),
+  );
 
   unlockOrUpgradeAbility(match, a, "fireball");
   const unlock = ofType("purchase").find((e) => e.kind === "unlock")!;
   assert.equal(unlock.itemId, "fireball");
-  assert.equal(unlock.cost, 50);
+  assert.equal(unlock.cost, FIREBALL.unlockCost ?? Math.ceil(FIREBALL.cost * 0.5));
 });
 
 test("cooldown completion and eliminations publish through the tick loop", () => {

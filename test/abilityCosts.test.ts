@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { abilityPrices } from "../src/net/gameSync.js";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
-import { WATER_ABILITIES } from "../src/data/waterAbilities.js";
+import { WATER_ABILITIES, WATER_BALL } from "../src/data/waterAbilities.js";
 import type { MatchPlayer } from "../src/match/types.js";
 import type { PlayerState } from "../src/match/playerState.js";
 
@@ -47,8 +47,9 @@ test("every ability of the kingdom is priced, locked or not", () => {
 test("a locked ability reports its unlock price and no upgrade price", () => {
   const w = waterPlayer();
   const p = abilityPrices(w)["waterBall"]!;
-  assert.equal(p.cast, 100);
-  assert.equal(p.unlock, 50); // no explicit unlockCost → 50% of the cast cost
+  assert.equal(p.cast, WATER_BALL.cost);
+  // No explicit unlockCost, so the rule is 50% of the cast cost, rounded up.
+  assert.equal(p.unlock, Math.ceil(WATER_BALL.cost * 0.5));
   assert.equal(p.upgrade, null); // can't upgrade what you don't own
 });
 
@@ -63,9 +64,12 @@ test("an unlocked ability reports its next upgrade tier and no unlock price", ()
 test("cooldown tiers' costMultiplier discounts show in the reported cast price", () => {
   const w = waterPlayer();
   w.unlocked["waterBall"] = true;
-  // Tier 2 is Water Ball's cooldown tier: costMultiplier 0.85 → floor(100 × 0.85).
+  // Tier 2 is Water Ball's cooldown tier: costMultiplier 0.85.
   w.upgrades["waterBall"] = 2;
-  assert.equal(abilityPrices(w)["waterBall"]!.cast, 85);
+  assert.equal(
+    abilityPrices(w)["waterBall"]!.cast,
+    Math.floor(WATER_BALL.cost * 0.85),
+  );
 });
 
 test("a fully upgraded ability reports no further upgrade price", () => {
@@ -77,7 +81,12 @@ test("a fully upgraded ability reports no further upgrade price", () => {
 
 test("the Great Merchants perk discounts the reported unlock price", () => {
   const w = waterPlayer(["greatMerchants", "extraGuards"]);
-  assert.equal(abilityPrices(w)["waterBall"]!.unlock, Math.ceil(50 * 0.85));
+  // The perk takes 15% off whatever the unlock price would otherwise be.
+  const listedUnlock = Math.ceil(WATER_BALL.cost * 0.5);
+  assert.equal(
+    abilityPrices(w)["waterBall"]!.unlock,
+    Math.ceil(listedUnlock * 0.85),
+  );
 });
 
 test("charge-based abilities report their charge economy", () => {

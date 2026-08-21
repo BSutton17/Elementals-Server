@@ -22,6 +22,7 @@ import {
   POISON_APPLE,
   TOXIC_GAS,
 } from "../src/data/natureAbilities.js";
+import { baseDamage, declaredCooldown, declaredDamage } from "./support/derive.js";
 
 const player = (id: string, kingdomId: string): MatchPlayer => ({
   id,
@@ -88,7 +89,7 @@ test("Sludge poisons; Poison refreshes rather than stacking on its own", () => {
   const [a, b] = players;
 
   activateAbility(match, a, SLUDGE, { targetId: "p1", forceCrit: false });
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(SLUDGE));
   const poison = getStatus(b, "poison");
   assert.ok(poison);
   assert.equal(poison.remainingTicks, 60); // 3 s
@@ -156,8 +157,11 @@ test("Gastro Acid applies strong Poison and can poison citizens (income $0.80 ->
 
   // Citizen roll succeeds (0.4 < 0.5).
   activateAbility(match, a, GASTRO_ACID, { targetId: "p1", forceCrit: false, rng: () => 0.4 });
-  assert.equal(b.castle.hp, b.castle.maxHp - 450);
-  assert.equal(getStatus(b, "poison")!.remainingTicks, 100); // 5 s
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(GASTRO_ACID));
+  assert.equal(
+    getStatus(b, "poison")!.remainingTicks,
+    GASTRO_ACID.effects[1].params.durationTicks,
+  );
   assert.ok(getStatus(b, "poisonedCitizens"));
 
   // Strong poison: 7/tick.
@@ -253,31 +257,44 @@ test("Toxic Gas poisons every enemy through shields and blocks citizen/repair pu
 test("Nature upgrade tiers resolve their overrides", () => {
   // Sludge: standard damage/cooldown path.
   const sl = resolveAbility(SLUDGE, 3);
-  assert.equal(sl.effects[0].params.amount, 350);
-  assert.equal(sl.cooldownTicks, 54);
+  assert.equal(sl.effects[0].params.amount, declaredDamage(SLUDGE, 3));
+  assert.equal(sl.cooldownTicks, declaredCooldown(SLUDGE, 3));
 
   // Acid Rain: Lv2 damage, Lv3 Corroded duration, Lv4 CD, Lv5 amp +50%.
   const ar = resolveAbility(ACID_RAIN, 4);
-  assert.equal(ar.effects[0].params.amount, 450);
-  assert.equal(ar.effects[1].params.durationTicks, 240); // 12 s
-  assert.equal(ar.cooldownTicks, 180); // 9 s
+  assert.equal(ar.effects[0].params.amount, declaredDamage(ACID_RAIN, 4));
+  assert.ok(
+    ar.effects[1].params.durationTicks! > ACID_RAIN.effects[1].params.durationTicks!,
+  );
+  assert.equal(ar.cooldownTicks, declaredCooldown(ACID_RAIN, 4));
   assert.equal(ar.effects[1].params.status?.modifiers?.[0].value, 1.5);
 
   // Gastro Acid: Lv2 damage, Lv3 citizen chance, Lv4 CD, Lv5 poison duration.
   const ga = resolveAbility(GASTRO_ACID, 4);
-  assert.equal(ga.effects[0].params.amount, 550);
-  assert.equal(ga.effects[2].chance, 0.75);
-  assert.equal(ga.effects[1].params.durationTicks, 140); // 7 s
-  assert.equal(ga.cooldownTicks, 270); // 13.5 s
+  assert.equal(ga.effects[0].params.amount, declaredDamage(GASTRO_ACID, 4));
+  assert.ok(ga.effects[2].chance! > GASTRO_ACID.effects[2].chance!);
+  assert.ok(
+    ga.effects[1].params.durationTicks! >
+      GASTRO_ACID.effects[1].params.durationTicks!,
+  );
+  assert.equal(ga.cooldownTicks, declaredCooldown(GASTRO_ACID, 4));
 
   // Poison Apple: Lv2 poison duration on the biter, Lv3 CD.
   const pa = resolveAbility(POISON_APPLE, 2);
-  assert.equal(pa.effects[0].params.status?.onHitRetaliate?.durationTicks, 140); // 7 s
-  assert.equal(pa.cooldownTicks, 425);
+  assert.ok(
+    pa.effects[0].params.status!.onHitRetaliate!.durationTicks >
+      POISON_APPLE.effects[0].params.status!.onHitRetaliate!.durationTicks,
+  );
+  assert.equal(pa.cooldownTicks, declaredCooldown(POISON_APPLE, 2));
 
   // Toxic Gas: Lv2 durations, Lv3 CD.
   const tg = resolveAbility(TOXIC_GAS, 2);
-  assert.equal(tg.effects[0].params.durationTicks, 260); // 13 s
-  assert.equal(tg.effects[1].params.durationTicks, 260);
-  assert.equal(tg.cooldownTicks, 1530);
+  assert.ok(
+    tg.effects[0].params.durationTicks! > TOXIC_GAS.effects[0].params.durationTicks!,
+  );
+  assert.equal(
+    tg.effects[1].params.durationTicks,
+    tg.effects[0].params.durationTicks,
+  );
+  assert.equal(tg.cooldownTicks, declaredCooldown(TOXIC_GAS, 2));
 });

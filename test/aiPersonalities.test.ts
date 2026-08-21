@@ -21,6 +21,8 @@ import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { earn } from "../src/engine/money.js";
 import { ALL_ABILITIES } from "../src/data/abilitiesRegistry.js";
+import * as WATER_KIT from "../src/data/waterAbilities.js";
+import type { AbilityDefinition } from "../src/engine/abilities.js";
 import type { MatchPlayer } from "../src/match/types.js";
 import type { KingdomId } from "../src/data/kingdoms.js";
 
@@ -342,7 +344,28 @@ test("value-based casting credits setup/combo plays", () => {
       },
     ],
   });
-  assert.ok((water.get("waterfall") ?? 0) > 0, "Water never cast its setup attack Waterfall");
+  // ⚠️ NO SINGLE ABILITY IS NAMED, deliberately. This required Waterfall,
+  // and balance then left it at 1.296 damage per gold against Water Ball's
+  // 1.844 — the 150-point setup credit is worth 0.547 of that gap, landing
+  // it one part in a thousand behind. The model correctly stopped buying it
+  // (once in thirty matches), and a test about the COMBO CREDIT failed for a
+  // reason unrelated to the combo credit. Flood took the role over, which is
+  // the mechanism working: setup plays earn value, no matter which one wins.
+  const setupIds = Object.values(WATER_KIT)
+    .filter(
+      (a): a is AbilityDefinition =>
+        typeof a === "object" && a !== null && "effects" in a,
+    )
+    .filter((a) => a.effects.some((e) => e.params?.status !== undefined))
+    .map((a) => a.id);
+  assert.ok(setupIds.length > 0, "the water kit should contain a status-applier");
+
+  const setupCasts = setupIds.reduce((n, id) => n + (water.get(id) ?? 0), 0);
+  assert.ok(
+    setupCasts > 0,
+    `Water never cast ANY setup attack (looked for ${setupIds.join(", ")}; ` +
+      `saw ${[...water.keys()].join(", ")})`,
+  );
   assert.ok((water.get("waterBall") ?? 0) > 0, "Water never cast its payoff attack Water Ball");
 });
 

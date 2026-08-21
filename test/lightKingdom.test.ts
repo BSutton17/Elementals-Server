@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { baseDamage } from "./support/derive.js";
 import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
@@ -215,7 +216,7 @@ test("Illumination hits for 500, and considerably harder through a swarm", () =>
   const cleanBefore = plain.b.castle.hp;
   assert.equal(cast(plain.match, plain.a, ILLUMINATION).ok, true);
   const plainDamage = cleanBefore - plain.b.castle.hp;
-  assert.equal(plainDamage, 500);
+  assert.equal(plainDamage, baseDamage(ILLUMINATION));
 
   // Swarmed target: the glare has something to catch on.
   const lit = lightMatch();
@@ -228,7 +229,9 @@ test("Illumination hits for 500, and considerably harder through a swarm", () =>
   const litDamage = litBefore - lit.b.castle.hp;
 
   assert.ok(litDamage > plainDamage, "a swarmed castle took no extra damage");
-  assert.equal(litDamage, 850); // 500 + the 350 infested bonus
+  const infestedBonus = ILLUMINATION.effects[0].params
+    .bonusDamageIfTargetHasStatus!.extraAmount as number;
+  assert.equal(litDamage, baseDamage(ILLUMINATION) + infestedBonus);
 });
 
 test("Illumination cast BEFORE Fireflies does not inflate the later ransom", () => {

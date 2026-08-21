@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { baseDamage } from "./support/derive.js";
 import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
@@ -119,7 +120,10 @@ test("Eruption hits hard, and only sometimes burns", () => {
     activateAbility(match, a, ERUPTION, { forceCrit: false, rng: () => 0.99 }).ok,
     true,
   );
-  assert.ok(hpBefore - b.castle.hp >= 400, "Eruption hit softly");
+  assert.ok(
+    hpBefore - b.castle.hp >= baseDamage(ERUPTION),
+    "Eruption hit softly",
+  );
   assert.ok(
     !b.statuses.some((s) => s.id === MAGMA_BURN_STATUS.id),
     "a losing roll should not burn",
@@ -239,8 +243,13 @@ test("the floor cools, and burns go back to normal", () => {
   const molten = burnTick(match, b);
 
   // Past the duration the floor is cold again.
-  match.gameState!.tick =
-    match.tick + MAGMA.LAVA_FLOOR_DURATION_SECONDS * TICK.RATE + 1;
+  //
+  // ⚠️ ADVANCE PAST THE FLOOR'S OWN endTick, not past a constant. The ability
+  // sets its window from its own duration parameter, which balance owns and
+  // has since moved away from MAGMA.LAVA_FLOOR_DURATION_SECONDS — so jumping
+  // by the constant landed while the floor was still hot and the "cooled"
+  // burn came back identical to the molten one.
+  match.gameState!.tick = match.gameState!.lavaFloor!.endTick + 1;
   const cooled = burnTick(match, b);
   assert.ok(cooled < molten, `expected a cooler burn (${cooled} vs ${molten})`);
 });

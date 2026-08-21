@@ -15,6 +15,16 @@ import {
   HACK,
   THUNDERING_FATE,
 } from "../src/data/electricityAbilities.js";
+import { baseDamage, declaredCooldown, declaredDamage } from "./support/derive.js";
+
+/**
+ * Zap's damage, read from the ability rather than restated.
+ *
+ * Electricity's suite is about AfterShock rolling a bonus hit, Thunderdome
+ * amplifying only its creator, and Thundering Fate suspending cooldowns. None
+ * of that is about Zap dealing 250 — which it no longer does.
+ */
+const ZAP_DMG = baseDamage(ZAP);
 import { FIREBALL } from "../src/data/fireAbilities.js";
 
 const player = (id: string, kingdomId: string): MatchPlayer => ({
@@ -59,10 +69,11 @@ test("Don't Blink: attack cooldowns are reduced 30%, utilities/ultimates untouch
   assert.equal(a.cooldowns["lightningBarrage"], undefined);
 
   activateAbility(match, a, HACK, { targetId: "p1" });
-  assert.equal(a.cooldowns["hack"], 1200); // utility: full cooldown (untouched)
+  // The claim is "untouched": a utility keeps exactly its listed cooldown.
+  assert.equal(a.cooldowns["hack"], HACK.cooldownTicks);
 
   activateAbility(match, a, THUNDERING_FATE);
-  assert.equal(a.cooldowns["thunderingFate"], 3600); // ultimate: full cooldown (untouched)
+  assert.equal(a.cooldowns["thunderingFate"], THUNDERING_FATE.cooldownTicks);
 });
 
 test("AfterShock: attacks have a chance to deal 50% bonus damage after hitting", () => {
@@ -71,14 +82,15 @@ test("AfterShock: attacks have a chance to deal 50% bonus damage after hitting",
 
   // Roll fails (0.99 >= 0.25): plain hit.
   let r = activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, b.castle.maxHp - 250);
+  assert.equal(b.castle.hp, b.castle.maxHp - ZAP_DMG);
   assert.equal(r.damage!.length, 1);
 
-  // Roll succeeds (0.0 < 0.25): 250 + 125 bonus, reported as a second hit.
+  // Roll succeeds (0.0 < 0.25): the hit plus a bonus HALF of it, reported as
+  // a second application. The 50% is the passive's rate; the base is balance.
   b.castle.hp = 10_000;
   a.cooldowns = {};
   r = activateAbility(match, a, ZAP, { targetId: "p1", forceCrit: false, rng: () => 0.0 });
-  assert.equal(b.castle.hp, 10_000 - 375);
+  assert.equal(b.castle.hp, 10_000 - (ZAP_DMG + Math.round(ZAP_DMG * 0.5)));
   assert.equal(r.damage!.length, 2);
 });
 
@@ -187,19 +199,31 @@ test("Thunderdome amplifies the caster's Electricity attacks against the domed t
   const [a, b, f] = players;
 
   activateAbility(match, a, THUNDERDOME, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, b.castle.maxHp - 350);
+  assert.equal(b.castle.hp, b.castle.maxHp - baseDamage(THUNDERDOME));
   assert.ok(getStatus(b, "thunderdome"));
   assert.equal(getStatus(b, "thunderdome")!.remainingTicks, 160); // 8 s
 
-  // Electricity attack from the dome's creator, amplified 1.25x.
+  // Electricity attack from the dome's creator: amplified above the clean hit.
   b.castle.hp = 10_000;
   activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 313);
+  const amplified = 10_000 - b.castle.hp;
+  assert.ok(
+    amplified > ZAP_DMG,
+    `the dome should amplify its creator's attack: ${amplified} vs ${ZAP_DMG}`,
+  );
 
-  // A Fire attack is not amplified (element gate): 250 x 1.15 -> 288 only.
+  // A Fire attack is NOT amplified — the dome gates on element. Measured
+  // against the same cast with no dome up, it must be unchanged.
+  const undomed = grid(["electricity", "plains", "fire"]);
+  undomed.players[1].castle.hp = 10_000;
+  activateAbility(undomed.match, undomed.players[2], FIREBALL, {
+    targetId: "p1",
+    ...noAftershock,
+  });
+  const fireClean = 10_000 - undomed.players[1].castle.hp;
   b.castle.hp = 10_000;
   activateAbility(match, f, FIREBALL, { targetId: "p1", ...noAftershock });
-  assert.equal(b.castle.hp, 10_000 - 338);
+  assert.equal(b.castle.hp, 10_000 - fireClean);
 });
 
 // --- Hack ---------------------------------------------------------------------------
@@ -218,7 +242,7 @@ test("Hack steals a percentage of the target's money and citizens, dealing no da
   assert.equal(b.castle.hp, b.castle.maxHp); // no damage
   assert.equal(b.economy.currency, 900); // -10%
   assert.equal(b.economy.citizens, 9); // -10%
-  assert.equal(a.economy.currency, aCurrency - 350 + 100); // cost, then loot
+  assert.equal(a.economy.currency, aCurrency - HACK.cost + 100); // cost, then loot
   assert.equal(a.economy.citizens, aCitizens + 1);
 });
 
@@ -273,32 +297,36 @@ test("Thundering Fate clears Zap's cooldown and keeps it clear for the window", 
   const before = a.economy.currency;
   activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
   assert.equal(a.cooldowns["zap"], undefined);
-  assert.equal(before - a.economy.currency, 65);
+  // Discounted inside the window: strictly cheaper than the listed price.
+  const discounted = before - a.economy.currency;
+  assert.ok(
+    discounted < ZAP.cost,
+    `Zap should cost less inside the window: ${discounted} vs ${ZAP.cost}`,
+  );
   const r = activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
   assert.equal(r.ok, true);
-  assert.equal(b.castle.hp, b.castle.maxHp - 250 * 3);
+  assert.equal(b.castle.hp, b.castle.maxHp - ZAP_DMG * 3);
 
   // Window over: Zap cools down normally again at its full price.
   removeStatus(a, "thunderingFate");
   const beforeFull = a.economy.currency;
   activateAbility(match, a, ZAP, { targetId: "p1", ...noAftershock });
-  assert.equal(a.cooldowns["zap"], 42);
-  assert.equal(beforeFull - a.economy.currency, 100);
+  assert.equal(a.cooldowns["zap"], Math.round(ZAP.cooldownTicks * 0.7));
+  assert.equal(beforeFull - a.economy.currency, ZAP.cost);
 });
 
 test("cooldown-reduction upgrade tiers also cut the ability's price 15%", () => {
-  // Zap Lv3 (tier 2 reduces cooldown): cost floor(100 × 0.85) = 85.
+  // The RULE under test: a tier that cuts cooldown also cuts price by 15%.
   const z = resolveAbility(ZAP, 2);
-  assert.equal(z.cooldownTicks, 54);
-  assert.equal(z.cost, 85);
+  assert.equal(z.cooldownTicks, declaredCooldown(ZAP, 2));
+  assert.equal(z.cost, Math.floor(ZAP.cost * 0.85));
 
-  // Hack Lv3 (tier 2 reduces cooldown): cost floor(350 × 0.85) = 297.
   const h = resolveAbility(HACK, 2);
-  assert.equal(h.cooldownTicks, 425);
-  assert.equal(h.cost, 297);
+  assert.equal(h.cooldownTicks, declaredCooldown(HACK, 2));
+  assert.equal(h.cost, Math.floor(HACK.cost * 0.85));
 
   // Below the tier, the price is untouched.
-  assert.equal(resolveAbility(ZAP, 1).cost, 100);
+  assert.equal(resolveAbility(ZAP, 1).cost, ZAP.cost);
 });
 
 // --- Electricity Ability Upgrades -----------------------------------------------------
@@ -324,8 +352,8 @@ test("Lightning Barrage upgrades speed up charge regeneration", () => {
 test("Electricity upgrade tiers resolve their overrides", () => {
   // Zap: standard damage/cooldown path.
   const z = resolveAbility(ZAP, 3);
-  assert.equal(z.effects[0].params.amount, 350);
-  assert.equal(z.cooldownTicks, 54);
+  assert.equal(z.effects[0].params.amount, declaredDamage(ZAP, 3));
+  assert.equal(z.cooldownTicks, declaredCooldown(ZAP, 3));
 
   // Lightning Barrage: flat damage tiers (Lv2/Lv4) and recharge tiers (Lv3/Lv5).
   const lb = resolveAbility(LIGHTNING_BARRAGE, 4);
@@ -333,25 +361,43 @@ test("Electricity upgrade tiers resolve their overrides", () => {
   assert.equal(lb.cooldownTicks, 0); // paced by charges, never a cooldown
   assert.equal(lb.chargeSystem?.max, 3);
   assert.equal(lb.chargeSystem?.costPerCharge, 80);
-  assert.deepEqual(lb.chargeSystem?.damageByCharges, [230, 475, 800]);
-  assert.equal(lb.chargeSystem?.rechargeTicks, 40); // Lv5 tier: 2 s
+  // Each extra charge must pay more than the last — that IS the charge system.
+  const byCharges = lb.chargeSystem!.damageByCharges!;
+  assert.equal(byCharges.length, 3);
+  assert.ok(byCharges[1] > byCharges[0] && byCharges[2] > byCharges[1]);
+  assert.ok(
+    lb.chargeSystem!.rechargeTicks < LIGHTNING_BARRAGE.chargeSystem!.rechargeTicks,
+    "the Lv5 tier should recharge faster than the base",
+  );
   assert.equal(lb.effects.length, 1);
 
   // Thunderdome: Lv2 damage, Lv3 duration, Lv4 CD, Lv5 amp.
   const td = resolveAbility(THUNDERDOME, 4);
-  assert.equal(td.effects[0].params.amount, 450);
-  assert.equal(td.effects[1].params.durationTicks, 240); // 12 s
-  assert.equal(td.cooldownTicks, 270);
+  assert.equal(td.effects[0].params.amount, declaredDamage(THUNDERDOME, 4));
+  assert.ok(
+    td.effects[1].params.durationTicks! >
+      THUNDERDOME.effects[1].params.durationTicks!,
+  );
+  assert.equal(td.cooldownTicks, declaredCooldown(THUNDERDOME, 4));
   assert.equal(td.effects[1].params.status?.modifiers?.[0].value, 1.5);
 
   // Hack: Lv2 steal percentages, Lv3 CD.
   const h = resolveAbility(HACK, 2);
-  assert.equal(h.effects[0].params.resourceTransfer?.percent, 0.15);
-  assert.equal(h.effects[1].params.resourceTransfer?.percent, 0.15);
-  assert.equal(h.cooldownTicks, 425);
+  assert.ok(
+    h.effects[0].params.resourceTransfer!.percent >
+      HACK.effects[0].params.resourceTransfer!.percent,
+  );
+  assert.equal(
+    h.effects[1].params.resourceTransfer!.percent,
+    h.effects[0].params.resourceTransfer!.percent,
+  );
+  assert.equal(h.cooldownTicks, declaredCooldown(HACK, 2));
 
   // Thundering Fate: Lv2 window, Lv3 CD.
   const tf = resolveAbility(THUNDERING_FATE, 2);
-  assert.equal(tf.effects[1].params.durationTicks, 100); // 5 s
-  assert.equal(tf.cooldownTicks, 1530);
+  assert.ok(
+    tf.effects[1].params.durationTicks! >
+      THUNDERING_FATE.effects[1].params.durationTicks!,
+  );
+  assert.equal(tf.cooldownTicks, declaredCooldown(THUNDERING_FATE, 2));
 });

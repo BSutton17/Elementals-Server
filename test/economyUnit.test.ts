@@ -108,8 +108,14 @@ test("repair cost follows the exact scaling sequence", () => {
     costs.push(repairCost(a));
     repairCastle(match, a);
   }
-  // flat base $500, × 1.25^n, rounded to whole dollars.
-  assert.deepEqual(costs, [500, 625, 781]);
+  // The SEQUENCE is the claim: each repair costs the base times the growth
+  // rate raised to the number already bought, rounded to whole dollars. Both
+  // figures are balance data and are read rather than restated.
+  const expected = [0, 1, 2].map((n) =>
+    Math.round(CASTLE.REPAIR_COST * CASTLE.REPAIR_COST_GROWTH ** n),
+  );
+  assert.deepEqual(costs, expected);
+  assert.ok(expected[1]! > expected[0]!, "repairs must get more expensive");
 });
 
 test("repair only restores missing HP; the flat cost applies regardless", () => {
