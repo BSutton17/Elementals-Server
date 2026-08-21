@@ -19,7 +19,7 @@ export const CASTLE = {
   /** Maximum HP restored by a single repair action. */
   REPAIR_AMOUNT: 1000,
   /** Flat base cost of a repair (before growth scaling). */
-  REPAIR_COST: 350,
+  REPAIR_COST: 500,
   /**
    * Multiplicative cost growth per repair already purchased, so repeated
    * repairs get progressively more expensive (500 → 625 → 781).
@@ -179,7 +179,7 @@ export const SHIELD = {
   /** Health of the standard purchasable shield. */
   STANDARD_HP: 1750,
   /** Cost of the first shield (matches the client's shop display). */
-  COST: 300,
+  COST: 400,
   /**
    * Multiplier applied per shield already bought this match, so each shield
    * costs a little more than the last (400 → 420 → 441 → …). Only one shield

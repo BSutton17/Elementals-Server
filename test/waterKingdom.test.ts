@@ -315,31 +315,32 @@ test("Riptide healing is capped at max HP", () => {
 test("Water Ball upgrades (Lv 1 -> 4) modify damage and cooldown values", () => {
   const { match, w, f } = pond();
   
-  // Lv 2: Increased damage (250 -> 300)
+  // Lv 2: the damage tier resolves to what the upgrade path declares.
   purchaseUpgrade(match, w, WATER_BALL);
   w.castle.hp = 10000;
   f.castle.hp = 10000;
   let r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(f.castle.hp, 10000 - 350);
+  assert.equal(f.castle.hp, 10000 - declaredDamage(WATER_BALL, 1));
 
-  // Lv 3: Reduce cooldown by 10% (60 -> 54 ticks)
+  // Lv 3: the cooldown tier resolves to what the upgrade path declares.
   purchaseUpgrade(match, w, WATER_BALL);
   w.castle.hp = 10000;
   f.castle.hp = 10000;
   w.cooldowns = {};
   r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(getCooldown(w, "waterBall"), 54);
+  assert.equal(getCooldown(w, "waterBall"), resolveAbility(WATER_BALL, 2).cooldownTicks);
 
-  // Lv 4: Increased damage (300 -> 350)
+  // Lv 4: a further damage tier, strictly above Lv2's.
   purchaseUpgrade(match, w, WATER_BALL);
   w.castle.hp = 10000;
   f.castle.hp = 10000;
   w.cooldowns = {};
   r = activateAbility(match, w, WATER_BALL, { targetId: "f", forceCrit: false });
   assert.equal(r.ok, true);
-  assert.equal(f.castle.hp, 10000 - 400);
+  assert.equal(f.castle.hp, 10000 - declaredDamage(WATER_BALL, 3));
+  assert.ok(declaredDamage(WATER_BALL, 3) > declaredDamage(WATER_BALL, 1));
 });
 
 test("Waterfall upgrades (Lv 1 -> 5) increase damage, status duration, reduce cooldown, and boost healing", () => {

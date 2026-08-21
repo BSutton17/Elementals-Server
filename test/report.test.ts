@@ -105,14 +105,16 @@ test("matrix threads telemetry through its duels for unified diagnostics", () =>
 test("recommendations carry production source locations (file + line)", () => {
   const result = optimize({
     seed: "report-opt",
-    iterations: 4,
+    // Enough steps for the search to accept at least one move — with four it
+    // can finish having changed nothing, and a run with nothing to recommend
+    // leaves this test with nothing to inspect. The subject is the SHAPE of a
+    // recommendation (file, line, value), not how hard the search worked.
+    iterations: 16,
     matchesPerBatch: 2,
     players: [{ kingdomId: "fire" }, { kingdomId: "fire" }],
     maxTicks: 20_000,
     // A target production is NOT already sitting on, so the run actually has
-    // something to recommend. Balance now lands duels within 1% of 6,000
-    // ticks, and an optimizer with nothing to improve emits no
-    // recommendations — leaving this test with nothing to inspect.
+    // something to recommend.
     objective: matchDurationObjective(3_000),
     parameterIds: ["castle.startingHp", "economy.incomePerCitizen"],
     mutationScale: 0.5,

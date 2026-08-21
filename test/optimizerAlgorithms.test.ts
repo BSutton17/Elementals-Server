@@ -24,7 +24,11 @@ test("every algorithm improves the configured objective", () => {
     const result = optimize({
       seed: `improve-${algorithm}`,
       algorithm,
-      iterations: algorithm === "genetic" ? 3 : 8,
+      // Hill climbing is the greediest of the three and the likeliest to
+      // spend a short budget taking no accepted step at all — it found none
+      // in eight. The claim under test is that the search MOVES the
+      // objective, so it needs enough steps to demonstrate that.
+      iterations: algorithm === "genetic" ? 3 : 16,
       matchesPerBatch: 2,
       players: DUEL,
       maxTicks: 20_000,

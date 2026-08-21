@@ -52,14 +52,44 @@ for (const a of absent.slice(0, 10)) console.log(`  ? ${a} is not a catalog para
 
 // A silent corruption also shows up as a parameter that moved WITHOUT being
 // asked to, so the reverse direction is checked too.
+//
+// ⚠️ THIS CHECK USED TO BE TOO WEAK, and it cost the game 43 broken upgrades.
+// It only flagged non-finite values, so an applier that wrote a plausible
+// NUMBER into the wrong place passed clean. That is exactly what happened: the
+// "first `amount:` after `effects: [`" heuristic walked into upgrade tiers,
+// which are 221 catalog parameters and 0 search dimensions — values no
+// candidate ever asked to change — and left tiers weaker than the bases they
+// were meant to improve on. Nothing noticed for two balance applies.
+//
+// Pass --before <ladders.json> (from `dumpLadders.mjs`, taken BEFORE the apply)
+// to assert the strong version: no unsupplied parameter changed value at all.
 const asked = new Set(Object.keys(params));
 const unexpected = [];
+const beforeArg = process.argv.indexOf("--before");
+const before =
+  beforeArg > 0 && process.argv[beforeArg + 1]
+    ? JSON.parse(readFileSync(process.argv[beforeArg + 1], "utf8"))
+    : null;
+
 for (const { id, base } of listParameters()) {
   if (asked.has(id)) continue;
-  // Nothing to compare against for untouched parameters, but a non-finite
-  // value means the edit mangled something structurally. Negatives are NOT a
-  // symptom: `passive.ice.0.pct = -0.5` is a legitimate duration REDUCTION.
-  if (!Number.isFinite(base)) unexpected.push(`${id} = ${base}`);
+  // A non-finite value means the edit mangled something structurally.
+  // Negatives are NOT a symptom: `passive.ice.0.pct = -0.5` is a legitimate
+  // duration REDUCTION.
+  if (!Number.isFinite(base)) {
+    unexpected.push(`${id} = ${base}`);
+    continue;
+  }
+  if (before && Object.prototype.hasOwnProperty.call(before, id)) {
+    if (before[id] !== base) {
+      unexpected.push(`${id}: ${before[id]} -> ${base} (moved without being asked)`);
+    }
+  }
+}
+if (!before) {
+  console.log(
+    `  note: run with --before <catalog.json> to assert untouched parameters did not move`,
+  );
 }
 if (unexpected.length > 0) {
   console.log(`\n  ⚠ ${unexpected.length} untouched parameters are now invalid:`);
