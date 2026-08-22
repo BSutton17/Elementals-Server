@@ -111,7 +111,23 @@ test("thresholds are configurable", () => {
     floatedGoldThreshold: 1e9,
     unlockedShareThreshold: 2,
   });
-  assert.equal(strict.concerns.length, 0, "no concerns under impossible thresholds");
+  // ⚠️ ONLY THE CONCERNS THESE THRESHOLDS ACTUALLY GATE. The detector also
+  // carries a survival heuristic — "outlasts but under-finishes" — with no
+  // configurable threshold at all, so no setting here can silence it. Asserting
+  // zero concerns claimed a coverage the options do not have, and it passed
+  // only while castles happened to die fast enough for that check to stay
+  // quiet; scaling health with player count made them live longer and it fired.
+  //
+  // Worth closing properly by giving that heuristic a threshold too, but the
+  // gap belongs in the detector rather than hidden here.
+  const gated = strict.concerns.filter(
+    (c) => !(c.category === "underused" && /outlast/i.test(c.headline)),
+  );
+  assert.deepEqual(
+    gated.map((c) => `${c.category}:${c.subject}`),
+    [],
+    "impossible thresholds must silence every concern they gate",
+  );
 });
 
 test("control-without-payoff is flagged as a CONTROL concern", () => {
