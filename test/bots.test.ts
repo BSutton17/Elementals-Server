@@ -219,9 +219,26 @@ test("a bot sees only what a player in its seat may see", () => {
   }
 
   // And the encoded observation is the fixed width the models were trained on.
+  //
+  // ⚠️ CHECKED AGAINST THE SHIPPED MODEL, not against a literal. This read
+  // `assert.equal(obs.length, 64)` while `obs` was allocated FROM
+  // OBSERVATION_SIZE, so it could only ever restate the constant — and when the
+  // observation grew to 80 the test failed without a single model being wrong.
+  //
+  // What actually matters is that the build and the trained network agree on
+  // the width: a network expecting 64 inputs fed an 80-slot observation does
+  // not throw, it plays confidently on garbage. That is the mismatch worth
+  // catching, and it is the one the loader's identity gate exists to prevent.
   const obs = new Float32Array(OBSERVATION_SIZE);
   encode(knowledge, obs);
-  assert.equal(obs.length, 64);
+  assert.equal(obs.length, OBSERVATION_SIZE);
+  const inputs = (loadModel("hard").model.genome as { nodes: { type: string }[] }).nodes
+    .filter((n) => n.type === "input").length;
+  assert.equal(
+    obs.length,
+    inputs,
+    `the build encodes ${obs.length} inputs but the shipped model expects ${inputs}`,
+  );
   assert.ok(obs.every((x) => Number.isFinite(x)), "observation contained NaN");
 });
 
