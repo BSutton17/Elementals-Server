@@ -14,6 +14,7 @@ import {
   THUNDERDOME,
   HACK,
   THUNDERING_FATE,
+  THUNDERING_FATE_WINDOW_TICKS,
 } from "../src/data/electricityAbilities.js";
 import { baseDamage, declaredCooldown, declaredDamage } from "./support/derive.js";
 
@@ -290,7 +291,16 @@ test("Thundering Fate clears Zap's cooldown and keeps it clear for the window", 
   // Cast the ultimate: the armed cooldown is wiped…
   activateAbility(match, a, THUNDERING_FATE);
   assert.equal(a.cooldowns["zap"], undefined);
-  assert.equal(getStatus(a, "thunderingFate")!.remainingTicks, 60); // 3 s
+  // Derived from the ability rather than carrying its own copy of the number.
+  // Writing `60` here again would mean this line agrees with whatever the data
+  // file says on any given day, which is not a test of anything. The duration
+  // is a balance decision and belongs to the data file alone; what the test
+  // owns is the MECHANIC below — that Zap keeps firing with no cooldown for
+  // however long the window is set to.
+  assert.equal(
+    getStatus(a, "thunderingFate")!.remainingTicks,
+    THUNDERING_FATE_WINDOW_TICKS,
+  );
 
   // …and Zap arms no cooldown while the window lasts: back-to-back casts.
   // Zap also costs less inside the window (discounted cast cost).
