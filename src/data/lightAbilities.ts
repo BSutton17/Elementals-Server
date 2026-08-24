@@ -318,7 +318,7 @@ export const LIGHT_SHOW: AbilityDefinition = {
   id: "lightShow",
   name: "Light Show",
   kind: "ultimate",
-  cost: 340,
+  cost: 450,
   unlockCost: 275,
   cooldownTicks: Math.round(45 * TICK.RATE), // 900 ticks (45 s)
   targeting: { mode: "self" },

@@ -304,8 +304,8 @@ export const BLIZZARD: AbilityDefinition = {
   id: "blizzard",
   name: "Blizzard",
   kind: "ultimate",
-  cost: 300,
-  unlockCost: 150,
+  cost: 600,
+  unlockCost: 30,
   cooldownTicks: Math.round(94.65 * TICK.RATE), // 90.25 s
   targeting: { mode: "allEnemies" },
   effects: [
