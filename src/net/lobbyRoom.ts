@@ -2,6 +2,8 @@ import type { Server } from "socket.io";
 import type { Match } from "../match/Match.js";
 import type { MatchManager } from "../match/MatchManager.js";
 import { logger } from "../util/logger.js";
+import { eliminatePlayer } from "../engine/elimination.js";
+import { resolveWinner } from "../engine/winConditions.js";
 
 /** Why a player was removed from a match. */
 export type PlayerRemovalReason = "left" | "disconnected";
@@ -35,6 +37,37 @@ export function removePlayerFromMatch(
 ): boolean {
   const match = matches.getMatch(roomCode);
   if (!match || !match.hasPlayer(playerId)) return false;
+
+  // ⚠️ LEAVING AN ACTIVE MATCH IS AN ELIMINATION, not just a roster change.
+  //
+  // `removePlayer` deletes from the LOBBY roster; the win condition counts
+  // `state.getPlayers().filter(p => !p.eliminated)` in the GAME STATE, which it
+  // does not touch. So a player who disconnected stayed alive in the game
+  // forever: in a duel the survivor count never fell to one, the match never
+  // ended, and nobody ever saw a victory screen.
+  //
+  // Run through `eliminatePlayer` rather than setting the flag, because leaving
+  // has the same consequences as dying — statuses and cooldowns stop applying,
+  // and anyone aiming at the departed kingdom is freed to retarget without
+  // waiting out the switch timer.
+  const state = match.gameState;
+  const leaver = state?.getPlayer(playerId);
+  if (match.phase === "active" && state && leaver && !leaver.eliminated) {
+    eliminatePlayer(state, leaver, match.tick);
+
+    // And the removal may have decided the match. Nothing else will notice:
+    // the tick loop stops once the room is torn down, and for the LAST
+    // disconnect there may be no further tick at all.
+    const outcome = resolveWinner(state);
+    if (outcome.ended && match.phase === "active") {
+      match.end(outcome.winnerId);
+      if (state.events.enabled) {
+        state.events.emit({ type: "matchEnded", tick: match.tick, winnerId: outcome.winnerId });
+      }
+      io.to(roomCode).emit("match:ended", { winnerId: outcome.winnerId });
+      logger.info("Match ended by disconnect", { roomCode, winnerId: outcome.winnerId });
+    }
+  }
 
   match.removePlayer(playerId);
 
