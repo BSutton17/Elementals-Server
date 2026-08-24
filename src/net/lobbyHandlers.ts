@@ -19,6 +19,63 @@ import {
 import { MATCH } from "../data/balance.js";
 import { logger } from "../util/logger.js";
 
+/**
+ * Names for AI seats, drawn from at random.
+ *
+ * ⚠️ THIS LIST WAS BEING READ AS AN ORDER. `freeBotName` used
+ * `BOT_NAMES.find(n => !used.has(n))`, which takes the FIRST free name, so
+ * every lobby filled with bots got Ember, Cinder, Frost, Gale in that sequence,
+ * every single match. Twenty-seven names read as four.
+ */
+export const BOT_NAMES = [
+  "Ember",
+  "Cinder",
+  "Frost",
+  "Gale",
+  "Quartz",
+  "Nøkken",
+  "Thistle",
+  "Onyx",
+  "Blaze",
+  "Nimbus",
+  "Rook",
+  "Bramble",
+  "Sparx",
+  "Mistral",
+  "Flint",
+  "Echo",
+  "Anubis",
+  "Pebble",
+  "Zephyr",
+  "Moss",
+  "Bo Longma",
+  "Ash",
+  "Tempest",
+  "Vex",
+  "Tundra",
+  "Kydos",
+  "Ky'el"
+];
+
+/**
+ * A bot name no one in the room is using yet, chosen at random from what is free.
+ *
+ * Filtered to unused names BEFORE rolling, rather than rolling until something
+ * free turns up: a nearly-full room would reroll many times for the last seat,
+ * and once every name is taken it would never terminate at all.
+ *
+ * `roll` is injectable so a test can assert on the pick rather than around it.
+ */
+export function pickBotName(
+  taken: readonly string[],
+  roll: () => number = Math.random,
+): string {
+  const used = new Set(taken);
+  const free = BOT_NAMES.filter((n) => !used.has(n));
+  if (free.length === 0) return `Bot ${Date.now() % 1000}`;
+  return free[Math.floor(roll() * free.length)]!;
+}
+
 export interface LobbyDeps {
   matches: MatchManager;
   reconnection: ReconnectionManager;
@@ -475,35 +532,7 @@ export function registerLobbyHandlers(
   // connected seats, so a bot marked disconnected would be silently skipped by
   // the readiness gate and the match would start with an unready seat.
 
-const BOT_NAMES = [
-  "Ember",
-  "Cinder",
-  "Frost",
-  "Gale",
-  "Quartz",
-  "Nøkken",
-  "Thistle",
-  "Onyx",
-  "Blaze",
-  "Nimbus",
-  "Rook",
-  "Bramble",
-  "Sparx",
-  "Mistral",
-  "Flint",
-  "Echo",
-  "Anubis",
-  "Pebble",
-  "Zephyr",
-  "Moss",
-  "Bo Longma",
-  "Ash",
-  "Tempest",
-  "Vex",
-  "Tundra",
-  "Kydos",
-  "Ky'el"
-];
+
 
   function isBotDifficulty(value: unknown): value is BotDifficulty {
     return value === "easy" || value === "medium" || value === "hard";
@@ -545,8 +574,7 @@ const BOT_NAMES = [
   }
 
   function freeBotName(match: ReturnType<MatchManager["getMatch"]>): string {
-    const used = new Set(match?.getPlayers().map((p) => p.name) ?? []);
-    return BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${Date.now() % 1000}`;
+    return pickBotName(match?.getPlayers().map((p) => p.name) ?? []);
   }
 
   socket.on("lobby:addBot", (payload: { difficulty?: unknown }, ack: unknown) => {
