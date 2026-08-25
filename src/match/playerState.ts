@@ -304,6 +304,36 @@ export interface AttackRecord {
   statusIds: string[];
 }
 
+/**
+ * What `engine/siege.ts` remembers about the coalition currently attacking one
+ * kingdom. See `COMBAT.SIEGE_ESCALATION_*` for the rules this serves.
+ */
+export interface SiegeWatch {
+  /**
+   * Sorted ids of the coalition being timed, or empty when nothing qualifies
+   * (fewer than the minimum members, or more than the maximum).
+   */
+  members: string[];
+  /**
+   * Ticks this exact coalition has held. Pauses — rather than resetting —
+   * while a member is away inside the grace window.
+   */
+  heldTicks: number;
+  /** Members currently away, mapped to the tick their absence began. */
+  absent: Record<string, number>;
+  /**
+   * Extra besieged stages earned so far (0 … tier count). A FLOOR: it survives
+   * the coalition changing shape, and is cleared only when the siege itself
+   * ends. That is what stops a group rotating members to strip it.
+   */
+  level: number;
+}
+
+/** A fresh, un-besieged watch. */
+export function createSiegeWatch(): SiegeWatch {
+  return { members: [], heldTicks: 0, absent: {}, level: 0 };
+}
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -376,6 +406,12 @@ export interface PlayerState {
    * bounded. Time's Blip! pops the last one and reverses it.
    */
   attackJournal: AttackRecord[];
+  /**
+   * Persistent-siege bookkeeping: who has been ganging up on this kingdom, for
+   * how long, and how many extra besieged stages they have earned it. Advanced
+   * once per tick by `engine/siege.ts`; read by `besiegedStacks`.
+   */
+  siege: SiegeWatch;
   /**
    * Space's Supernova charge meter (points). Shooting Star, Saturn's Rings, and
    * Orion's Belt misses fill it; Supernova fires at the level the meter maps to
@@ -531,6 +567,7 @@ export function createPlayerState(
     lastDamageTakenTick: -1,
     regenCarry: 0,
     attackJournal: [],
+    siege: createSiegeWatch(),
     supernovaMeter: 0,
     rageMeter: 0,
     ancientMemory: 0,

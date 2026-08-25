@@ -1,12 +1,11 @@
-# abilities — Ability System
+# abilities — (folder unused)
 
-The shared ability system used by every kingdom (see
-[ABILITY_SYSTEM.md](../../../ABILITY_SYSTEM.md)). Owns:
+**There is no code here.** The ability *system* lives in
+[`../engine/abilities.ts`](../engine/abilities.ts) — validation, unlocks,
+upgrade tiers, charges, cooldowns, and resolving an `AbilityDefinition` into
+effects. Ability *content* lives in [`../data/`](../data/) as one
+`<kingdom>Abilities.ts` per kingdom.
 
-- Resolving an `AbilityDefinition` into effects the `engine/` executes
-- Validation (ownership, cooldown, resources, targeting rules)
-- Cooldown, upgrade-tier, and passive-trigger handling
-
-Ability **content** (definitions per kingdom) is data and lives in `data/`;
-this folder is the generic machinery that runs that data. No kingdom-specific
-branches.
+This folder was planned as a separate home for the system and was folded into
+`engine/` instead. Kept only so the path in older tickets resolves somewhere.
+See [ABILITY_SYSTEM.md](../../../ABILITY_SYSTEM.md).

@@ -5,6 +5,7 @@ import type { StatusEffectDefinition } from "./status.js";
 import { evaluateCondition } from "./conditions.js";
 import { computeStat } from "./modifiers.js";
 import { getActiveParameterSet, param } from "./parameters.js";
+import { siegeEscalation } from "./siege.js";
 
 /**
  * Kingdom passive application (ticket #81). Reads the generic passive
@@ -118,16 +119,24 @@ export function besiegerCount(
 
 /**
  * "Besieged" stack count for `player`: living enemies currently targeting it
- * *beyond the first*, capped at `BESIEGED_MAX_STACKS`. 0 in a fair 1v1. Shared
- * by both besieged bonuses (outgoing damage and defensive income).
+ * *beyond the first*, plus any stages a persistent siege has earned
+ * (`engine/siege.ts`), capped at `BESIEGED_MAX_STACKS`. Shared by both besieged
+ * bonuses (outgoing damage and defensive income).
+ *
+ * ⚠️ A FAIR 1v1 IS ALWAYS NEUTRAL, escalation included. Escalation is applied
+ * only once there are genuinely two or more attackers, so a coalition cannot
+ * drop to a single member and still be paying the victim a bonus — which is
+ * exactly the window the absence grace keeps open on the siege-watch side.
  */
 export function besiegedStacks(
   player: PlayerState,
   allPlayers: readonly PlayerState[],
 ): number {
+  const raw = Math.max(0, besiegerCount(player, allPlayers) - 1);
+  if (raw <= 0) return 0;
   return Math.min(
     param("combat.besiegedMaxStacks", COMBAT.BESIEGED_MAX_STACKS),
-    Math.max(0, besiegerCount(player, allPlayers) - 1),
+    raw + siegeEscalation(player),
   );
 }
 
@@ -149,25 +158,54 @@ export function besiegerIncomeMultiplier(
 }
 
 /**
+ * Reads a besieged curve at `stacks`.
+ *
+ * The curves are indexed by stack count (1 stack = 2 attackers) and clamped to
+ * their own length as well as to `BESIEGED_MAX_STACKS`, so a lowered cap or a
+ * shortened table can never index off the end. 0 stacks — a fair 1v1, or nobody
+ * aiming at you at all — is always neutral.
+ *
+ * Each entry is separately overridable (`<prefix>.1` … `<prefix>.6`) so the
+ * balance search can reshape the curve rather than only slide it.
+ */
+function besiegedCurveAt(
+  curve: readonly number[],
+  stacks: number,
+  paramPrefix: string,
+): number {
+  if (stacks <= 0 || curve.length === 0) return 1;
+  const index = Math.min(stacks, curve.length) - 1;
+  return param(`${paramPrefix}.${index + 1}`, curve[index]!);
+}
+
+/**
  * "Besieged" outgoing-damage multiplier (universal, not a kingdom passive):
  * the more enemies are locked onto `attacker` right now, the harder its own
- * attacks land. Each stack adds `BESIEGED_DAMAGE_PER_ATTACKER` — so a 1v1 is
- * neutral (×1) and being ganged up on scales the comeback. Computed live from
+ * attacks land. Exponential in the number of besiegers — ×1.25 against two,
+ * ×5 against a full table — so a 1v1 is neutral, ordinary two-way pressure is
+ * barely nudged, and a genuine pile-on arms the victim. Computed live from
  * targeting state, fed into the damage pipeline as an option.
  */
 export function besiegedDamageMultiplier(
   attacker: PlayerState,
   allPlayers: readonly PlayerState[],
 ): number {
-  const stacks = besiegedStacks(attacker, allPlayers);
-  return 1 + param("combat.besiegedDamagePerAttacker", COMBAT.BESIEGED_DAMAGE_PER_ATTACKER) * stacks;
+  return besiegedCurveAt(
+    COMBAT.BESIEGED_DAMAGE_CURVE,
+    besiegedStacks(attacker, allPlayers),
+    "combat.besiegedDamageMult",
+  );
 }
 
 /**
- * "Besieged" income MULTIPLIER (universal): each attacker beyond the first
- * raises production by a fraction of it — 25% normally, or 50% for the kingdom
- * whose passive is profiting from besiegers (Space's "Vast Universe"). Space's
- * own multiplier applies on top: being everyone's target is its whole economy.
+ * "Besieged" income MULTIPLIER (universal): gold production rises with the
+ * number of kingdoms currently targeting you, on the same exponential curve as
+ * the damage bonus — ×1.5 against two attackers, ×10 against a full table.
+ *
+ * The kingdom whose passive profits from besiegers (Space's "Vast Universe")
+ * runs the same curve with its BONUS multiplied by `BESIEGED_INCOME_BOOST_FACTOR`,
+ * so the two can never drift apart when the base curve is retuned. Space's own
+ * multiplier applies on top: being everyone's target is its whole economy.
  *
  * This scales with the economy the player has actually built, unlike the flat
  * top-up below, which is why it can still matter in the late game where a
@@ -179,21 +217,22 @@ export function besiegedIncomeMultiplier(
 ): number {
   const stacks = besiegedStacks(player, allPlayers);
   if (stacks <= 0) return 1;
+  const base = besiegedCurveAt(
+    COMBAT.BESIEGED_INCOME_CURVE,
+    stacks,
+    "combat.besiegedIncomeMult",
+  );
   // Keyed on the passive itself rather than on a kingdom id, so any future
-  // kingdom given "Vast Universe" inherits the boosted rate automatically.
+  // kingdom given "Vast Universe" inherits the boosted curve automatically.
   const profitsFromSiege = kingdomPassives(player).some(
     (p) => p.type === "incomeMultiplierPerBesieger",
   );
-  const pct = profitsFromSiege
-    ? param(
-        "combat.besiegedIncomePctPerAttackerBoosted",
-        COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED,
-      )
-    : param(
-        "combat.besiegedIncomePctPerAttacker",
-        COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER,
-      );
-  return 1 + pct * stacks;
+  if (!profitsFromSiege) return base;
+  const factor = param(
+    "combat.besiegedIncomeBoostFactor",
+    COMBAT.BESIEGED_INCOME_BOOST_FACTOR,
+  );
+  return 1 + factor * (base - 1);
 }
 
 /**

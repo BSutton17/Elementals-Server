@@ -59,54 +59,115 @@ export const COMBAT = {
   /** Damage multiplier applied on a critical strike. */
   BASE_CRIT_MULTIPLIER: 1.5,
   /**
-   * "Besieged" comeback bonus: when several kingdoms gang up on you, your own
-   * attacks hit harder. Each enemy *beyond the first* currently targeting you
-   * grants this fraction of extra outgoing attack damage — so a fair 1v1 is
-   * unbuffed, but being triple-teamed pays you back for the pressure.
+   * "Besieged" comeback bonus — the game's anti-bullying rule.
+   *
+   * WHY IT EXISTS: this is a party game, and almost nothing about an opponent
+   * is public. You cannot see their gold, their economy, or their upgrades
+   * (Air's "Bird's Eye View" is an ABILITY precisely because that information
+   * is otherwise hidden). So a table cannot identify "whoever is winning" and
+   * gang up on them strategically — it can only pick on someone, which is
+   * arbitrary and miserable for that player.
+   *
+   * Besieged makes picking on one kingdom expensive. Every enemy *beyond the
+   * first* currently targeting you raises both your outgoing damage and your
+   * gold production, so a fair 1v1 is untouched and a pile-on funds the
+   * victim's escape.
+   *
+   * THE CURVE IS EXPONENTIAL, NOT LINEAR, AND THAT IS THE WHOLE POINT. Two
+   * kingdoms aiming at you in a seven-player free-for-all is ordinary traffic,
+   * not bullying, so the first stack is a nudge. Six is the entire rest of the
+   * table, so the last stack is enormous. A linear ramp would leave the brake
+   * half-engaged during normal play and too weak when it is actually needed.
+   *
+   * Indexed by STACK COUNT (attackers beyond the first): index 0 = 1 stack =
+   * 2 attackers, index 5 = 6 stacks = 7 attackers = every other kingdom in a
+   * full lobby. 0 stacks is always ×1 and is not in the table.
+   *
+   * Both curves are geometric between their endpoints, so the shape stays
+   * smooth if the endpoints are retuned: each step multiplies by a constant
+   * ratio (damage ×1.32, income ×1.46). Keep them the same length as
+   * `BESIEGED_MAX_STACKS`.
    */
   /**
-   * Extra damage per attacker beyond the first. Deliberately steep: at the cap
-   * a kingdom the whole field has turned on hits for well over double, which is
-   * what makes ganging up genuinely dangerous rather than simply efficient.
+   * Outgoing attack damage while besieged: 2 attackers → ×1.25, rising to
+   * ×5 when all six of the others have turned on you.
    */
-  BESIEGED_DAMAGE_PER_ATTACKER: 0.4,
-  /** Cap on besieging attackers that count toward the bonus (beyond the first). */
+  BESIEGED_DAMAGE_CURVE: [1.25, 1.65, 2.18, 2.87, 3.79, 5] as readonly number[],
+  /** Cap on besieging attackers that count toward the bonus (beyond the first).
+   *  With 7 playing kingdoms, 6 stacks is literally everyone else. */
   BESIEGED_MAX_STACKS: 6,
   /**
    * Besieged also rallies your economy: each besieging attacker beyond the
    * first grants this many extra gold PER SECOND (your citizens work harder to
    * fund the defense). Uses the same capped stack count as the damage bonus.
    *
-   * Doubled from 2 alongside the multiplier below: the comeback is one
-   * mechanic, and halving one of its two halves would have left it uneven.
+   * Deliberately still FLAT and linear, unlike the multiplier below. It is the
+   * early-game half of the comeback: a player who has been picked on before
+   * building an economy has little for a multiplier to multiply, and this pays
+   * them anyway.
    */
   BESIEGED_INCOME_PER_ATTACKER: 4,
   /**
-   * "Besieged" income MULTIPLIER: each attacker beyond the first raises your
-   * gold production by this fraction. Unlike the flat top-up above this scales
-   * with the economy you have actually built, so it stays meaningful late.
+   * "Besieged" income MULTIPLIER: gold production while ganged up on. Unlike
+   * the flat top-up above, this scales with the economy you actually built, so
+   * it still matters late — which is when a comeback has to happen.
    *
-   * This is the game's comeback mechanic: the kingdom everyone has decided to
-   * kill earns faster while they do it, so being focused is survivable rather
-   * than simply terminal.
+   * 2 attackers → ×1.5, all six → ×10. The stack cap is what keeps this
+   * bounded rather than open-ended.
    *
-   * ⚠️ AT 1.0 EACH ATTACKER NOW DOUBLES INCOME, and the stack cap is what keeps
-   * that bounded: six besiegers is a 7x multiplier, not an open-ended one. The
-   * boosted rate below must stay strictly above this one or Space's "Vast
-   * Universe" loses the trait that defines it — `besieged.test.ts` asserts it.
+   * ⚠️ The boosted curve below is derived from this one and must stay strictly
+   * above it, or Space's "Vast Universe" loses the trait that defines it —
+   * `besieged.test.ts` asserts it.
    */
-  BESIEGED_INCOME_PCT_PER_ATTACKER: 1,
+  BESIEGED_INCOME_CURVE: [1.5, 2.19, 3.2, 4.68, 6.84, 10] as readonly number[],
   /**
-   * The same, doubled, for the kingdom whose passive is profiting from being
-   * ganged up on (Space's "Vast Universe"). It stacks with that passive's own
-   * multiplier on purpose — being everyone's target IS Space's economy.
+   * For the kingdom whose passive profits from being ganged up on (Space's
+   * "Vast Universe"), the income BONUS — the part above ×1 — is multiplied by
+   * this. At 2, "the same, doubled" is the relationship, exactly as it was
+   * before the curve replaced the old flat rate: ×1.5 becomes ×2, ×10 becomes
+   * ×19.
    *
-   * Moved 1 -> 2 with the rate above rather than being left behind: "the same,
-   * doubled" is the relationship this constant exists to express, and pinning
-   * it while the base rose to 1.0 would have quietly made Space's economy
-   * identical to everyone else's.
+   * Expressed as a factor on the bonus rather than as a second table so the two
+   * cannot drift apart when the base curve is retuned. Space's own passive
+   * multiplier still stacks on top — being everyone's target IS Space's economy.
    */
-  BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED: 2,
+  BESIEGED_INCOME_BOOST_FACTOR: 2,
+
+  // --- Persistent-siege escalation ----------------------------------------
+  //
+  // The exponential curve above is deliberately gentle at the bottom, because
+  // two kingdoms aiming at you at the same moment is usually coincidence. But
+  // coincidence does not LAST. If the same small group is still on you a minute
+  // later, that is a team, and the victim needs more than the two-attacker
+  // nudge.
+  //
+  // So a coalition that holds gets the victim extra besieged STAGES on top of
+  // the raw attacker count: one after `SIEGE_ESCALATION_TIER_SECONDS[0]`,
+  // another after `[1]`, and no more. Stages are the same units as the curve
+  // index, so an escalated 2-attacker siege pays what a 3-attacker one pays.
+  /**
+   * Seconds the SAME coalition must hold before each additional stage. Two
+   * entries = at most two extra stages, ever.
+   */
+  SIEGE_ESCALATION_TIER_SECONDS: [60, 180] as readonly number[],
+  /**
+   * Coalition sizes this applies to. Below the minimum there is no siege at
+   * all; above the maximum the whole table is already on one kingdom and the
+   * raw curve is doing the work — a deliberate team of five is just a
+   * free-for-all.
+   */
+  SIEGE_ESCALATION_MIN_MEMBERS: 2,
+  SIEGE_ESCALATION_MAX_MEMBERS: 4,
+  /**
+   * How long an attacker may look away before it counts as leaving.
+   *
+   * ⚠️ THIS IS THE ANTI-ABUSE RULE. Without it a coalition drops one member for
+   * a single tick every 59 seconds and the timer never fires. Inside the grace
+   * window the timer PAUSES rather than resets: leave for 5 s and come back and
+   * you resume from where you left off, so a brief dip costs the attackers the
+   * time they were away and nothing more.
+   */
+  SIEGE_ABSENCE_GRACE_SECONDS: 10,
 } as const;
 
 /**

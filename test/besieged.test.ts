@@ -18,7 +18,15 @@ import type { MatchPlayer } from "../src/match/types.js";
 import type { PlayerState } from "../src/match/playerState.js";
 
 // "Besieged" comeback: the more enemies are targeting you, the harder your own
-// attacks hit. A fair 1v1 is neutral; being ganged up on scales the bonus.
+// attacks hit and the faster you earn. A fair 1v1 is neutral; the bonus then
+// climbs EXPONENTIALLY, so two attackers is a nudge and a full table is a
+// transformation. Expectations are read from the curves rather than written in,
+// so retuning the mechanic never breaks the tests that prove it has a shape.
+
+/** The damage curve at `stacks` (1 stack = 2 attackers). */
+const dmgAt = (stacks: number) => COMBAT.BESIEGED_DAMAGE_CURVE[stacks - 1]!;
+/** The income curve at `stacks`. */
+const incAt = (stacks: number) => COMBAT.BESIEGED_INCOME_CURVE[stacks - 1]!;
 
 const player = (id: string, kingdomId: string): MatchPlayer => ({
   id,
@@ -58,16 +66,10 @@ test("each enemy beyond the first adds the per-attacker bonus", () => {
 
   selectTarget(match, a, me.id);
   selectTarget(match, b, me.id); // 2 besiegers -> 1 stack
-  assert.equal(
-    besiegedDamageMultiplier(me, all),
-    1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
-  );
+  assert.equal(besiegedDamageMultiplier(me, all), dmgAt(1));
 
   selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
-  assert.equal(
-    besiegedDamageMultiplier(me, all),
-    1 + 2 * COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
-  );
+  assert.equal(besiegedDamageMultiplier(me, all), dmgAt(2));
 });
 
 test("eliminated attackers and non-targeters don't count", () => {
@@ -79,10 +81,7 @@ test("eliminated attackers and non-targeters don't count", () => {
   selectTarget(match, b, me.id);
   selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
   b.eliminated = true; // down to 2 living besiegers -> 1 stack
-  assert.equal(
-    besiegedDamageMultiplier(me, all),
-    1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
-  );
+  assert.equal(besiegedDamageMultiplier(me, all), dmgAt(1));
 });
 
 test("the bonus is capped: extra besiegers past the cap add nothing", () => {
@@ -94,17 +93,41 @@ test("the bonus is capped: extra besiegers past the cap add nothing", () => {
 
   // Lower the cap to 2 stacks: the 7 besiegers clamp down to it.
   withParameterSet({ "combat.besiegedMaxStacks": 2 }, () => {
-    assert.equal(
-      besiegedDamageMultiplier(me, all),
-      1 + 2 * COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
-    );
+    assert.equal(besiegedDamageMultiplier(me, all), dmgAt(2));
   });
 
-  // At the real cap (6), a full 8-player gang lands exactly on it.
+  // At the real cap (6), a full gang lands exactly on it.
   assert.equal(
     besiegedDamageMultiplier(me, all),
-    1 + COMBAT.BESIEGED_MAX_STACKS * COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
+    dmgAt(COMBAT.BESIEGED_MAX_STACKS),
   );
+});
+
+test("the comeback curve is exponential, not linear", () => {
+  // The property that makes this an anti-bullying brake rather than an ambient
+  // tax on normal play: each additional besieger is worth MORE than the last.
+  // A linear ramp would satisfy "rises with attackers" and still be wrong.
+  for (const curve of [COMBAT.BESIEGED_DAMAGE_CURVE, COMBAT.BESIEGED_INCOME_CURVE]) {
+    assert.equal(
+      curve.length,
+      COMBAT.BESIEGED_MAX_STACKS,
+      "every reachable stack needs an entry",
+    );
+    for (let i = 1; i < curve.length; i++) {
+      assert.ok(curve[i]! > curve[i - 1]!, "the curve must rise");
+      if (i >= 2) {
+        const step = curve[i]! - curve[i - 1]!;
+        const previousStep = curve[i - 1]! - curve[i - 2]!;
+        assert.ok(
+          step > previousStep,
+          `stack ${i + 1} must be worth more than stack ${i} (got +${step} after +${previousStep})`,
+        );
+      }
+    }
+  }
+  // And the first stack stays gentle: two kingdoms aiming at you in a
+  // seven-player free-for-all is ordinary traffic, not a pile-on.
+  assert.ok(dmgAt(1) < 1.5, "two attackers should be a nudge, not a payday");
 });
 
 // --- Besieged defensive income ------------------------------------------------------
@@ -180,7 +203,7 @@ test("a besieged attacker's Water Ball hits harder end to end", () => {
   selectTarget(match, b, me.id);
   c.castle.hp = 10_000;
   activateAbility(match, me, WATER_BALL, { targetId: c.id, forceCrit: false });
-  const expected = Math.round(unbesieged * (1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER));
+  const expected = Math.round(unbesieged * dmgAt(1));
   assert.equal(c.castle.hp, 10_000 - expected);
   assert.ok(expected > unbesieged, "besieged really must hit harder, or this proves nothing");
 });
@@ -201,16 +224,14 @@ test("gold production scales by the besieged rate per attacker beyond the first"
   gangUpOn(me, [rest[0]!], match);
   assert.equal(besiegedIncomeMultiplier(me, all), 1);
 
-  // Each attacker past the first adds one step of the rate. Derived from the
-  // constant so retuning the mechanic doesn't break the test that proves it
-  // scales at all.
-  const step = COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER;
+  // Each attacker past the first steps up the curve. Read from the curve so
+  // retuning the mechanic doesn't break the test that proves it scales at all.
   gangUpOn(me, [rest[1]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step);
+  assert.equal(besiegedIncomeMultiplier(me, all), incAt(1));
   gangUpOn(me, [rest[2]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step * 2);
+  assert.equal(besiegedIncomeMultiplier(me, all), incAt(2));
   gangUpOn(me, [rest[3]!], match);
-  assert.equal(besiegedIncomeMultiplier(me, all), 1 + step * 3);
+  assert.equal(besiegedIncomeMultiplier(me, all), incAt(3));
 });
 
 test("Space profits twice as fast from being ganged up on", () => {
@@ -226,17 +247,23 @@ test("Space profits twice as fast from being ganged up on", () => {
   const space = gs.getPlayer("p0")!;
   const rest = [1, 2, 3, 4].map((i) => gs.getPlayer(`p${i}`)!);
 
-  const boosted = COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER_BOOSTED;
-  assert.ok(
-    boosted > COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER,
-    "the boosted rate should actually be better",
-  );
+  const factor = COMBAT.BESIEGED_INCOME_BOOST_FACTOR;
+  /** The boosted curve: the same curve with its BONUS multiplied. */
+  const boostedAt = (stacks: number) => 1 + factor * (incAt(stacks) - 1);
+  assert.ok(factor > 1, "the boosted curve should actually be better");
+  for (let s = 1; s <= COMBAT.BESIEGED_MAX_STACKS; s++) {
+    assert.ok(
+      boostedAt(s) > incAt(s),
+      `Vast Universe must beat the ordinary curve at ${s} stack(s)`,
+    );
+  }
+
   gangUpOn(space, [rest[0]!, rest[1]!], match);
-  // Two attackers = one stack, at "Vast Universe"'s doubled rate.
-  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1 + boosted);
+  // Two attackers = one stack, at "Vast Universe"'s doubled bonus.
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), boostedAt(1));
 
   gangUpOn(space, [rest[2]!], match);
-  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), 1 + boosted * 2);
+  assert.equal(besiegedIncomeMultiplier(space, gs.getPlayers()), boostedAt(2));
 });
 
 test("Dark runs the ORDINARY rate — Black Magic governs perks, not sieges", () => {
@@ -253,7 +280,7 @@ test("Dark runs the ORDINARY rate — Black Magic governs perks, not sieges", ()
   gangUpOn(dark, [rest[0]!, rest[1]!, rest[2]!], match);
   assert.equal(
     besiegedIncomeMultiplier(dark, gs.getPlayers()),
-    1 + COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER * 2, // two stacks at the plain rate
+    incAt(2), // two stacks on the plain curve
   );
 });
 
@@ -276,7 +303,7 @@ test("the besieged multiplier actually reaches the treasury", () => {
   assert.ok(besiegedRate > plainRate, "being ganged up on paid no better");
   // The flat top-up rides along on top, so this is a floor rather than equality.
   assert.ok(
-    besiegedRate >= plainRate * (1 + COMBAT.BESIEGED_INCOME_PCT_PER_ATTACKER * 2),
+    besiegedRate >= plainRate * incAt(2),
   );
 });
 
@@ -286,6 +313,6 @@ test("the damage bonus is untouched by the income change", () => {
   gangUpOn(me, [rest[0]!, rest[1]!], match);
   assert.equal(
     besiegedDamageMultiplier(me, match.gameState!.getPlayers()),
-    1 + COMBAT.BESIEGED_DAMAGE_PER_ATTACKER,
+    dmgAt(1),
   );
 })

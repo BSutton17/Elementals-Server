@@ -1,5 +1,6 @@
 import type { Match } from "../match/Match.js";
 import { applyPassiveIncome } from "./economy.js";
+import { tickSiegeWatches } from "./siege.js";
 import { tickChargingMeter } from "./passives.js";
 import { markHotAshTargeters } from "./hotAsh.js";
 import { regenerateIdleKingdoms } from "./idleRegen.js";
@@ -24,6 +25,11 @@ export function tickMatch(match: Match, tick: number): boolean {
   const state = match.gameState;
   if (!state) return false;
   state.tick = tick;
+
+  // Siege phase: work out who has been ganging up on whom, and for how long,
+  // BEFORE anything spends or earns. A persistent coalition raises the victim's
+  // besieged stages, which both income and outgoing damage read this tick.
+  tickSiegeWatches(match);
 
   // Economy phase: passive income.
   applyPassiveIncome(state);

@@ -1,11 +1,13 @@
-# player — Players
+# player — (folder unused)
 
-Player state and per-player logic. Owns:
+**There is no code here.** Per-player state lives in
+[`../match/playerState.ts`](../match/playerState.ts): castle (HP + shields),
+economy (citizens / currency / income), ability instances and levels, statuses,
+modifiers, target, and elimination bookkeeping.
 
-- The Player model: castle (HP + shields), economy (citizens/currency/income),
-  ability instances, statuses, combos, upgrades (see
-  [DATA_MODELS.md](../../../DATA_MODELS.md) → Player)
-- Connection association and reconnection bookkeeping (a Player persists across
-  socket reconnects within a match)
+Reconnection bookkeeping — a player keeps their seat across a socket drop — is
+in [`../net/ReconnectionManager.ts`](../net/ReconnectionManager.ts).
 
-Players belong to a `Match` and are acted upon by the `engine/`.
+This folder was planned separately and was folded into `match/`. Kept only so
+the path in older tickets resolves somewhere.
+See [DATA_MODELS.md](../../../DATA_MODELS.md) → Player.
