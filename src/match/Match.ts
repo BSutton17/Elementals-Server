@@ -2,11 +2,13 @@ import { MATCH } from "../data/balance.js";
 import { hasFullPerkSelection } from "../data/perks.js";
 import { createGameState, type GameState } from "./GameState.js";
 import type { MatchConfig } from "./matchConfig.js";
-import type { MatchPhase, MatchPlayer } from "./types.js";
+import type { MatchPhase, MatchPlayer, MatchVisibility } from "./types.js";
 
 export interface MatchOptions {
   /** Overrides the maximum player count (defaults to the balance value). */
   maxPlayers?: number;
+  /** Private (invite by code) or public (matchmade). Defaults to private. */
+  visibility?: MatchVisibility;
   /**
    * Match-level random number generator (ticket #203). EVERY gameplay dice
    * roll flows through this: crits, proc chances, redirections, deflections,
@@ -38,6 +40,30 @@ export class Match {
    */
   eliminatedSeeAllHealth = false;
 
+  /**
+   * How this room is entered.
+   *
+   * "private" is the original behaviour: someone creates a room, shares the
+   * code, and hosts it. "public" is matchmade — strangers are dropped in
+   * together, there is NO host, and the match starts on a timer rather than
+   * because a person pressed a button.
+   */
+  readonly visibility: MatchVisibility;
+
+  /**
+   * Wall-clock time this lobby starts itself, or null when nothing is counting.
+   *
+   * A DEADLINE rather than a remaining duration, and broadcast as one. Sending
+   * "18 seconds left" makes every client's countdown drift by its own latency
+   * and they end up disagreeing about when the match begins; an absolute
+   * timestamp is the same instant for everyone, which is why `match:started`
+   * already ships `serverTime` for clients to align against.
+   *
+   * Public rooms only — a private lobby waits for its host however long that
+   * takes.
+   */
+  startsAt: number | null = null;
+
   /** Current lifecycle phase. */
   phase: MatchPhase = "lobby";
   /** Player id of the host (room owner); null until assigned. */
@@ -66,6 +92,7 @@ export class Match {
     this.roomCode = roomCode;
     this.createdAt = Date.now();
     this.maxPlayers = options.maxPlayers ?? MATCH.MAX_PLAYERS;
+    this.visibility = options.visibility ?? "private";
     this.rng = options.rng ?? Math.random;
   }
 
@@ -105,6 +132,35 @@ export class Match {
 
   getPlayers(): MatchPlayer[] {
     return [...this.players.values()];
+  }
+
+  /**
+   * Human seats still on the roster, connected or not.
+   *
+   * ⚠️ DISCONNECTED SEATS COUNT, and that is the whole point of the
+   * distinction. A dropped player keeps a RESERVED seat for the reconnection
+   * grace (60 s), and their `connected` flag is false the entire time. Counting
+   * only connected people would let the empty-room reaper — which runs on a
+   * ten-second fuse — destroy a room fifty seconds before its last player's
+   * seat was even released, and they would reconnect into nothing.
+   *
+   * So this answers "could anyone still come back", and the roster is the
+   * authority on that: once grace expires, `removePlayerFromMatch` takes the
+   * seat away and this drops to zero for real.
+   */
+  humanCount(): number {
+    return this.getPlayers().filter((p) => p.isBot !== true).length;
+  }
+
+  /**
+   * Humans actually present right now.
+   *
+   * The other question, and it wants the other answer: a room should not be
+   * OFFERED to a matchmaker when everyone in it has dropped, and a player who
+   * is not there should not be extending the countdown for the ones who are.
+   */
+  connectedHumanCount(): number {
+    return this.getPlayers().filter((p) => p.isBot !== true && p.connected).length;
   }
 
   isHost(playerId: string): boolean {
@@ -182,6 +238,8 @@ export class Match {
     maxPlayers: number;
     maxActivePlayers: number;
     eliminatedSeeAllHealth: boolean;
+    visibility: MatchVisibility;
+    startsAt: number | null;
     tick: number;
     winnerId: string | null;
     config: MatchConfig | null;
@@ -196,6 +254,8 @@ export class Match {
       maxPlayers: this.maxPlayers,
       maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
       eliminatedSeeAllHealth: this.eliminatedSeeAllHealth,
+      visibility: this.visibility,
+      startsAt: this.startsAt,
       tick: this.tick,
       winnerId: this.winnerId,
       config: this.config,

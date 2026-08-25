@@ -5,6 +5,15 @@ import type { PerkId } from "../data/perks.js";
 export type MatchPhase = "lobby" | "starting" | "active" | "ended";
 
 /**
+ * How a room is entered.
+ *
+ * "private" is a room someone made and shared a code for: it has a host, and it
+ * starts when that host says so. "public" is matchmade — strangers are seated
+ * together, there is no host at all, and the room starts itself on a timer.
+ */
+export type MatchVisibility = "private" | "public";
+
+/**
  * A participant as tracked by the Match at the room/connection level.
  *
  * This is intentionally lightweight — the full gameplay Player model (castle,

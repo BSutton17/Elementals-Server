@@ -1,4 +1,5 @@
 import type { Server, Socket } from "socket.io";
+import type { PublicLobbyManager } from "./PublicLobbyManager.js";
 import type { GameLoopManager } from "../engine/GameLoopManager.js";
 import type { MatchManager } from "../match/MatchManager.js";
 import type { ReconnectionManager } from "./ReconnectionManager.js";
@@ -14,6 +15,8 @@ export interface ConnectionDeps {
   gameLoops: GameLoopManager;
   /** Reconnection grace period in ms before a disconnected player is removed. */
   graceMs: number;
+  /** Countdown, matchmaking and the empty-room reaper for public rooms. */
+  publicLobbies: PublicLobbyManager;
 }
 
 /**
@@ -22,13 +25,13 @@ export interface ConnectionDeps {
  * SOCKET_EVENTS.md for the full event contract.
  */
 export function registerConnectionHandlers(io: Server, deps: ConnectionDeps): void {
-  const { matches, reconnection, gameLoops, graceMs } = deps;
+  const { matches, reconnection, gameLoops, publicLobbies, graceMs } = deps;
 
   io.on("connection", (socket: Socket) => {
     logger.info("Client connected", { socketId: socket.id });
 
     registerSessionHandlers(socket);
-    registerLobbyHandlers(io, socket, { matches, reconnection, gameLoops });
+    registerLobbyHandlers(io, socket, { matches, reconnection, gameLoops, publicLobbies });
     registerMatchHandlers(io, socket, { matches });
 
     socket.on("error", (error: Error) => {
@@ -59,7 +62,9 @@ export function registerConnectionHandlers(io: Server, deps: ConnectionDeps): vo
         // Remove only if they never reconnected during the grace window.
         const current = matches.getMatch(roomCode)?.getPlayer(playerId);
         if (current && !current.connected) {
-          removePlayerFromMatch(io, matches, roomCode, playerId, "disconnected");
+          removePlayerFromMatch(io, matches, roomCode, playerId, "disconnected", (m) =>
+            publicLobbies.onRosterChanged(m),
+          );
           logger.info("Player removed after reconnect grace expired", {
             roomCode,
             playerId,

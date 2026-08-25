@@ -1,6 +1,6 @@
 import type { Match } from "./Match.js";
 import type { MatchConfig } from "./matchConfig.js";
-import type { MatchPlayer } from "./types.js";
+import type { MatchPlayer, MatchVisibility } from "./types.js";
 
 /**
  * The complete authoritative snapshot sent to a client to (re)build its view of
@@ -30,6 +30,16 @@ export interface MatchSnapshot {
   maxPlayers: number;
   maxActivePlayers: number;
   eliminatedSeeAllHealth: boolean;
+  /** "private" (code + host) or "public" (matchmade, hostless, self-starting). */
+  visibility: MatchVisibility;
+  /**
+   * When a public lobby launches itself, as an absolute timestamp, or null.
+   *
+   * A DEADLINE, not a remaining duration: "18 seconds left" drifts by each
+   * client's own latency and they end up disagreeing about when the match
+   * begins. `serverTime` above is what a client aligns this against.
+   */
+  startsAt: number | null;
   /** Ruleset snapshot once the match has started; null while in the lobby. */
   config: MatchConfig | null;
   /** The requesting player's own full record (null if not in the match). */
@@ -67,6 +77,8 @@ export function buildMatchSnapshot(
     maxPlayers: view.maxPlayers,
     maxActivePlayers: view.maxActivePlayers,
     eliminatedSeeAllHealth: view.eliminatedSeeAllHealth,
+    visibility: view.visibility,
+    startsAt: view.startsAt,
     config: view.config,
     you: match.getPlayer(forPlayerId) ?? null,
     players: view.players,

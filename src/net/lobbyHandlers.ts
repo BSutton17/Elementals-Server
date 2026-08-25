@@ -18,6 +18,8 @@ import {
 } from "../data/perks.js";
 import { MATCH } from "../data/balance.js";
 import { logger } from "../util/logger.js";
+import { SEARCH_SECONDS, type PublicLobbyManager } from "./PublicLobbyManager.js";
+import { seatEveryone } from "./publicLobby.js";
 
 /**
  * Names for AI seats, drawn from at random.
@@ -76,10 +78,55 @@ export function pickBotName(
   return free[Math.floor(roll() * free.length)]!;
 }
 
+/**
+ * A kingdom nobody in the room has taken, at random, or null when all sixteen
+ * are spoken for.
+ *
+ * Exported because a bot being added and a public lobby seating a player who
+ * never chose need the same answer, and two implementations of "which kingdoms
+ * are free" would drift apart.
+ */
+/**
+ * A random kingdom nobody in the lobby has taken, or null when all are gone.
+ *
+ * Random rather than first-free: taking them in roster order meant the first
+ * bot was always Water, the second always Fire, and a host adding three bots
+ * got the same three kingdoms every single game. Chosen from the free ones
+ * only, so it can never collide with a human's pick or another bot's.
+ */
+export function freeKingdom(match: ReturnType<MatchManager["getMatch"]>): string | null {
+  if (!match) return null;
+  const taken = new Set(match.getPlayers().map((p) => p.kingdomId).filter(Boolean));
+  const free = KINGDOM_IDS.filter((k) => !taken.has(k));
+  if (free.length === 0) return null;
+  return free[Math.floor(Math.random() * free.length)]!;
+}
+
+/**
+ * A random legal perk selection.
+ *
+ * Taking the first N off the canonical list gave every bot in every lobby the
+ * identical loadout, which is both dull to play against and quietly
+ * misleading: a room of three bots looked like three different opponents and
+ * played like one. Shuffled rather than sampled with repeats, so the draw is
+ * always distinct ids, and sized by the per-kingdom allowance (Kitsune gets
+ * three) rather than a constant.
+ */
+export function randomPerks(kingdomId: string): PerkId[] {
+  const pool = [...PERK_IDS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  }
+  return pool.slice(0, perksAllowedFor(kingdomId));
+}
+
 export interface LobbyDeps {
   matches: MatchManager;
   reconnection: ReconnectionManager;
   gameLoops: GameLoopManager;
+  /** Owns the countdown, the empty-room reaper and matchmaking. */
+  publicLobbies: PublicLobbyManager;
 }
 
 const MAX_NAME_LENGTH = 24;
@@ -120,9 +167,100 @@ export function registerLobbyHandlers(
   socket: Socket,
   deps: LobbyDeps,
 ): void {
-  const { matches, reconnection, gameLoops } = deps;
+  const { matches, reconnection, gameLoops, publicLobbies } = deps;
 
   // Host a new match: generate a unique room code and seat the caller as host.
+  /**
+   * Matchmaking: seat this socket in a public room, opening one if none turns up.
+   *
+   * ⚠️ THE WAIT IS FOR OTHER PEOPLE, NOT FOR A ROOM. Creating a room the instant
+   * nobody else has one would scatter arrivals one-per-lobby, and each would
+   * then sit through its own full countdown alone. Searching first means two
+   * players who queue within the window land in the SAME room. After
+   * SEARCH_SECONDS with nothing to join, this socket opens the room the next
+   * searcher will find.
+   *
+   * Node runs one request at a time, so "look, then create" cannot interleave
+   * with another searcher doing the same — no lock is needed here. That stops
+   * being true the day this runs as more than one process.
+   */
+  socket.on("lobby:joinPublic", (payload: { name?: unknown }, ack: unknown) => {
+    const name = normalizeName(payload?.name);
+    if (name === null) {
+      respond(ack, fail("INVALID_PAYLOAD", "A valid player name is required"));
+      return;
+    }
+    if (typeof socket.data.roomCode === "string") {
+      respond(ack, fail("ALREADY_IN_ROOM", "Already in a room"));
+      return;
+    }
+
+    const sessionId = ensureSessionId(socket);
+    const startedSearchAt = Date.now();
+
+    const seat = (match: ReturnType<MatchManager["getMatch"]>): boolean => {
+      if (!match) return false;
+      // Re-checked at the moment of seating, not when the room was picked: the
+      // search runs over several seconds and a room can fill or start inside it.
+      if (match.phase !== "lobby" || match.isFull()) return false;
+      if (match.activePlayerCount >= MATCH.MAX_ACTIVE_PLAYERS) return false;
+      if (match.hasPlayer(sessionId)) return false;
+
+      const player: MatchPlayer = {
+        id: sessionId,
+        socketId: socket.id,
+        name,
+        kingdomId: null,
+        perks: [],
+        ready: false,
+        connected: true,
+      };
+      match.addPlayer(player);
+      socket.data.playerId = player.id;
+      socket.data.roomCode = match.roomCode;
+      void socket.join(match.roomCode);
+
+      socket.to(match.roomCode).emit("lobby:playerJoined", { player });
+      broadcastLobbyUpdate(io, match);
+      publicLobbies.onRosterChanged(match);
+      publicLobbies.onHumanJoined(match);
+
+      respond(ack, ok({ match: buildMatchSnapshot(match, player.id), playerId: player.id }));
+      return true;
+    };
+
+    const existing = publicLobbies.findOpenRoom();
+    if (existing && seat(existing)) return;
+
+    // Nothing open. Poll while other searchers arrive or a room opens up, then
+    // open one ourselves. Polling rather than an event bus because the set of
+    // rooms changes from several handlers and a missed subscription would
+    // strand a player on the search screen indefinitely.
+    const poll = setInterval(() => {
+      if (socket.disconnected || typeof socket.data.roomCode === "string") {
+        clearInterval(poll);
+        return;
+      }
+      const found = publicLobbies.findOpenRoom();
+      if (found && seat(found)) {
+        clearInterval(poll);
+        return;
+      }
+      if (Date.now() - startedSearchAt >= SEARCH_SECONDS * 1000) {
+        clearInterval(poll);
+        const fresh = matches.createMatch({ visibility: "public" });
+        // A public room has NO host: `hostId` stays null, which makes every
+        // host-gated handler refuse for everyone rather than needing each one
+        // to learn about visibility.
+        if (!seat(fresh)) {
+          matches.removeMatch(fresh.roomCode);
+          respond(ack, fail("ROOM_NOT_FOUND", "Could not open a public room"));
+        }
+      }
+    }, 500);
+    (poll as { unref?: () => void }).unref?.();
+  });
+
   socket.on("lobby:create", (payload: { name?: unknown }, ack: unknown) => {
     const name = normalizeName(payload?.name);
     if (name === null) {
@@ -462,6 +600,16 @@ export function registerLobbyHandlers(
       respond(ack, fail("INVALID_INPUT", "eliminatedSeeAllHealth must be a boolean"));
       return;
     }
+    // ⚠️ NEVER IN A PUBLIC ROOM. Seeing every surviving kingdom's health after
+    // dying is a real advantage handed to someone who can no longer be punished
+    // for having it, and among friends it is also a coaching channel. Both are
+    // choices a room of people who know each other can make; neither is
+    // something a stranger should be able to switch on for you. Refused here as
+    // well as hidden in the lobby UI — a client is not a permission check.
+    if (match.visibility === "public") {
+      respond(ack, fail("NOT_ALLOWED", "That rule is fixed in public matches"));
+      return;
+    }
 
     match.eliminatedSeeAllHealth = payload.eliminatedSeeAllHealth;
     broadcastLobbyUpdate(io, match);
@@ -538,40 +686,7 @@ export function registerLobbyHandlers(
     return value === "easy" || value === "medium" || value === "hard";
   }
 
-  /**
-   * A random kingdom nobody in the lobby has taken, or null when all are gone.
-   *
-   * Random rather than first-free: taking them in roster order meant the first
-   * bot was always Water, the second always Fire, and a host adding three bots
-   * got the same three kingdoms every single game. Chosen from the free ones
-   * only, so it can never collide with a human's pick or another bot's.
-   */
-  function freeKingdom(match: ReturnType<MatchManager["getMatch"]>): string | null {
-    if (!match) return null;
-    const taken = new Set(match.getPlayers().map((p) => p.kingdomId).filter(Boolean));
-    const free = KINGDOM_IDS.filter((k) => !taken.has(k));
-    if (free.length === 0) return null;
-    return free[Math.floor(Math.random() * free.length)]!;
-  }
 
-  /**
-   * A random legal perk selection.
-   *
-   * Taking the first N off the canonical list gave every bot in every lobby the
-   * identical loadout, which is both dull to play against and quietly
-   * misleading: a room of three bots looked like three different opponents and
-   * played like one. Shuffled rather than sampled with repeats, so the draw is
-   * always distinct ids, and sized by the per-kingdom allowance (Kitsune gets
-   * three) rather than a constant.
-   */
-  function randomPerks(kingdomId: string): PerkId[] {
-    const pool = [...PERK_IDS];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
-    }
-    return pool.slice(0, perksAllowedFor(kingdomId));
-  }
 
   function freeBotName(match: ReturnType<MatchManager["getMatch"]>): string {
     return pickBotName(match?.getPlayers().map((p) => p.name) ?? []);
@@ -698,7 +813,9 @@ export function registerLobbyHandlers(
     socket.data.playerId = undefined;
     // Cancel any grace timer (defensive) and apply shared room cleanup.
     reconnection.cancel(roomCode, playerId);
-    removePlayerFromMatch(io, matches, roomCode, playerId, "left");
+    removePlayerFromMatch(io, matches, roomCode, playerId, "left", (m) =>
+      publicLobbies.onRosterChanged(m),
+    );
 
     logger.info("Player left match", { roomCode, playerId });
     respond(ack, ok({ left: true }));

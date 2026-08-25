@@ -34,6 +34,7 @@ export function removePlayerFromMatch(
   roomCode: string,
   playerId: string,
   reason: PlayerRemovalReason,
+  onRosterChanged?: (match: Match) => void,
 ): boolean {
   const match = matches.getMatch(roomCode);
   if (!match || !match.hasPlayer(playerId)) return false;
@@ -85,6 +86,10 @@ export function removePlayerFromMatch(
     // Thin semantic notification (who left, why) + canonical state broadcast.
     io.to(roomCode).emit("lobby:playerLeft", { playerId, reason });
     broadcastLobbyUpdate(io, match);
+    // A public room whose last person has gone starts its ten-second fuse here.
+    // Bots do not count as company: a room auto-filled with seven of them would
+    // otherwise look occupied forever and keep being offered to real players.
+    onRosterChanged?.(match);
   }
 
   return true;

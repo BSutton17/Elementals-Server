@@ -1,4 +1,7 @@
 import { createServer } from "node:http";
+import { PublicLobbyManager } from "./net/PublicLobbyManager.js";
+import { launchPublicMatch } from "./net/publicLobby.js";
+import { broadcastLobbyUpdate } from "./net/lobbyRoom.js";
 import { Server } from "socket.io";
 import { config } from "./config/index.js";
 import { GameLoopManager } from "./engine/GameLoopManager.js";
@@ -36,10 +39,23 @@ const gameLoops = new GameLoopManager(matches, {
   syncEvents: (match, events) => broadcastGameEvents(io, match, events),
   onEnd: (match) => broadcastMatchEnded(io, match),
 });
+// Public rooms have no host, so the server owns the two jobs a host would
+// otherwise do: deciding when to start, and closing the room afterwards.
+const publicLobbies = new PublicLobbyManager(matches, {
+  startMatch: (match) => launchPublicMatch(io, gameLoops, match),
+  broadcast: (match) => broadcastLobbyUpdate(io, match),
+  closeRoom: (roomCode) => {
+    gameLoops.stop(roomCode);
+    matches.removeMatch(roomCode);
+    logger.info("Closed empty public room", { roomCode });
+  },
+});
+
 registerConnectionHandlers(io, {
   matches,
   reconnection,
   gameLoops,
+  publicLobbies,
   graceMs: config.reconnect.graceMs,
 });
 

@@ -116,6 +116,10 @@ test("serializes to a plain client-facing view", () => {
     maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
     // Host rule, off until the host turns it on.
     eliminatedSeeAllHealth: false,
+    // Rooms are private unless matchmaking made them, and only a public room
+    // ever counts down to its own start.
+    visibility: "private",
+    startsAt: null,
     tick: 0,
     winnerId: null,
     config: null,
