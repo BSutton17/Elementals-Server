@@ -105,7 +105,7 @@ export const SUPERNOVA: AbilityDefinition = {
   kind: "attack",
   cost: 368,
   unlockCost: 184,
-  cooldownTicks: Math.round(8.1 * TICK.RATE), // 13 s
+  cooldownTicks: Math.round(20 * TICK.RATE), // 13 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
@@ -162,7 +162,7 @@ export const ORIONS_BELT: AbilityDefinition = {
   kind: "utility",
   cost: 200,
   unlockCost: 100,
-  cooldownTicks: 20 * TICK.RATE, // 20 s
+  cooldownTicks: 30 * TICK.RATE, // 20 s
   targeting: { mode: "self" },
   effects: [
     {
@@ -196,7 +196,7 @@ export const BLACK_HOLE: AbilityDefinition = {
   id: "blackHole",
   name: "Black Hole",
   kind: "ultimate",
-  cost: 546,
+  cost: 750,
   unlockCost: 273,
   cooldownTicks: Math.round(37.85 * TICK.RATE), // 54 s
   targeting: { mode: "self" },

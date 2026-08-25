@@ -171,7 +171,7 @@ export const UNLIMITED_RAGE: AbilityDefinition = {
     },
   ],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 1800 }] } },
+    { level: 1, cost: 400, changes: { effectParams: [{ amount: 1800 }] } },
     {
       level: 2,
       cost: 1500,
