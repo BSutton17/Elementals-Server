@@ -217,20 +217,20 @@ export const LOVE_GALORE: AbilityDefinition = {
   id: "loveGalore",
   name: "Love Galore",
   kind: "ultimate",
-  cost: 800,
-  unlockCost: 400,
-  cooldownTicks: 180 * TICK.RATE, // 180 s
+  cost: 500,
+  unlockCost: 300,
+  cooldownTicks: 120 * TICK.RATE, // 120 s
   targeting: { mode: "self" },
   effects: [
-    { type: "status", target: "self", params: { status: LOVE_GALORE_STATUS, durationTicks: 15 * TICK.RATE, revealHealThreshold: 1500 } }, // 15 s stealth / 1500 heal
+    { type: "status", target: "self", params: { status: LOVE_GALORE_STATUS, durationTicks: 15 * TICK.RATE, revealHealThreshold: 2500 } }, // 15 s stealth / 1500 heal
   ],
   upgradePath: [
     // Lv2: each window lasts longer (15 s -> 20 s) and it stays hidden until
     // more healing has been banked (1500 -> 2000).
-    { level: 1, cost: 1000, changes: { effectParams: [{ durationTicks: 20 * TICK.RATE, revealHealThreshold: 2000 }] } },
+    { level: 1, cost: 600, changes: { effectParams: [{ durationTicks: 20 * TICK.RATE, revealHealThreshold: 2000 }] } },
       {
       level: 2,
-      cost: 1500,
+      cost: 800,
       changes: {
         cooldownTicks: Math.round(90 * TICK.RATE * 0.85), // 76.5 s
         costMultiplier: 0.85,

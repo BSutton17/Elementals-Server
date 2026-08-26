@@ -300,12 +300,12 @@ export const CAPRICE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1200,
+      cost: 600,
       changes: { effectParams: [{ durationTicks: 32 * TICK.RATE }] },
     },
     {
       level: 2,
-      cost: 1600,
+      cost: 800,
       changes: {
         cooldownTicks: 1224,
         costMultiplier: 0.85,

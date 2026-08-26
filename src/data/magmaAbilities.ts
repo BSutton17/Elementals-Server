@@ -220,7 +220,7 @@ export const THE_END_OF_THE_WORLD: AbilityDefinition = {
   id: "theEndOfTheWorld",
   name: "The End of the World",
   kind: "ultimate",
-  cost: 1255,
+  cost: 1000,
   unlockCost: 628,
   cooldownTicks: Math.round(55.65 * TICK.RATE), // 92.75 s
   targeting: { mode: "self" },

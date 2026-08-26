@@ -241,8 +241,8 @@ export const BACK_TO_THE_FUTURE: AbilityDefinition = {
   id: "backToTheFuture",
   name: "Back to the Future",
   kind: "ultimate",
-  cost: 900,
-  unlockCost: 450,
+  cost: 400,
+  unlockCost: 250,
   cooldownTicks: 90 * TICK.RATE, // 90 s
   targeting: { mode: "allEnemies" },
   effects: [
@@ -255,13 +255,13 @@ export const BACK_TO_THE_FUTURE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 500,
       // Lv2: the rewind lasts longer (10 s -> 14 s).
       changes: { effectParams: [{ durationTicks: 14 * TICK.RATE }] },
     },
     {
       level: 2,
-      cost: 1500,
+      cost: 700,
       changes: {
         cooldownTicks: Math.round(90 * TICK.RATE * 0.85), // 76.5 s
         costMultiplier: 0.85,

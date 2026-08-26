@@ -390,14 +390,14 @@ export const BLAZING_DETERMINATION: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 350,
+      cost: 750,
       changes: {
         effectParams: [{ status: BLAZING_DETERMINATION_STATUS_LV2 }],
       },
     },
     {
       level: 2,
-      cost: 450,
+      cost: 850,
       changes: {
         cooldownTicks: 15 * TICK.RATE, // 15 s
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

@@ -174,7 +174,7 @@ export const UNLIMITED_RAGE: AbilityDefinition = {
     { level: 1, cost: 400, changes: { effectParams: [{ amount: 1800 }] } },
     {
       level: 2,
-      cost: 1500,
+      cost: 600,
       changes: {
         cooldownTicks: Math.round(60 * TICK.RATE * 0.85),
         costMultiplier: 0.85,
@@ -293,7 +293,7 @@ export const INFINITUM_TENEBRAE: AbilityDefinition = {
     // Lv2: the dark lasts longer (30 s -> 40 s).
     {
       level: 1,
-      cost: 1200,
+      cost: 700,
       changes: {
         effectParams: [
           { status: TENEBRAE_STATUS, durationTicks: 40 * TICK.RATE },
@@ -302,7 +302,7 @@ export const INFINITUM_TENEBRAE: AbilityDefinition = {
     },
     {
       level: 2,
-      cost: 1600,
+      cost: 900,
       changes: {
         cooldownTicks: Math.round(120 * TICK.RATE * 0.85),
         costMultiplier: 0.85,

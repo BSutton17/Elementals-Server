@@ -335,10 +335,10 @@ export const LIGHT_SHOW: AbilityDefinition = {
     },
   ],
   upgradePath: [
-    { level: 1, cost: 1000, changes: { effectParams: [{ amount: 2500 }] } },
+    { level: 1, cost: 700, changes: { effectParams: [{ amount: 2500 }] } },
     {
       level: 2,
-      cost: 500,
+      cost: 900,
       changes: {
         cooldownTicks: 817, // 45 s -> 40.85 s
         costMultiplier: 0.85,

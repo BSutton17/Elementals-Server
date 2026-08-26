@@ -278,7 +278,7 @@ export const DUST_BUNNIES: AbilityDefinition = {
   id: "dustBunnies",
   name: "Dust Bunnies",
   kind: "ultimate",
-  cost: 300,
+  cost: 450,
   unlockCost: 150,
   cooldownTicks: Math.round(64.85 * TICK.RATE), // 93.25 s
   targeting: { mode: "allEnemies" },
@@ -293,14 +293,14 @@ export const DUST_BUNNIES: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 600,
       changes: {
         effectParams: [{ status: DUST_BUNNIES_STATUS_LV2 }], // 10 -> 15 per tick
       },
     },
     {
       level: 2,
-      cost: 1500,
+      cost: 800,
       changes: {
         cooldownTicks: 1064, // 1530 ticks (76.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

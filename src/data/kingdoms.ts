@@ -334,7 +334,7 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
   dark: [
     // "Night terrors" — attacking Dark risks a blackout: the attacker's own
     // screen goes dark for a few seconds.
-    { type: "retaliation", chance: 0.2, durationTicks: DARKENED_DURATION, status: DARKENED_STATUS },
+    { type: "retaliation", chance: 0.15, durationTicks: DARKENED_DURATION, status: DARKENED_STATUS },
     // "Black Magic" — whichever two perks Dark picked run at their boosted
     // magnitudes (see `PERKS.*_BOOSTED`).
     { type: "boostedPerks" },

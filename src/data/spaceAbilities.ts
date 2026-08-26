@@ -147,13 +147,13 @@ export const ORIONS_BELT_STATUS: StatusEffectDefinition = {
   name: "Orion's Belt",
   category: "buff",
   stacking: "refresh",
-  incomingMissChance: 0.5, // 50% of incoming attacks whiff
+  incomingMissChance: 0.45, // 45% of incoming attacks whiff
   missChargesSupernova: 50, // each whiff = a full level's worth of charge
 };
 
 /**
  * Orion's Belt (utility): surrounds Space with a belt that gives all incoming
- * attacks a 50% chance to miss for 10 seconds; every missed attack charges the
+ * attacks a 45% chance to miss for 10 seconds; every missed attack charges the
  * Supernova meter — so being attacked while belted fuels the counter-punch.
  */
 export const ORIONS_BELT: AbilityDefinition = {
@@ -197,7 +197,7 @@ export const BLACK_HOLE: AbilityDefinition = {
   name: "Black Hole",
   kind: "ultimate",
   cost: 750,
-  unlockCost: 273,
+  unlockCost: 473,
   cooldownTicks: Math.round(37.85 * TICK.RATE), // 54 s
   targeting: { mode: "self" },
   effects: [

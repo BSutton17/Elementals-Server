@@ -336,7 +336,7 @@ export const SLOT_MACHINE: AbilityDefinition = {
   id: "slotMachine",
   name: "Slot Machine",
   kind: "ultimate",
-  cost: 903,
+  cost: 503,
   unlockCost: 452,
   cooldownTicks: Math.round(55.8 * TICK.RATE), // 93 s
   targeting: { mode: "allEnemies" },
@@ -344,12 +344,12 @@ export const SLOT_MACHINE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1200,
+      cost: 600,
       changes: { costMultiplier: 0.9 },
     },
     {
       level: 2,
-      cost: 1600,
+      cost: 800,
       changes: {
         cooldownTicks: 1004,
         costMultiplier: 0.85,

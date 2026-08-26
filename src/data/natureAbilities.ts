@@ -317,7 +317,7 @@ export const TOXIC_GAS: AbilityDefinition = {
   id: "toxicGas",
   name: "Toxic Gas",
   kind: "ultimate",
-  cost: 979,
+  cost: 479,
   unlockCost: 490,
   cooldownTicks: Math.round(104.65 * TICK.RATE), // 74.75 s
   targeting: { mode: "allEnemies" },
@@ -336,7 +336,7 @@ export const TOXIC_GAS: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 500,
       changes: {
         effectParams: [
           { durationTicks: 13 * TICK.RATE }, // poison 10 s -> 13 s
@@ -346,7 +346,7 @@ export const TOXIC_GAS: AbilityDefinition = {
     },
     {
       level: 2,
-      cost: 1500,
+      cost: 700,
       changes: {
         cooldownTicks: Math.round(90 * TICK.RATE * 0.85), // 1530 ticks (76.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)

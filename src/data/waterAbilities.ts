@@ -263,8 +263,8 @@ export const RIPTIDE: AbilityDefinition = {
   id: "riptide",
   name: "Riptide",
   kind: "ultimate",
-  cost: 1345,
-  unlockCost: 673,
+  cost: 1000,
+  unlockCost: 573,
   cooldownTicks: Math.round(231.65 * TICK.RATE), // 192 s
   targeting: { mode: "self" },
   effects: [
@@ -274,7 +274,7 @@ export const RIPTIDE: AbilityDefinition = {
   upgradePath: [
     {
       level: 1,
-      cost: 1000,
+      cost: 1200,
       changes: {
         effectParams: [
           { percentMaxHp: 0.70 },
