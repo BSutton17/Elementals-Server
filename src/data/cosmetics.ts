@@ -34,6 +34,29 @@ export type CosmeticSlot = "castle" | "shield" | "nameplate";
  * invalidating anything already owned.
  */
 export interface Paint {
+  /**
+   * Marks a skin whose appearance is rolled per match. The server fills in
+   * `variantSeed` below; the client decides what the seed means.
+   */
+  varies?: boolean;
+  /**
+   * A stable number for one castle in one match, derived from the room code
+   * and the player id.
+   *
+   * ⚠️ THE SERVER HAS TO PICK THIS, NOT THE CLIENT. Seven people are looking at
+   * the same castle, and a seed rolled locally would give each of them a
+   * different one — the kind of desync nobody reports as a bug because every
+   * player's screen looks internally consistent. Deriving it from ids the
+   * server already has costs nothing and needs no storage, the same way levels
+   * and quests are derived rather than stored.
+   */
+  variantSeed?: number;
+  /**
+   * Shrinks the castle body, anchored at its footing, so a decoration can
+   * dwarf it. Cosmetic only, and used by exactly one skin — see the warning in
+   * the client's CastleSprite before reaching for it again.
+   */
+  scale?: number
   /** Main fill. Defaults to the kingdom's primary. */
   fill?: string;
   /** Silhouette stroke. */
@@ -502,11 +525,112 @@ const PAID: CosmeticItem[] = [
     price: RARITY_PRICE.legendary.castle,
     paint: {
       // Dark, so the canopy and the lit roots are what the eye goes to.
-      gradient: { from: "#4e8b5f", to: "#16301f" },
-      accent: "#c8ffb0",
+      // Brighter than the rest of Nature on purpose: at this size, against
+      // dark bark, a dim castle is an invisible castle.
+      gradient: { from: "#a5f0bc", to: "#3f8a5c" },
+      accent: "#eaffd8",
       outline: "#0a1c12",
       strokeScale: 1.15,
+      // The tree is the subject; the fortress is the thing it dwarfs.
+      scale: 0.62,
       decor: "nature.worldtree",
+    },
+  },
+  {
+    id: "castle.time.clockwork",
+    slot: "castle",
+    kingdomId: "time",
+    name: "Clockwork Castle",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      fill: "#7a5a33",
+      accent: "#d9c39a",
+      outline: "#221507",
+      decor: "time.clockwork",
+    },
+  },
+  {
+    id: "castle.time.chrono",
+    slot: "castle",
+    kingdomId: "time",
+    name: "Chrono Tower",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Mid-tone: the two ages painted over it have to be the thing you see,
+      // and both a pale stone and a lit panel need somewhere to sit.
+      gradient: { from: "#9c7a4c", to: "#3d2b1a" },
+      accent: "#d9c39a",
+      outline: "#221507",
+      strokeScale: 1.05,
+      decor: "time.chrono",
+    },
+  },
+  {
+    id: "castle.time.rift",
+    slot: "castle",
+    kingdomId: "time",
+    name: "Time Rift Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Mid-tone: three eras are painted over this and all of them need
+      // somewhere to sit.
+      gradient: { from: "#9c7a4c", to: "#43301c" },
+      accent: "#d9c39a",
+      outline: "#221507",
+      strokeScale: 1.05,
+      // Three eras out of six, rolled per match. See Paint.varies.
+      varies: true,
+      decor: "time.rift",
+    },
+  },
+  {
+    id: "castle.time.eternal",
+    slot: "castle",
+    kingdomId: "time",
+    name: "Eternal Citadel",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Dark, so the gold movement around it is what the eye goes to.
+      gradient: { from: "#a98a4e", to: "#2a1c0c" },
+      accent: "#f0c94a",
+      outline: "#160d03",
+      strokeScale: 1.15,
+      decor: "time.eternal",
+    },
+  },
+  {
+    id: "castle.space.starpattern",
+    slot: "castle",
+    kingdomId: "space",
+    name: "Star Pattern Castle",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      fill: "#3b2470",
+      accent: "#8fb8ff",
+      outline: "#080418",
+      decor: "space.starpattern",
+    },
+  },
+  {
+    id: "castle.space.spaceship",
+    slot: "castle",
+    kingdomId: "space",
+    name: "Spaceship Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Hull grey-violet: Space absorbs where Electricity glows, and the two
+      // must not be mistaken for each other at 60% scale.
+      gradient: { from: "#4a4180", to: "#140d2c" },
+      accent: "#7fe3ff",
+      outline: "#080418",
+      strokeScale: 1.1,
+      decor: "space.spaceship",
     },
   },
 ];
@@ -532,6 +656,72 @@ export function defaultCosmetic(
 }
 
 /** Everything buyable — excludes the defaults, which nobody purchases. */
+/**
+ * Which castle skin a bot wears, or undefined for the kingdom's default.
+ *
+ * A bot only dresses up if its kingdom has a FULL set — at least one uncommon,
+ * two rares and one legendary. Kingdoms are being filled in one at a time, and
+ * a half-finished one would otherwise show its single skin on most of its bots,
+ * which reads as "every bot owns the same thing" rather than as variety.
+ *
+ * The odds: 25% default, 25% uncommon, 40% rare, 10% legendary — and within a
+ * tier the chance is split evenly, so two rares are 20% each.
+ *
+ * ⚠️ THE CALLER MUST PASS A SEED THAT IS THE SAME ON EVERY CLIENT. This is
+ * called while building the snapshot each player receives, so a `Math.random()`
+ * here would give seven people seven different bots. See `paintFor`.
+ */
+/**
+ * Murmur3's finalizer. Not a hash of anything — it takes one number and stirs
+ * it until neighbouring inputs give unrelated outputs, which is what makes
+ * `% 100` on the result actually uniform.
+ */
+function mix32(n: number): number {
+  let h = n >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+export function botCastleFor(
+  kingdomId: string,
+  seed: number,
+): CosmeticItem | undefined {
+  const byRarity = (r: Rarity) =>
+    PAID.filter(
+      (c) => c.slot === "castle" && c.kingdomId === kingdomId && c.rarity === r,
+    );
+  const uncommon = byRarity("uncommon");
+  const rare = byRarity("rare");
+  const legendary = byRarity("legendary");
+  if (uncommon.length < 1 || rare.length < 2 || legendary.length < 1) return undefined;
+
+  // Two independent draws off the one seed: the tier, then which skin in it.
+  // Reusing the same number for both would tie the choice of skin to the tier
+  // it landed in, and the rare pool would only ever show its first entry.
+  //
+  // ⚠️ A LINEAR CONGRUENTIAL STEP IS NOT ENOUGH HERE. The first version used
+  // one, and over a run of nearby seeds the rare tier came out at 42% instead
+  // of 40 — an LCG barely changes the high bits between consecutive inputs, so
+  // taking it mod 100 inherits the input's own pattern. Real seeds are FNV
+  // hashes of ids and would probably have masked it, which is exactly why it
+  // is worth not relying on: a distribution that is only correct for
+  // well-distributed inputs will drift the moment someone feeds it something
+  // else. `mix32` avalanches, so every bit of the output depends on every bit
+  // of the input.
+  const tierRoll = mix32(seed) % 100;
+  const pickRoll = mix32(seed ^ 0x5bf03635);
+
+  const pick = (pool: CosmeticItem[]) => pool[pickRoll % pool.length];
+  if (tierRoll < 25) return undefined; // default
+  if (tierRoll < 50) return pick(uncommon);
+  if (tierRoll < 90) return pick(rare);
+  return pick(legendary);
+}
+
 export function purchasable(): CosmeticItem[] {
   return COSMETICS.filter((item) => !item.isDefault);
 }

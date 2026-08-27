@@ -1,7 +1,7 @@
 import type { Match } from "./Match.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer, MatchVisibility } from "./types.js";
-import { cosmeticById } from "../data/cosmetics.js";
+import { botCastleFor, cosmeticById } from "../data/cosmetics.js";
 import type { Paint } from "../data/cosmetics.js";
 
 /**
@@ -74,7 +74,7 @@ export function buildMatchSnapshot(
   // it. Cheap: a map lookup per seat over a table already in memory.
   const players = view.players.map((player) =>
     player.kingdomId
-      ? { ...player, castlePaint: paintFor(player, player.kingdomId) }
+      ? { ...player, castlePaint: paintFor(player, player.kingdomId, view.roomCode) }
       : player,
   );
   return {
@@ -104,11 +104,43 @@ export function buildMatchSnapshot(
  * handshake), so switching kingdom in the lobby picks up that kingdom's skin
  * with no further reads.
  */
-function paintFor(player: MatchPlayer, kingdomId: string): Paint | undefined {
-  const itemId = player.loadout?.[kingdomId]?.castle;
-  if (!itemId) return undefined;
-  const item = cosmeticById(itemId);
-  // A skin that no longer exists renders as the default rather than as nothing:
-  // retiring an item must never blank somebody's castle mid-match.
-  return item?.paint;
+function paintFor(
+  player: MatchPlayer,
+  kingdomId: string,
+  roomCode: string,
+): Paint | undefined {
+  // Same room and same player: one number, used for anything about this seat
+  // that has to look identical on every screen.
+  const seed = seedFrom(`${roomCode}:${player.id}`);
+
+  // ⚠️ BOTS ROLL FOR A SKIN; PEOPLE WEAR WHAT THEY EQUIPPED. A bot has no
+  // loadout, so without this every bot in the game is the default castle and a
+  // lobby of them looks like a product page. It only fires for kingdoms with a
+  // full set — see botCastleFor.
+  const item = player.isBot
+    ? botCastleFor(kingdomId, seed)
+    : (() => {
+        const itemId = player.loadout?.[kingdomId]?.castle;
+        // A skin that no longer exists renders as the default rather than as
+        // nothing: retiring an item must never blank somebody's castle
+        // mid-match.
+        return itemId ? cosmeticById(itemId) : undefined;
+      })();
+
+  if (!item?.paint?.varies) return item?.paint;
+  return { ...item.paint, variantSeed: seed };
+}
+
+/**
+ * A small stable hash. FNV-1a: not cryptographic and does not need to be — it
+ * only has to give the same answer on every machine, which `Math.random` and
+ * anything involving `Date` do not.
+ */
+function seedFrom(key: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
 }
