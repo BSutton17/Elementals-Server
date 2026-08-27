@@ -478,6 +478,37 @@ const PAID: CosmeticItem[] = [
       decor: "nature.treehouse",
     },
   },
+  {
+    id: "castle.nature.mushroom",
+    slot: "castle",
+    kingdomId: "nature",
+    name: "Mushroom Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      gradient: { from: "#6fae7a", to: "#2b4f38" },
+      accent: "#f0e7d2",
+      outline: "#12281c",
+      strokeScale: 1.05,
+      decor: "nature.mushroom",
+    },
+  },
+  {
+    id: "castle.nature.worldtree",
+    slot: "castle",
+    kingdomId: "nature",
+    name: "World Tree",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Dark, so the canopy and the lit roots are what the eye goes to.
+      gradient: { from: "#4e8b5f", to: "#16301f" },
+      accent: "#c8ffb0",
+      outline: "#0a1c12",
+      strokeScale: 1.15,
+      decor: "nature.worldtree",
+    },
+  },
 ];
 
 export const COSMETICS: CosmeticItem[] = [
