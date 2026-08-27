@@ -1,5 +1,7 @@
 import type { Server } from "socket.io";
 import type { Match } from "../match/Match.js";
+import { buildMatchResult } from "../match/matchResult.js";
+import { recordMatchResult } from "../db/matches.js";
 import type { PlayerState } from "../match/playerState.js";
 import type { GameplayEvent } from "../engine/events.js";
 import {
@@ -155,7 +157,16 @@ export function broadcastGameState(io: Server, match: Match): void {
  * or null for a draw (no survivors). The client flips to the game-over screen.
  */
 export function broadcastMatchEnded(io: Server, match: Match): void {
-  io.to(match.roomCode).emit("match:ended", { winnerId: match.winnerId });
+  // `winnerId` is kept alongside the full result so an older client still
+  // understands the one fact it was built to read.
+  const result = buildMatchResult(match);
+  io.to(match.roomCode).emit("match:ended", { winnerId: match.winnerId, result });
+
+  // ⚠️ NOT awaited, and that is the point. The players already have their
+  // result on screen; persisting it is bookkeeping that happens afterwards.
+  // Awaiting a database here would let a slow Postgres hold up the end of every
+  // match, and an unreachable one break it entirely.
+  if (result) void recordMatchResult(result);
 }
 
 /**

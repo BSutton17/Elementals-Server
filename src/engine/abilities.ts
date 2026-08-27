@@ -691,6 +691,9 @@ export function activateAbility(
   options: ActivateOptions = {},
 ): AbilityActivation {
   const result = activateAbilityInner(match, caster, ability, options);
+  // One wrapper wraps every cast, so counting here catches all of them - and
+  // only the ones that actually happened. A refused cast bought nothing.
+  if (result.ok) caster.stats.abilitiesCast += 1;
   if (!result.ok) {
     const bus = match.gameState?.events;
     if (bus?.enabled) {
@@ -2938,12 +2941,26 @@ export function collapseBlackHoles(match: Match): void {
   }
 }
 
-/** Restores castle HP, clamped to max. Returns the HP actually restored. */
-export function healCastle(player: PlayerState, amount: number): number {
+/**
+ * Restores castle HP, clamped to max. Returns the HP actually restored.
+ *
+ * `healer` defaults to the player being healed, which covers lifesteal and every
+ * self-heal. Pass it explicitly when someone else did the healing (Love's "Feel
+ * the love!"), so the credit lands on the right scoreboard.
+ */
+export function healCastle(
+  player: PlayerState,
+  amount: number,
+  healer: PlayerState = player,
+): number {
   if (amount <= 0) return 0;
   const before = player.castle.hp;
   player.castle.hp = Math.min(player.castle.maxHp, before + amount);
-  return player.castle.hp - before;
+  // The RESTORED amount, not the attempted one: topping up a full castle heals
+  // nothing and should not read as though it did.
+  const restored = player.castle.hp - before;
+  healer.stats.healingDone += restored;
+  return restored;
 }
 
 /**

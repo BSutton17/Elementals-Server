@@ -28,6 +28,7 @@ export function canAfford(player: PlayerState, amount: number): boolean {
 export function earn(player: PlayerState, amount: number): void {
   if (amount <= 0) return;
   player.economy.currency = roundMoney(player.economy.currency + amount);
+  player.stats.goldEarned += amount;
 }
 
 /**
@@ -38,5 +39,7 @@ export function spend(player: PlayerState, amount: number): boolean {
   if (amount <= 0) return true;
   if (!canAfford(player, amount)) return false;
   player.economy.currency = roundMoney(player.economy.currency - amount);
+  // Only a successful spend counts - a refused purchase bought nothing.
+  player.stats.goldSpent += amount;
   return true;
 }

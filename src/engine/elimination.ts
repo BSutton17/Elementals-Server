@@ -37,6 +37,14 @@ export function eliminatePlayer(
   player.eliminated = true;
   player.eliminatedAtTick = tick;
 
+  // Credit the killing blow to whoever last landed damage. A kingdom finished
+  // off by a burn credits whoever last hit them directly, which is the fairest
+  // reading available - the burn was theirs to escape.
+  if (player.lastDamagedById) {
+    const killer = state.getPlayer(player.lastDamagedById);
+    if (killer && killer.id !== player.id) killer.stats.killsCredited += 1;
+  }
+
   // Out of active gameplay: nothing pending may keep acting for or on them.
   player.statuses = [];
   player.modifiers = [];

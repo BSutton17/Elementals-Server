@@ -286,6 +286,10 @@ export function resolveDamage(
   // everyone; only a kingdom with the passive actually accrues. Credited on
   // what LANDED, so a cocooned share feeds nobody's meter.
   creditAncientMemory(attacker, final);
+  // Same place, same knowledge: this is where the attacker is known and the
+  // final post-mitigation figure exists.
+  attacker.stats.damageDealt += Math.max(0, final);
+  if (final > 0) defender.lastDamagedById = attacker.id;
 
   return {
     amount: final,

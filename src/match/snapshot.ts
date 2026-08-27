@@ -1,6 +1,8 @@
 import type { Match } from "./Match.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer, MatchVisibility } from "./types.js";
+import { cosmeticById } from "../data/cosmetics.js";
+import type { Paint } from "../data/cosmetics.js";
 
 /**
  * The complete authoritative snapshot sent to a client to (re)build its view of
@@ -67,6 +69,14 @@ export function buildMatchSnapshot(
   forPlayerId: string,
 ): MatchSnapshot {
   const view = match.serialize();
+  // Cosmetics are resolved HERE rather than when the seat is created, because a
+  // player can change kingdom in the lobby and their castle must change with
+  // it. Cheap: a map lookup per seat over a table already in memory.
+  const players = view.players.map((player) =>
+    player.kingdomId
+      ? { ...player, castlePaint: paintFor(player, player.kingdomId) }
+      : player,
+  );
   return {
     roomCode: view.roomCode,
     phase: view.phase,
@@ -81,7 +91,24 @@ export function buildMatchSnapshot(
     startsAt: view.startsAt,
     config: view.config,
     you: match.getPlayer(forPlayerId) ?? null,
-    players: view.players,
+    players,
     projectiles: [],
   };
+}
+
+
+/**
+ * The paint for one seat's castle, or undefined for the standard look.
+ *
+ * The seat carries the account's whole loadout (resolved once at the
+ * handshake), so switching kingdom in the lobby picks up that kingdom's skin
+ * with no further reads.
+ */
+function paintFor(player: MatchPlayer, kingdomId: string): Paint | undefined {
+  const itemId = player.loadout?.[kingdomId]?.castle;
+  if (!itemId) return undefined;
+  const item = cosmeticById(itemId);
+  // A skin that no longer exists renders as the default rather than as nothing:
+  // retiring an item must never blank somebody's castle mid-match.
+  return item?.paint;
 }

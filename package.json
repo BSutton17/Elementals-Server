@@ -5,19 +5,28 @@
   "type": "module",
   "description": "Authoritative Socket.IO server for Kingdoms",
   "scripts": {
-    "dev": "nodemon dist/index.js",
+    "dev": "nodemon --env-file-if-exists=.env dist/index.js",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=.env dist/db/migrate.js",
+    "db:studio": "node --env-file=.env node_modules/drizzle-kit/bin.cjs studio",
     "typecheck:test": "tsc -p tsconfig.test.json",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test": "node --env-file=.env.test --import tsx --test-concurrency=6 --test \"test/**/*.test.ts\"",
     "sim": "tsx simulation/src/cli.ts"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "google-auth-library": "^11.0.2",
+    "jsonwebtoken": "^9.0.3",
+    "postgres": "^3.4.9",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.1.0",
+    "drizzle-kit": "^0.31.10",
     "socket.io-client": "^4.8.3",
     "tsx": "^4.22.5",
     "typescript": "^6.0.3"

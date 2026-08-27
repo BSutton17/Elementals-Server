@@ -1,5 +1,6 @@
 import type { KingdomId } from "../data/kingdoms.js";
 import type { PerkId } from "../data/perks.js";
+import type { Paint } from "../data/cosmetics.js";
 
 /** Lifecycle phase of a match (see DATA_MODELS.md → Match). */
 export type MatchPhase = "lobby" | "starting" | "active" | "ended";
@@ -30,6 +31,41 @@ export interface MatchPlayer {
   socketId: string | null;
   /** Display name. */
   name: string;
+  /**
+   * The signed-in account behind this seat, or null for a guest or a bot.
+   *
+   * Set once when the seat is created and never re-read from the client. It is
+   * what ties a finished match to a profile; without it a match result has
+   * nowhere to be recorded.
+   */
+  accountId?: string | null;
+  /**
+   * Account level, shown beside this player's name on the battlefield.
+   *
+   * Resolved once when the seat is created, from the profile the handshake
+   * already fetched — never re-read mid-match, so a level-up during a game
+   * appears next time rather than mid-fight.
+   *
+   * Undefined for guests and bots, who have no level. The badge is simply
+   * absent for them: a dash would read as a rendering fault.
+   */
+  level?: number;
+  /**
+   * How this seat's castle is painted, or undefined for the kingdom's standard
+   * look.
+   *
+   * ⚠️ THE PAINT TRAVELS, NOT THE ITEM ID. Sending an id would mean every
+   * client needed the cosmetics catalogue in sync to render anyone else — and
+   * a client one release behind would show a stranger the wrong castle. The
+   * resolved values are a handful of bytes and cannot drift.
+   */
+  castlePaint?: Paint;
+  /**
+   * This account's equipped cosmetics, kept on the seat so the snapshot can
+   * resolve a castle's paint without a database read. Internal: the client is
+   * sent the resolved `castlePaint`, never this.
+   */
+  loadout?: Record<string, Partial<Record<string, string>>>;
   /** Selected kingdom, or null until chosen in the lobby. */
   kingdomId: KingdomId | null;
   /**

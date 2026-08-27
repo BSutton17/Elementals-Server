@@ -140,6 +140,25 @@ function normalizeName(raw: unknown): string | null {
 }
 
 /**
+ * The name this socket plays under.
+ *
+ * ⚠️ A SIGNED-IN PLAYER'S USERNAME WINS, AND THE CLIENT CANNOT OVERRIDE IT.
+ * The username is their identity — it is unique, it is what a profile and a
+ * win record hang off, and letting a payload field replace it would make
+ * impersonating another player a matter of typing their name.
+ *
+ * `socket.data.username` is resolved from the account at handshake time (see
+ * index.ts), so this stays synchronous and the lobby never waits on a database.
+ * Guests, and the vanishingly brief window before that read lands, fall back to
+ * the name the client typed.
+ */
+function resolvePlayerName(socket: Socket, raw: unknown): string | null {
+  const username = socket.data.username as string | undefined;
+  if (typeof username === "string" && username.length > 0) return username;
+  return normalizeName(raw);
+}
+
+/**
  * Drops any perks the player's CURRENT kingdom does not entitle them to.
  *
  * The allowance is per-kingdom — Kitsune's "Three tailed fox" grants one more
@@ -185,7 +204,7 @@ export function registerLobbyHandlers(
    * being true the day this runs as more than one process.
    */
   socket.on("lobby:joinPublic", (payload: { name?: unknown }, ack: unknown) => {
-    const name = normalizeName(payload?.name);
+    const name = resolvePlayerName(socket, payload?.name);
     if (name === null) {
       respond(ack, fail("INVALID_PAYLOAD", "A valid player name is required"));
       return;
@@ -210,6 +229,9 @@ export function registerLobbyHandlers(
         id: sessionId,
         socketId: socket.id,
         name,
+        accountId: (socket.data.accountId as string | null) ?? null,
+        level: (socket.data.level as number | undefined) ?? undefined,
+        loadout: (socket.data.loadout as MatchPlayer["loadout"]) ?? undefined,
         kingdomId: null,
         perks: [],
         ready: false,
@@ -262,7 +284,7 @@ export function registerLobbyHandlers(
   });
 
   socket.on("lobby:create", (payload: { name?: unknown }, ack: unknown) => {
-    const name = normalizeName(payload?.name);
+    const name = resolvePlayerName(socket, payload?.name);
     if (name === null) {
       respond(ack, fail("INVALID_PAYLOAD", "A valid player name is required"));
       return;
@@ -279,6 +301,9 @@ export function registerLobbyHandlers(
       id: ensureSessionId(socket),
       socketId: socket.id,
       name,
+      accountId: (socket.data.accountId as string | null) ?? null,
+        level: (socket.data.level as number | undefined) ?? undefined,
+        loadout: (socket.data.loadout as MatchPlayer["loadout"]) ?? undefined,
       kingdomId: null,
       perks: [],
       ready: false,
@@ -313,7 +338,7 @@ export function registerLobbyHandlers(
   socket.on(
     "lobby:join",
     (payload: { name?: unknown; roomCode?: unknown }, ack: unknown) => {
-      const name = normalizeName(payload?.name);
+      const name = resolvePlayerName(socket, payload?.name);
       if (name === null) {
         respond(ack, fail("INVALID_PAYLOAD", "A valid player name is required"));
         return;
@@ -361,6 +386,9 @@ export function registerLobbyHandlers(
         id: sessionId,
         socketId: socket.id,
         name,
+        accountId: (socket.data.accountId as string | null) ?? null,
+        level: (socket.data.level as number | undefined) ?? undefined,
+        loadout: (socket.data.loadout as MatchPlayer["loadout"]) ?? undefined,
         kingdomId: null,
         ready: false,
         connected: true,

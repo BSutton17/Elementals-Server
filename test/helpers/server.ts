@@ -16,7 +16,21 @@ export interface RunningServer {
  */
 export function startServer(
   env: Record<string, string>,
-  timeoutMs = 20_000,
+  /**
+   * ⚠️ IF A SERVER NEVER STARTS, THE CAUSE IS ALMOST NEVER THIS NUMBER.
+   *
+   * Two real bugs have hidden behind a start-up timeout here. First a PORT
+   * COLLISION — two files on one port, so one can never bind, never logs that
+   * it is listening, and times out while passing when run alone
+   * (`portsUnique.test.ts` now guards that). Then CPU STARVATION — `node --test`
+   * defaulted to one file per core, and eleven spawned servers each running
+   * `tsx` were competing with CPU-bound simulation suites for the same twelve
+   * cores. That is fixed by `--test-concurrency` in package.json, not here.
+   *
+   * Thirty seconds is generous for a server that boots in about one. Check the
+   * two causes above before touching it.
+   */
+  timeoutMs = 30_000,
 ): Promise<RunningServer> {
   const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     cwd: process.cwd(),

@@ -92,6 +92,11 @@ export function applyDamage(
   // each system having to remember. Tracked for everyone; only Dark reads it.
   const taken = absorbedByShield + dealtToHp;
   if (taken > 0) {
+    // Every source of damage lands here - attacks, DoT ticks, a Black Hole
+    // dump - so counting it once at the funnel means no ability has to
+    // remember to report itself.
+    target.stats.damageTaken += taken;
+    target.stats.damageShielded += absorbedByShield;
     // Read through the parameter gate, exactly as the cast check in
     // abilities.ts does. Capping with the raw constant while the cast gate
     // honoured an override meant a raised threshold could never be reached.

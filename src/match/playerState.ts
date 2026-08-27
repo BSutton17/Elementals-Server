@@ -334,6 +334,49 @@ export function createSiegeWatch(): SiegeWatch {
   return { members: [], heldTicks: 0, absent: {}, level: 0 };
 }
 
+/**
+ * What one player did in one match. Every field is a plain count; none of it is
+ * read by gameplay (see `PlayerState.stats`).
+ */
+export interface MatchStats {
+  /** Damage this player dealt that actually landed (post-mitigation). */
+  damageDealt: number;
+  /** Damage this player absorbed, shield and castle together. */
+  damageTaken: number;
+  /**
+   * The share of that which a SHIELD absorbed rather than the castle.
+   *
+   * Tracked separately because "how much did my shields save me" is a
+   * different question from "how much did I take", and only the first one
+   * rewards actually buying them.
+   */
+  damageShielded: number;
+  /** Castle HP this player restored, to themselves or anyone else. */
+  healingDone: number;
+  /** Gold earned from every source: income, besieged bonuses, abilities. */
+  goldEarned: number;
+  /** Gold spent on anything: casts, unlocks, upgrades, shop purchases. */
+  goldSpent: number;
+  /** Abilities successfully activated. A refused cast does not count. */
+  abilitiesCast: number;
+  /** Castles this player struck the killing blow on. */
+  killsCredited: number;
+}
+
+/** A fresh, all-zero tally. */
+export function createMatchStats(): MatchStats {
+  return {
+    damageDealt: 0,
+    damageTaken: 0,
+    damageShielded: 0,
+    healingDone: 0,
+    goldEarned: 0,
+    goldSpent: 0,
+    abilitiesCast: 0,
+    killsCredited: 0,
+  };
+}
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -406,6 +449,26 @@ export interface PlayerState {
    * bounded. Time's Blip! pops the last one and reverses it.
    */
   attackJournal: AttackRecord[];
+  /**
+   * Per-match tallies, for the end-of-match scoreboard and the profile.
+   *
+   * ⚠️ NOT gameplay. Nothing in the engine may read these to decide an outcome —
+   * they are a record of what happened, and the moment a rule depends on one,
+   * changing how a stat is counted silently changes the game. Reset per match
+   * (they live on PlayerState, which is per match).
+   *
+   * Counted at the single funnel each one has, so no ability or status has to
+   * remember to report itself: damage at `combat.applyDamage` / `damage.resolveDamage`,
+   * money at `money.earn` / `money.spend`, casts at `abilities.activateAbility`.
+   */
+  stats: MatchStats;
+  /**
+   * Who last dealt this player damage, or null. Exists so the killing blow can
+   * be credited: `applyDamage` knows the victim but not the attacker, and
+   * `resolveDamage` knows the attacker but does not apply the hit, so neither
+   * can award a kill alone. Bookkeeping only - no rule reads it.
+   */
+  lastDamagedById: string | null;
   /**
    * Persistent-siege bookkeeping: who has been ganging up on this kingdom, for
    * how long, and how many extra besieged stages they have earned it. Advanced
@@ -567,6 +630,8 @@ export function createPlayerState(
     lastDamageTakenTick: -1,
     regenCarry: 0,
     attackJournal: [],
+    stats: createMatchStats(),
+    lastDamagedById: null,
     siege: createSiegeWatch(),
     supernovaMeter: 0,
     rageMeter: 0,
