@@ -274,7 +274,7 @@ const PAID: CosmeticItem[] = [
     id: "castle.fire.supernova",
     slot: "castle",
     kingdomId: "fire",
-    name: "Supernova Citadel",
+    name: "Burning Citadel",
     rarity: "legendary",
     price: RARITY_PRICE.legendary.castle,
     paint: {
@@ -458,7 +458,7 @@ const PAID: CosmeticItem[] = [
     id: "castle.electricity.thundergod",
     slot: "castle",
     kingdomId: "electricity",
-    name: "Thunder God Citadel",
+    name: "Thunder God",
     rarity: "legendary",
     price: RARITY_PRICE.legendary.castle,
     paint: {
@@ -489,7 +489,7 @@ const PAID: CosmeticItem[] = [
     id: "castle.nature.treehouse",
     slot: "castle",
     kingdomId: "nature",
-    name: "Treehouse Kingdom",
+    name: "Rose's Treehouse",
     rarity: "rare",
     price: RARITY_PRICE.rare.castle,
     paint: {
@@ -520,7 +520,7 @@ const PAID: CosmeticItem[] = [
     id: "castle.nature.worldtree",
     slot: "castle",
     kingdomId: "nature",
-    name: "World Tree",
+    name: "Tree of Life",
     rarity: "legendary",
     price: RARITY_PRICE.legendary.castle,
     paint: {
@@ -540,7 +540,7 @@ const PAID: CosmeticItem[] = [
     id: "castle.time.clockwork",
     slot: "castle",
     kingdomId: "time",
-    name: "Clockwork Castle",
+    name: "Clockwork",
     rarity: "uncommon",
     price: RARITY_PRICE.uncommon.castle,
     paint: {
@@ -631,6 +631,178 @@ const PAID: CosmeticItem[] = [
       outline: "#080418",
       strokeScale: 1.1,
       decor: "space.spaceship",
+    },
+  },
+  {
+    id: "castle.space.alienbase",
+    slot: "castle",
+    kingdomId: "space",
+    name: "Alien Planet Base",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Wrong-colour rock: this fortress was not built from anything on Earth.
+      gradient: { from: "#7a4a9e", to: "#2a1440" },
+      accent: "#7ff0a8",
+      outline: "#080418",
+      strokeScale: 1.05,
+      decor: "space.alienbase",
+    },
+  },
+  {
+    id: "castle.space.nexus",
+    slot: "castle",
+    kingdomId: "space",
+    name: "Cosmic Nexus",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Dark walls with a core behind them: the light has to look like it is
+      // coming OUT of the fortress, not falling on it.
+      gradient: { from: "#4b3a8e", to: "#0d0722" },
+      accent: "#fff4d0",
+      outline: "#060312",
+      strokeScale: 1.15,
+      decor: "space.nexus",
+    },
+  },
+  {
+    id: "castle.light.radiant",
+    slot: "castle",
+    kingdomId: "light",
+    name: "Radiant Lines",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      // Warm white rather than Light's flat #f7f7f2: the gold channels need a
+      // stone that is on the same side of the colour wheel to sit against, or
+      // they read as yellow scribble on paper.
+      gradient: { from: "#fffdf5", to: "#e4dcc4" },
+      accent: "#e3b03c",
+      outline: "#5c4413",
+      decor: "light.radiant",
+    },
+  },
+  {
+    id: "castle.light.solartemple",
+    slot: "castle",
+    kingdomId: "light",
+    name: "Solar Temple",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Marble. The sun behind it is the brightest thing on the sprite, so the
+      // temple itself sits a step down from white or the disc has nothing to
+      // out-shine.
+      gradient: { from: "#fdfbf2", to: "#d5cdb6" },
+      accent: "#e3b03c",
+      outline: "#5c4413",
+      strokeScale: 1.05,
+      decor: "light.solartemple",
+    },
+  },
+  {
+    id: "castle.light.cathedral",
+    slot: "castle",
+    kingdomId: "light",
+    name: "Crystal Cathedral",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Cool enough to read as crystal, warm enough not to be Ice: the stained
+      // glass carries the colour here, so the body stays close to white.
+      gradient: { from: "#ffffff", to: "#ccc6b6" },
+      accent: "#e3b03c",
+      outline: "#4a4436",
+      strokeScale: 1.05,
+      decor: "light.cathedral",
+    },
+  },
+  {
+    id: "castle.light.celestial",
+    slot: "castle",
+    kingdomId: "light",
+    name: "Celestial Palace",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Gold, not white. The wings and the halos behind it are the pale things
+      // here, so the palace has to be the warmer one or it disappears into its
+      // own light.
+      gradient: { from: "#fff6dc", to: "#cf9a2c" },
+      accent: "#fffdf5",
+      outline: "#5c4413",
+      strokeScale: 1.15,
+      decor: "light.celestial",
+    },
+  },
+  {
+    id: "castle.earth.stonelines",
+    slot: "castle",
+    kingdomId: "earth",
+    name: "Stone Lines",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      // Sandstone, a shade deeper than the kingdom's own so the cut courses
+      // have something to be lighter than.
+      gradient: { from: "#d8b87d", to: "#9c7740" },
+      accent: "#e6cfa0",
+      outline: "#33240f",
+      decor: "earth.stonelines",
+    },
+  },
+  {
+    id: "castle.earth.temple",
+    slot: "castle",
+    kingdomId: "earth",
+    name: "Ancient Temple",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Lighter than the mountain behind it. The rock is the dark mass here,
+      // and the temple has to read as cut out of it rather than lost in it.
+      gradient: { from: "#e0c28c", to: "#a8834b" },
+      accent: "#f0dcb4",
+      outline: "#33240f",
+      strokeScale: 1.1,
+      decor: "earth.temple",
+    },
+  },
+  {
+    id: "castle.earth.cavern",
+    slot: "castle",
+    kingdomId: "earth",
+    name: "Crystal Cavern",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Underground stone: darker than the other two Earth skins, because down
+      // here the crystal is the only light source and it needs somewhere dim to
+      // be bright against.
+      gradient: { from: "#a98a55", to: "#5c451f" },
+      accent: "#e2d0ff",
+      outline: "#241a0c",
+      strokeScale: 1.05,
+      decor: "earth.cavern",
+    },
+  },
+  {
+    id: "castle.earth.colossus",
+    slot: "castle",
+    kingdomId: "earth",
+    name: "Mount Colossus",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // The castle is the titan's chest, so it is the same rock as the rest of
+      // it — one shade lighter, which is all that separates the fortress from
+      // the body it belongs to.
+      gradient: { from: "#a8875a", to: "#584223" },
+      accent: "#d9c39a",
+      outline: "#241a0c",
+      strokeScale: 1.15,
+      decor: "earth.colossus",
     },
   },
 ];

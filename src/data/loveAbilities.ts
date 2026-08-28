@@ -125,7 +125,7 @@ export const BFFS: AbilityDefinition = {
   kind: "attack",
   cost: 400,
   unlockCost: 200,
-  cooldownTicks: 14 * TICK.RATE, // 14 s
+  cooldownTicks: 25 * TICK.RATE, // 25 s
   targeting: { mode: "singleEnemy", secondTarget: true },
   effects: [
     {
