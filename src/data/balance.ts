@@ -436,6 +436,17 @@ export const MAGMA = {
   /** Every Magma attack hits this much harder while the floor is lava. */
   LAVA_FLOOR_ATTACK_MULTIPLIER: 1.1,
   LAVA_FLOOR_BURN_MULTIPLIER: 1.5,
+  /**
+   * Damage per tick the molten floor itself deals to every kingdom standing on
+   * it — which is everyone except Magma, who is immune to its own floor.
+   *
+   * ⚠️ SMALL ON PURPOSE, AND IT IS NOT A BURN. At 6 a tick over twenty seconds
+   * it is ~2,400 spread across the table, which is pressure rather than a kill:
+   * the ability is still weather, and its real value is still the multiplier it
+   * puts on everyone's burns. Marking it `isBurn` would have the floor fan its
+   * own damage by LAVA_FLOOR_BURN_MULTIPLIER, so the stated 6 would land as 9.
+   */
+  LAVA_FLOOR_TICK_DAMAGE: 6,
   /** How long the floor stays molten, in seconds. */
   LAVA_FLOOR_DURATION_SECONDS: 20,
   /**

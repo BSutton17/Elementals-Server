@@ -140,6 +140,28 @@ export const MOLTEN_GROUND_STATUS: StatusEffectDefinition = {
 };
 
 /**
+ * The floor itself, burning whoever is standing on it.
+ *
+ * ⚠️ A STATUS, WHERE THE MULTIPLIER IS A FIELD. The two halves of this ability
+ * work differently on purpose: "every burn hits harder" belongs to the MATCH
+ * and lives on GameState, while "the ground is cooking you" is damage taken by
+ * individuals and has to go through the ordinary damage-over-time pipeline —
+ * shields, Extra Medics, Extra Guards, the damage events the HUD and the
+ * floating numbers read. Reusing the status path gets all of that for nothing.
+ *
+ * ⚠️ NOT MARKED `isBurn`, though it plainly is one in fiction. The ability's
+ * other half multiplies every burn on the field, so flagging this would have
+ * the floor fan its own damage and the stated 6 would land as 9.
+ */
+export const LAVA_FLOOR_BURN_STATUS: StatusEffectDefinition = {
+  id: "lavaFloorBurn",
+  name: "Standing on Lava",
+  category: "debuff",
+  stacking: "refresh",
+  tickEffects: [{ type: "damage", amount: MAGMA.LAVA_FLOOR_TICK_DAMAGE }],
+};
+
+/**
  * Floor is Lava (utility): the whole battlefield goes molten and every burn on
  * it burns harder — Fire's, Kitsune's foxfire, and Magma's own alike.
  *
@@ -163,6 +185,20 @@ export const FLOOR_IS_LAVA: AbilityDefinition = {
       target: "self",
       params: {
         burnMultiplier: MAGMA.LAVA_FLOOR_BURN_MULTIPLIER,
+        durationTicks: Math.round(21 * TICK.RATE),
+      },
+    },
+    {
+      // ⚠️ `allEnemies`, WHICH IS EVERY LIVE KINGDOM BUT THE CASTER. Magma
+      // walks on its own floor unburned — the same exemption the burn
+      // multiplier already makes (see engine/lavaFloor.ts), and without it
+      // lighting the floor while carrying a burn would be self-harm at exactly
+      // the moment the ability matters most. The effect target also skips
+      // eliminated kingdoms for free.
+      type: "status",
+      target: "allEnemies",
+      params: {
+        status: LAVA_FLOOR_BURN_STATUS,
         durationTicks: Math.round(21 * TICK.RATE),
       },
     },
@@ -197,6 +233,9 @@ export const FLOOR_IS_LAVA: AbilityDefinition = {
         // one without the other would leave Magma buffed on cold ground.
         effectParams: [
           { durationTicks: 270}, // 20 s -> 26 s
+          // ⚠️ THE BURN IS EFFECT 1 NOW, so it needs its own entry here or a
+          // level-3 floor would stay molten six seconds longer than it burns.
+          { durationTicks: 270 },
           { durationTicks: 26 * TICK.RATE },
         ],
       },

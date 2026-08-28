@@ -197,7 +197,14 @@ test("Floor is Lava makes every burn on the field hit harder", () => {
   const molten = burnTick(match, b);
 
   assert.ok(molten > plain, `expected a hotter burn (${molten} vs ${plain})`);
-  assert.equal(molten, Math.round(plain * MAGMA.LAVA_FLOOR_BURN_MULTIPLIER));
+  // ⚠️ THE FLOOR ITSELF BURNS NOW, so a tick spent standing on it costs the
+  // fanned burn PLUS the ground. `burnTick` measures everything that touched the
+  // castle, and separating the two here is what keeps this a test about the
+  // multiplier rather than about both halves of the ability at once.
+  assert.equal(
+    molten - MAGMA.LAVA_FLOOR_TICK_DAMAGE,
+    Math.round(plain * MAGMA.LAVA_FLOOR_BURN_MULTIPLIER),
+  );
 });
 
 test("Floor is Lava fans OTHER kingdoms' burns too, not just Magma's", () => {
@@ -230,7 +237,14 @@ test("Floor is Lava does NOT amplify damage-over-time that isn't a burn", () => 
   const plain = burnTick(match, b);
 
   assert.equal(activateAbility(match, a, FLOOR_IS_LAVA).ok, true);
-  assert.equal(burnTick(match, b), plain, "a non-burn DoT was amplified");
+  // The poison is untouched by the multiplier; the only difference is the floor
+  // burning the victim on its own account, which every kingdom standing on it
+  // takes whatever else is on them.
+  assert.equal(
+    burnTick(match, b) - MAGMA.LAVA_FLOOR_TICK_DAMAGE,
+    plain,
+    "a non-burn DoT was amplified",
+  );
 });
 
 test("the floor cools, and burns go back to normal", () => {

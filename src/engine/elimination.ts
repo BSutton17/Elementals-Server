@@ -46,6 +46,25 @@ export function eliminatePlayer(
   }
 
   // Out of active gameplay: nothing pending may keep acting for or on them.
+  //
+  // ⚠️ ANNOUNCE EVERY STATUS BEFORE DROPPING IT. The visual layer starts an
+  // aura on `statusApplied` and stops it on `statusExpired` — an aura with no
+  // natural lifetime (Fireflies, Butterflies, Old Friends) is stopped by that
+  // event and by nothing else. Clearing the array silently meant a swarm cast
+  // on a kingdom that then died went on dancing over the ruin for the rest of
+  // the match, because the only message that would have ended it was never
+  // sent. Every status goes out as expired here, so this fixes the whole class
+  // rather than the three that were noticed.
+  if (state.events.enabled) {
+    for (const status of player.statuses) {
+      state.events.emit({
+        type: "statusExpired",
+        tick,
+        playerId: player.id,
+        statusId: status.id,
+      });
+    }
+  }
   player.statuses = [];
   player.modifiers = [];
   player.cooldowns = {};
