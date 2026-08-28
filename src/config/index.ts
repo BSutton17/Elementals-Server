@@ -86,6 +86,29 @@ const resolveCorsOrigins = (raw: string | undefined): string[] => {
   return [];
 };
 
+/**
+ * Accounts that may use the admin tools.
+ *
+ * ⚠️ BY EMAIL, NOT BY ACCOUNT ID. An account id is a UUID minted by whichever
+ * database the server is pointed at, so the same person is a different id in
+ * development, in test and in production — an id here would have to be looked
+ * up and re-entered three times, and would silently grant nothing after a
+ * database reset. The Google address is the one identifier that is the same
+ * person everywhere.
+ *
+ * Overridable so a second admin never needs a code change, but defaulted so a
+ * fresh deployment has one without any configuration at all.
+ */
+const DEFAULT_ADMIN_EMAILS = ["btpitch27@gmail.com"];
+
+const resolveAdminEmails = (raw: string | undefined): string[] => {
+  const configured = (raw ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  return configured.length > 0 ? configured : DEFAULT_ADMIN_EMAILS;
+};
+
 const resolveLogLevel = (raw: string | undefined): LogLevel => {
   const allowed: LogLevel[] = ["debug", "info", "warn", "error"];
   if (raw && (allowed as string[]).includes(raw)) return raw as LogLevel;
@@ -106,6 +129,10 @@ export const config = {
   },
   logging: {
     level: resolveLogLevel(process.env.LOG_LEVEL),
+  },
+  admin: {
+    // Lower-cased on the way in so the comparison never has to remember to.
+    emails: resolveAdminEmails(process.env.ADMIN_EMAILS),
   },
   reconnect: {
     // Default from balance; overridable per environment (and for tests).

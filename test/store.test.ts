@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FEATURED, isOnSale, splitRares, storeFront, storeWeek } from "../src/engine/store.js";
+import {
+  FEATURED,
+  clearRerolls,
+  featuredNonce,
+  isOnSale,
+  rerollFeatured,
+  splitRares,
+  storeFront,
+  storeWeek,
+} from "../src/engine/store.js";
 import {
   COSMETICS,
   RARITY_PRICE,
@@ -182,4 +191,58 @@ test("nothing outside the shop can be bought", () => {
   const ghost = item("does.not.exist", "rare");
   assert.equal(isOnSale(ghost, "2026-08-26"), false);
   assert.equal(cosmeticById(ghost.id), undefined);
+});
+
+// --- admin reroll of Featured -----------------------------------------------
+
+test("an untouched day is seeded exactly as it was before rerolls existed", () => {
+  // The guarantee that lets this feature ship: adding a nonce to the seed must
+  // not have quietly changed every day's shop for every player.
+  clearRerolls();
+  const before = storeFront("2026-03-04");
+  clearRerolls();
+  assert.deepEqual(
+    storeFront("2026-03-04").featured.map((i) => i.id),
+    before.featured.map((i) => i.id),
+  );
+  assert.equal(featuredNonce("2026-03-04"), 0);
+});
+
+test("a reroll changes Featured and leaves Daily alone", () => {
+  clearRerolls();
+  const day = "2026-03-04";
+  const before = storeFront(day);
+  const after = rerollFeatured(day);
+
+  assert.equal(featuredNonce(day), 1);
+  // Daily is on the WEEK's seed and has nothing to do with the button.
+  assert.deepEqual(
+    after.daily.map((i) => i.id),
+    before.daily.map((i) => i.id),
+  );
+  // With 16 legendaries to draw two from, an identical featured page would be
+  // a 1-in-240 coincidence; over a few rolls, effectively impossible.
+  const rolls = [before, after, rerollFeatured(day), rerollFeatured(day)].map((f) =>
+    f.featured.map((i) => i.id).join(","),
+  );
+  assert.ok(new Set(rolls).size > 1, "rerolling never changed the featured page");
+  clearRerolls();
+});
+
+test("a reroll expires with the day it was made on", () => {
+  // Yesterday's nudge must not still be displacing today's shop.
+  clearRerolls();
+  rerollFeatured("2026-03-04");
+  assert.equal(featuredNonce("2026-03-05"), 0);
+  clearRerolls();
+});
+
+test("what a reroll puts in Featured is buyable", () => {
+  // isOnSale reads the same rerolled front, or the button would show items the
+  // purchase path then refuses.
+  clearRerolls();
+  const day = "2026-03-04";
+  const front = rerollFeatured(day);
+  for (const item of front.featured) assert.ok(isOnSale(item, day), `${item.id} not on sale`);
+  clearRerolls();
 });

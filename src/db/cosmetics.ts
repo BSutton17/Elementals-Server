@@ -2,7 +2,13 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "./client.js";
 import { equipped, inventory } from "./schema.js";
 import { getBalance, grantCoins } from "./coins.js";
-import { cosmeticById, defaultCosmetic, type CosmeticSlot } from "../data/cosmetics.js";
+import {
+  cosmeticById,
+  defaultCosmetic,
+  purchasable,
+  type CosmeticSlot,
+} from "../data/cosmetics.js";
+import { isAdmin } from "./admin.js";
 import { isOnSale } from "../engine/store.js";
 import { questDay } from "../engine/quests.js";
 import { masteryFor } from "../engine/rewards.js";
@@ -44,8 +50,26 @@ const fail = (error: PurchaseError, message: string): PurchaseResult => ({
   message,
 });
 
+/**
+ * What an admin owns: the entire paid catalogue, defaults excluded like any
+ * other inventory. Exposed so the rule can be asserted directly — "every skin,
+ * including ones added later" is a claim worth a test, and it is not reachable
+ * through `getInventory` without a database.
+ */
+export function adminInventory(): string[] {
+  return purchasable().map((item) => item.id);
+}
+
 /** Item ids this account owns, defaults excluded (everyone has those). */
 export async function getInventory(accountId: string): Promise<string[]> {
+  // ⚠️ AN ADMIN'S INVENTORY IS DERIVED, NOT GRANTED. Writing sixty rows into
+  // `inventory` would work today and be wrong tomorrow: every skin added after
+  // the grant would be missing, and the fix would be to remember to re-run a
+  // backfill each time. Computing it means "everything" keeps meaning
+  // everything, including items that do not exist yet — and revoking admin
+  // takes the items back instead of leaving a permanently stocked account.
+  if (await isAdmin(accountId)) return adminInventory();
+
   const db = getDb();
   if (!db) return [];
   try {

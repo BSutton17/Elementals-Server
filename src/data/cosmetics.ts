@@ -805,6 +805,394 @@ const PAID: CosmeticItem[] = [
       decor: "earth.colossus",
     },
   },
+  {
+    id: "castle.dark.stripes",
+    slot: "castle",
+    kingdomId: "dark",
+    name: "Shadow Stripes",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      // ⚠️ THE OUTLINE STAYS PALE. Dark's castle is near-black on a near-black
+      // battlefield, which is why the kingdom overrides the sprite's dark
+      // stroke with its white accent. A "darker" skin with a black edge would
+      // delete the silhouette players read through fog.
+      gradient: { from: "#1d1930", to: "#0a0813" },
+      accent: "#c9a6ff",
+      outline: "#e8e4f2",
+      decor: "dark.stripes",
+    },
+  },
+  {
+    id: "castle.dark.gothic",
+    slot: "castle",
+    kingdomId: "dark",
+    name: "Gothic Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      gradient: { from: "#1a1725", to: "#08070f" },
+      accent: "#8e2038",
+      outline: "#e8e4f2",
+      strokeScale: 1.1,
+      decor: "dark.gothic",
+    },
+  },
+  {
+    id: "castle.dark.void",
+    slot: "castle",
+    kingdomId: "dark",
+    name: "Void Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      gradient: { from: "#221c38", to: "#0a0813" },
+      accent: "#c9a6ff",
+      outline: "#d9cffa",
+      strokeScale: 1.05,
+      decor: "dark.void",
+    },
+  },
+  {
+    id: "castle.dark.abyssal",
+    slot: "castle",
+    kingdomId: "dark",
+    name: "Abyssal Throne",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      gradient: { from: "#2a2145", to: "#07060d" },
+      accent: "#c9a6ff",
+      outline: "#e2d6ff",
+      strokeScale: 1.15,
+      decor: "dark.abyssal",
+    },
+  },
+  {
+    id: "castle.love.hearts",
+    slot: "castle",
+    kingdomId: "love",
+    name: "Heart Pattern Castle",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      // A shade deeper than the kingdom's own rose, so blush hearts and gold
+      // ribbon have something to sit on. Pink on pink is the trap here.
+      gradient: { from: "#ff6fa3", to: "#c2266a" },
+      accent: "#ffd1e3",
+      outline: "#3a0a1f",
+      decor: "love.hearts",
+    },
+  },
+  {
+    id: "castle.love.romantic",
+    slot: "castle",
+    kingdomId: "love",
+    name: "Romantic Palace",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Near-white with a rose cast: this one is architecture, and the colour
+      // belongs to the gardens and the glass rather than to the walls.
+      gradient: { from: "#fff2f7", to: "#e3a8c2" },
+      accent: "#e8b53c",
+      outline: "#5c1030",
+      strokeScale: 1.05,
+      decor: "love.romantic",
+    },
+  },
+  {
+    id: "castle.love.cupid",
+    slot: "castle",
+    kingdomId: "love",
+    name: "Cupid's Castle",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      gradient: { from: "#ffa8c8", to: "#d1417c" },
+      accent: "#ffe9a8",
+      outline: "#3a0a1f",
+      strokeScale: 1.05,
+      decor: "love.cupid",
+    },
+  },
+  {
+    id: "castle.love.eternal",
+    slot: "castle",
+    kingdomId: "love",
+    name: "Eternal Love Palace",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Rose-gold: the hearts and the wings behind it are the pink things, so
+      // the palace itself leans gold or it dissolves into its own light.
+      gradient: { from: "#ffe0ec", to: "#d98fae" },
+      accent: "#ffe9a8",
+      outline: "#5c1030",
+      strokeScale: 1.15,
+      decor: "love.eternal",
+    },
+  },
+  {
+    id: "castle.joker.polkadot",
+    slot: "castle",
+    kingdomId: "joker",
+    name: "Polka Dot Castle",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      gradient: { from: "#f04a58", to: "#a3121f" },
+      accent: "#f5c518",
+      outline: "#3d0810",
+      decor: "joker.polkadot",
+    },
+  },
+  {
+    id: "castle.joker.carnival",
+    slot: "castle",
+    kingdomId: "joker",
+    name: "Carnival Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Big-top cream: the stripes, the canopies and the bunting carry the
+      // colour, so the walls underneath stay light.
+      gradient: { from: "#fffdf6", to: "#e3c9c2" },
+      accent: "#f5c518",
+      outline: "#3d0810",
+      strokeScale: 1.05,
+      decor: "joker.carnival",
+    },
+  },
+  {
+    id: "castle.joker.jester",
+    slot: "castle",
+    kingdomId: "joker",
+    name: "Mad Jester Castle",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      gradient: { from: "#fdf6ee", to: "#c9a7b8" },
+      accent: "#f5c518",
+      outline: "#3d0810",
+      strokeScale: 1.05,
+      decor: "joker.jester",
+    },
+  },
+  {
+    id: "castle.joker.casino",
+    slot: "castle",
+    kingdomId: "joker",
+    name: "Chaos Casino",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Near-black with a violet cast: neon needs somewhere dark to be neon,
+      // and the cards, chips and wheel are the bright things here.
+      gradient: { from: "#33203f", to: "#120b18" },
+      accent: "#f5c518",
+      outline: "#0d0710",
+      strokeScale: 1.15,
+      decor: "joker.casino",
+    },
+  },
+  {
+    id: "castle.kitsune.foxtail",
+    slot: "castle",
+    kingdomId: "kitsune",
+    name: "Fox-Tail Pattern",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      gradient: { from: "#2a63c8", to: "#0d1f52" },
+      accent: "#8fd8ff",
+      outline: "#061029",
+      decor: "kitsune.foxtail",
+    },
+  },
+  {
+    id: "castle.kitsune.shrine",
+    slot: "castle",
+    kingdomId: "kitsune",
+    name: "Kitsune Shrine",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Shrine plaster: the walls are pale so the vermilion torii and the blue
+      // foxfire are the two things that carry colour.
+      gradient: { from: "#f4f1e6", to: "#b9b3a2" },
+      accent: "#c2352c",
+      outline: "#061029",
+      strokeScale: 1.05,
+      decor: "kitsune.shrine",
+    },
+  },
+  {
+    id: "castle.kitsune.ninetail",
+    slot: "castle",
+    kingdomId: "kitsune",
+    name: "Nine-Tail Palace",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Dark, because the tails are the light: pale fur over a pale castle
+      // would leave the skin with nothing to read against.
+      gradient: { from: "#1d3f8f", to: "#08183f" },
+      accent: "#8fd8ff",
+      outline: "#061029",
+      strokeScale: 1.05,
+      decor: "kitsune.ninetail",
+    },
+  },
+  {
+    id: "castle.kitsune.spirit",
+    slot: "castle",
+    kingdomId: "kitsune",
+    name: "Nine-Tailed Spirit Palace",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      gradient: { from: "#22468f", to: "#050e26" },
+      accent: "#e6f8ff",
+      outline: "#040a1c",
+      strokeScale: 1.15,
+      decor: "kitsune.spirit",
+    },
+  },
+  {
+    id: "castle.magma.cracks",
+    slot: "castle",
+    kingdomId: "magma",
+    name: "Lava Cracks",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      // Cooling rock: dark enough that light coming up through a crack is the
+      // brightest thing on the sprite, which is the whole idea.
+      gradient: { from: "#8a2c0c", to: "#331106" },
+      accent: "#ff7518",
+      outline: "#1a0803",
+      decor: "magma.cracks",
+    },
+  },
+  {
+    id: "castle.magma.volcano",
+    slot: "castle",
+    kingdomId: "magma",
+    name: "Volcano Fortress",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Basalt. The lava runs and the crater rim carry every warm value here;
+      // the fortress itself is the cold crust they run over.
+      gradient: { from: "#4a2013", to: "#1d0904" },
+      accent: "#ff7518",
+      outline: "#1a0803",
+      strokeScale: 1.05,
+      decor: "magma.volcano",
+    },
+  },
+  {
+    id: "castle.magma.obsidian",
+    slot: "castle",
+    kingdomId: "magma",
+    name: "Obsidian Citadel",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Volcanic glass: near-black with a cool cast, which is what separates it
+      // from the warm basalt of the other three.
+      // ⚠️ THE ACCENT IS GLASS, NOT LAVA. It tints the sprite's own
+      // battlements, and at #ff7518 the castle wore four bright orange blocks
+      // that had nothing to do with the skin drawn over it. The molten colour
+      // belongs to the fractures only.
+      gradient: { from: "#2e2436", to: "#0d070f" },
+      accent: "#3a2f45",
+      outline: "#0a050c",
+      strokeScale: 1.1,
+      decor: "magma.obsidian",
+    },
+  },
+  {
+    id: "castle.magma.world",
+    slot: "castle",
+    kingdomId: "magma",
+    name: "World Volcano",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      gradient: { from: "#5c2a16", to: "#1d0904" },
+      accent: "#ffd07a",
+      outline: "#1a0803",
+      strokeScale: 1.15,
+      decor: "magma.world",
+    },
+  },
+  {
+    id: "castle.insects.bugpattern",
+    slot: "castle",
+    kingdomId: "insects",
+    name: "Bug Pattern Castle",
+    rarity: "uncommon",
+    price: RARITY_PRICE.uncommon.castle,
+    paint: {
+      gradient: { from: "#b8d02c", to: "#5c6c12" },
+      accent: "#d7e84a",
+      outline: "#232b05",
+      decor: "insects.bugpattern",
+    },
+  },
+  {
+    id: "castle.insects.hive",
+    slot: "castle",
+    kingdomId: "insects",
+    name: "Giant Hive",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Dark carapace: the comb's lit cells and the honey are the bright things
+      // here, and they need somewhere dim to glow against.
+      gradient: { from: "#5c6c12", to: "#232b05" },
+      accent: "#ffc94d",
+      outline: "#1a2004",
+      strokeScale: 1.05,
+      decor: "insects.hive",
+    },
+  },
+  {
+    id: "castle.insects.ants",
+    slot: "castle",
+    kingdomId: "insects",
+    name: "Ant Colony",
+    rarity: "rare",
+    price: RARITY_PRICE.rare.castle,
+    paint: {
+      // Soil, not stone: Earth owns dressed sandstone, so this stays dark,
+      // loose and brown.
+      gradient: { from: "#7d5730", to: "#3f2a16" },
+      accent: "#79ad33",
+      outline: "#231508",
+      strokeScale: 1.05,
+      decor: "insects.ants",
+    },
+  },
+  {
+    id: "castle.insects.butterfly",
+    slot: "castle",
+    kingdomId: "insects",
+    name: "Charlotte's Web",
+    rarity: "legendary",
+    price: RARITY_PRICE.legendary.castle,
+    paint: {
+      // Dark, because the silk is the bright thing here and a web needs
+      // something unlit to be seen against.
+      gradient: { from: "#4a5a10", to: "#141a04" },
+      accent: "#e8f0c8",
+      outline: "#1a2004",
+      strokeScale: 1.15,
+      decor: "insects.butterfly",
+    },
+  },
 ];
 
 export const COSMETICS: CosmeticItem[] = [

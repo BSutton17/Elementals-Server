@@ -96,6 +96,49 @@ export function splitRares(week: string): { onDaily: CosmeticItem[]; benched: Co
   return { onDaily, benched };
 }
 
+/**
+ * Manual rerolls of Featured, by day.
+ *
+ * ⚠️ THE SHOP IS A PURE FUNCTION OF THE DATE, and that is worth keeping: it
+ * needs no storage, survives a restart, and shows two people in the same room
+ * the same screen. A reroll is therefore not a stored shop — it is one extra
+ * number folded into the seed, and the shop stays derived.
+ *
+ * ⚠️ KEYED ON THE DAY, so a reroll expires with the day it was made on. A nudge
+ * made on Tuesday must not still be displacing Wednesday's shop; the entry for
+ * an old day is simply never read again (and cleared below, so this cannot
+ * grow).
+ *
+ * Held in memory rather than in the database deliberately. It costs no
+ * migration, and the failure mode is benign: a restart drops the reroll and the
+ * shop reverts to the day's canonical roll, which was always a legitimate shop.
+ */
+let rerolls: { day: string; nonce: number } | null = null;
+
+/**
+ * Rerolls Featured for `day` and returns the new shop.
+ *
+ * The nonce only ever increases, so pressing the button twice cannot land back
+ * on the roll you were trying to get away from by accident.
+ */
+export function rerollFeatured(day: string): StoreFront {
+  rerolls =
+    rerolls?.day === day
+      ? { day, nonce: rerolls.nonce + 1 }
+      : { day, nonce: 1 };
+  return storeFront(day);
+}
+
+/** How many times Featured has been rerolled today. Zero for an untouched day. */
+export function featuredNonce(day: string): number {
+  return rerolls?.day === day ? rerolls.nonce : 0;
+}
+
+/** Forgets any reroll — for tests, and for anything that needs today's canon. */
+export function clearRerolls(): void {
+  rerolls = null;
+}
+
 export interface StoreFront {
   day: string;
   week: string;
@@ -117,15 +160,23 @@ export function storeFront(day: string): StoreFront {
   const week = storeWeek(day);
   const { onDaily, benched } = splitRares(week);
 
+  // ⚠️ AN UNROLLED DAY SEEDS EXACTLY AS IT ALWAYS DID. The nonce is appended
+  // only once it is non-zero, so introducing rerolls did not silently change
+  // what every past and future day shows — the canonical shop is still the one
+  // this function produced before the feature existed.
+  const nonce = featuredNonce(day);
+  const seed = (section: string) =>
+    nonce === 0 ? `${day}:${section}` : `${day}#${nonce}:${section}`;
+
   const legendaries = purchasable().filter((item) => item.rarity === "legendary");
-  const featuredLegendary = shuffled(legendaries, rng(hash(`${day}:legendary`))).slice(
+  const featuredLegendary = shuffled(legendaries, rng(hash(seed("legendary")))).slice(
     0,
     FEATURED.legendary,
   );
 
   // Featured's rare slots come from what Daily benched this week — never from
   // what Daily is already showing, or the same item would sit in both sections.
-  const featuredRare = shuffled(benched, rng(hash(`${day}:rare`))).slice(0, FEATURED.rare);
+  const featuredRare = shuffled(benched, rng(hash(seed("rare")))).slice(0, FEATURED.rare);
 
   const uncommons = purchasable().filter((item) => item.rarity === "uncommon");
 

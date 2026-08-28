@@ -6,7 +6,7 @@ import type { ReconnectionManager } from "./ReconnectionManager.js";
 import { fail, ok, respond } from "./ack.js";
 import { broadcastLobbyUpdate, removePlayerFromMatch } from "./lobbyRoom.js";
 import { ensureSessionId } from "./sessionHandlers.js";
-import { buildMatchSnapshot } from "../match/snapshot.js";
+import { buildMatchSnapshot, stampCastlePaint } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
 import { isKingdomId, KINGDOM_IDS } from "../data/kingdoms.js";
 import type { PerkId } from "../data/perks.js";
@@ -681,6 +681,8 @@ export function registerLobbyHandlers(
     // Initialize the match and transition the lobby into an active game.
     const config = createMatchConfig(match);
     match.start(config);
+    // Skins are resolved here, once, and ride along on the seats from now on.
+    stampCastlePaint(match);
     logger.info("Match started", { roomCode, playerCount: match.playerCount });
 
     broadcastLobbyUpdate(io, match);

@@ -12,7 +12,7 @@ import { levelFromXp, masteryFor } from "../engine/rewards.js";
 import { getBalance } from "../db/coins.js";
 import { getDailyQuests } from "../db/quests.js";
 import { nextResetAt, questDay } from "../engine/quests.js";
-import { storeFront } from "../engine/store.js";
+import { rerollFeatured, storeFront } from "../engine/store.js";
 import { equip, getInventory, getLoadout, purchase } from "../db/cosmetics.js";
 import { catalogue } from "../engine/store.js";
 import { checkAge } from "../auth/age.js";
@@ -23,6 +23,7 @@ import {
   setAgeBracket,
 } from "../db/privacy.js";
 import { isDatabaseConfigured } from "../db/client.js";
+import { isAdmin } from "../db/admin.js";
 import { logger } from "../util/logger.js";
 
 /** Paths that answer the health check. */
@@ -188,7 +189,7 @@ async function handleGetProfile(
     return;
   }
 
-  const [kingdoms, coins, quests, loadout, owned, ageAnswered] =
+  const [kingdoms, coins, quests, loadout, owned, ageAnswered, admin] =
     await Promise.all([
       getKingdomStats(accountId),
       getBalance(accountId),
@@ -196,6 +197,7 @@ async function handleGetProfile(
       getLoadout(accountId),
       getInventory(accountId),
       hasAgeBracket(accountId),
+      isAdmin(accountId),
     ]);
   const progress = levelFromXp(profile.xp);
 
@@ -209,6 +211,10 @@ async function handleGetProfile(
       // the tab between signing in and answering used to be asked once, never
       // again — an account with no age on file that we then kept data for.
       needsAge: !ageAnswered,
+      // ⚠️ A RENDERING HINT, NOT A PERMISSION. It exists so the profile can
+      // show the admin tools; every admin route re-asks the database. Nothing
+      // is authorised by this field.
+      admin,
       // Level is derived here rather than stored, so a retuned curve applies to
       // everyone at once (see engine/rewards.levelFromXp).
       level: progress.level,
@@ -363,6 +369,41 @@ async function handleBuy(
     res.writeHead(400, { "Content-Type": "application/json", ...cors });
     res.end(JSON.stringify({ error: "INVALID_PAYLOAD", message: "Malformed request." }));
   }
+}
+
+/**
+ * `POST /admin/shop/reroll` — draw a new Featured page.
+ *
+ * For everyone, not just the admin: Featured is one shop shared by the whole
+ * game, so rerolling it changes what every player sees on their next load. That
+ * is the intended power of the button, and the reason it is gated on the
+ * server rather than on the presence of a flag in a response.
+ */
+async function handleRerollShop(
+  req: IncomingMessage,
+  res: ServerResponse,
+  cors: Record<string, string>,
+): Promise<void> {
+  const accountId = bearerAccountId(req, res);
+  if (!accountId) {
+    res.writeHead(401, { "Content-Type": "application/json", ...cors });
+    res.end(JSON.stringify({ error: "not_signed_in" }));
+    return;
+  }
+  if (!(await isAdmin(accountId))) {
+    // 403 and not 404: the caller is a real signed-in account that simply may
+    // not do this, and saying so is both true and harmless.
+    res.writeHead(403, { "Content-Type": "application/json", ...cors });
+    res.end(JSON.stringify({ error: "not_admin", message: "Admins only." }));
+    return;
+  }
+
+  const day = questDay();
+  const front = rerollFeatured(day);
+  logger.info("Featured shop rerolled", { accountId, day });
+
+  res.writeHead(200, { "Content-Type": "application/json", ...cors });
+  res.end(JSON.stringify({ day: front.day, featured: front.featured }));
 }
 
 /** `POST /profile/equip` — assign a skin to a kingdom. */
@@ -580,6 +621,11 @@ export function createRequestListener() {
 
     if (req.method === "GET" && path === "/shop") {
       void handleShop(req, res, cors);
+      return;
+    }
+
+    if (req.method === "POST" && path === "/admin/shop/reroll") {
+      void handleRerollShop(req, res, cors);
       return;
     }
 

@@ -104,6 +104,29 @@ export function buildMatchSnapshot(
  * handshake), so switching kingdom in the lobby picks up that kingdom's skin
  * with no further reads.
  */
+/**
+ * Resolves every seat's castle paint once and stamps it onto the seat.
+ *
+ * ⚠️ CALL THIS AT MATCH START. The live channel is `state:sync`, and its player
+ * objects are built from PlayerState — the engine's view, which has never
+ * carried cosmetics. Only `state:full` and the join ack went through
+ * `buildMatchSnapshot`, so paint arrived once and was then overwritten twenty
+ * times a second by syncs that did not have it. Every castle on the
+ * battlefield rendered standard: bots, and everyone else's equipped skins too.
+ *
+ * Stamping the seats means the paint rides along with `match:started` and every
+ * lobby update, and the client keeps it beside the live state instead of
+ * expecting it to survive a sync. Resolved ONCE rather than per tick, because
+ * it cannot change mid-match and a 20 Hz broadcast is the wrong place to
+ * re-send a constant.
+ */
+export function stampCastlePaint(match: Match): void {
+  for (const player of match.getPlayers()) {
+    if (!player.kingdomId) continue;
+    player.castlePaint = paintFor(player, player.kingdomId, match.roomCode);
+  }
+}
+
 function paintFor(
   player: MatchPlayer,
   kingdomId: string,

@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
-import { buildMatchSnapshot } from "../src/match/snapshot.js";
+import { buildMatchSnapshot, stampCastlePaint } from "../src/match/snapshot.js";
 import { COSMETICS } from "../src/data/cosmetics.js";
 import type { MatchPlayer } from "../src/match/types.js";
 
@@ -102,5 +102,43 @@ describe("bots wear their skins in the snapshot", () => {
 
     const snap = buildMatchSnapshot(match, "p0");
     assert.equal(snap.players.find((p) => p.id === "bot-1")?.castlePaint, undefined);
+  });
+
+  test("stamping puts the paint on the seats, which is what match:started sends", () => {
+    const kingdomId = fullSetKingdom();
+
+    /* ⚠️ THE SEATS ARE THE DELIVERY VEHICLE. `state:sync` is built from the
+       engine's PlayerState and carries no cosmetics, so if the paint is not on
+       the seat when `match:started` goes out, the client never gets it at all
+       and every castle on the battlefield renders standard. */
+    let painted = 0;
+    for (let i = 0; i < 40; i++) {
+      const match = new Match(`S${i.toString().padStart(3, "0")}`);
+      match.addPlayer(seat("p0", "plains"));
+      match.addPlayer(seat(`bot-${i}`, kingdomId, true));
+      match.hostId = "p0";
+
+      stampCastlePaint(match);
+
+      const bot = match.getPlayers().find((p) => p.id === `bot-${i}`);
+      assert.ok(bot, "the bot must still be seated");
+      if (bot.castlePaint) painted++;
+    }
+    assert.ok(painted >= 20, `only ${painted}/40 bot seats were stamped`);
+  });
+
+  test("stamping agrees with the snapshot, so the two paths cannot drift", () => {
+    const kingdomId = fullSetKingdom();
+    const match = new Match("1234");
+    match.addPlayer(seat("p0", "plains"));
+    match.addPlayer(seat("bot-1", kingdomId, true));
+    match.hostId = "p0";
+
+    const fromSnapshot = buildMatchSnapshot(match, "p0").players.find((p) => p.id === "bot-1")
+      ?.castlePaint;
+    stampCastlePaint(match);
+    const fromSeat = match.getPlayers().find((p) => p.id === "bot-1")?.castlePaint;
+
+    assert.deepEqual(fromSeat, fromSnapshot);
   });
 });

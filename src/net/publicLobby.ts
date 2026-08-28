@@ -1,4 +1,5 @@
 import type { Match } from "../match/Match.js";
+import { stampCastlePaint } from "../match/snapshot.js";
 import type { MatchPlayer } from "../match/types.js";
 import { MATCH } from "../data/balance.js";
 import type { Server } from "socket.io";
@@ -136,6 +137,7 @@ export function launchPublicMatch(
   });
 
   broadcastLobbyUpdate(io, match);
+  stampCastlePaint(match);
   io.to(match.roomCode).emit("match:started", {
     roomCode: match.roomCode,
     config,
