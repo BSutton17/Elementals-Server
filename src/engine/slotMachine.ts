@@ -51,8 +51,8 @@ export type SlotOutcome =
 /** The payout table, by symbol and by how many of it came up. */
 const OUTCOMES: Record<SlotSymbol, { pair: SlotOutcome; triple: SlotOutcome }> = {
   "🪙": {
-    pair: { kind: "damage", amount: 1000 },
-    triple: { kind: "damage", amount: 500 },
+    pair: { kind: "damage", amount: 4000 },
+    triple: { kind: "damage", amount: 2000 },
   },
   "🗡️": {
     // The economy nerfs bite for a long time — that is the sting, not the rate.
