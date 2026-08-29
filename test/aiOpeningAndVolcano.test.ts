@@ -184,14 +184,30 @@ test("the volcano actually takes damage from the bots aimed at it", (t) => {
   spawnVolcano(match, "p0", 90 * TICK.RATE);
   const full = match.gameState!.volcano!.maxHp;
 
+  // Count what actually lands, rather than reading the HP at the end: a volcano
+  // that erupts on its timer and one that is broken both leave `volcano` null.
+  let dealt = 0;
+  match.gameState!.events.on((e) => {
+    if (e.type === "volcanoDamaged") dealt += (e as { amount: number }).amount;
+  });
+
   let ticked = match.tick;
   for (let i = 0; i < 60 * TICK.RATE && match.gameState!.volcano; i++) {
     ticked += 1;
     runner.tick(ticked);
     tickMatch(match, ticked);
   }
-  const left = match.gameState!.volcano?.hp ?? 0;
-  assert.ok(left < full, `the volcano took nothing: ${left}/${full}`);
+  // ⚠️ HALF, NOT "SOMETHING". Merely landing a hit was the old bar and it
+  // hid the real behaviour: the bots aimed at the mountain and then went back
+  // to buying citizens, because nothing in the observation describes a volcano
+  // and the policy has never seen one. Four to eight casts across four seats in
+  // a thirty-second window, and the timer always won. With the reflex they
+  // break it outright; half its health is a floor that leaves room for a poor
+  // draw without letting the old behaviour back in.
+  assert.ok(
+    dealt >= full / 2,
+    `the bots barely touched the volcano: ${dealt} of ${full}`,
+  );
 });
 
 test("Magma is never pulled onto its own volcano", (t) => {

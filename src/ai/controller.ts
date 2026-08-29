@@ -338,6 +338,49 @@ export class NetworkController implements AIController {
     }
   }
 
+  /**
+   * The slot holding the biggest single hit this seat can pay for right now,
+   * or null when nothing is ready.
+   *
+   * ⚠️ ONLY WHAT THE VOLCANO ACCEPTS. It takes attacks and ultimates, and
+   * only their plain damage — statuses, heals and utilities are refused
+   * outright by the engine, and an attack whose damage is zero at this tier is
+   * refused too. Ranking on the declared damage rather than the effective
+   * number is deliberate: the ordering is what matters and the tier only ever
+   * scales it up.
+   */
+  private hardestHitFor(knowledge: ReturnType<typeof knowledgeFor>): number | null {
+    let best: number | null = null;
+    let bestDamage = 0;
+    for (let slot = 0; slot < this.kit.length; slot++) {
+      const ability = this.kit[slot];
+      const known = knowledge.self.kit[slot];
+      if (ability === undefined || known === undefined) continue;
+      if (ability.kind !== "attack" && ability.kind !== "ultimate") continue;
+      if (
+        !known.unlocked ||
+        known.cooldownRemaining > 0 ||
+        !known.affordable ||
+        !known.meterReady ||
+        known.statusBlocked ||
+        known.centrepieceBlocked ||
+        known.needsUnsupportedPayload ||
+        (known.charges !== null && known.charges.available <= 0)
+      ) {
+        continue;
+      }
+      const damage = ability.effects
+        .filter((e) => e.type === "damage")
+        .reduce((sum, e) => sum + (e.params.amount ?? 0), 0);
+      if (damage <= 0) continue; // the engine refuses these against a rock
+      if (damage > bestDamage) {
+        bestDamage = damage;
+        best = slot;
+      }
+    }
+    return best;
+  }
+
   /** Re-decides with the chosen head suppressed. */
   private secondBest(first: Decision): Decision {
     this.altMask.set(this.mask);
@@ -551,6 +594,46 @@ export class NetworkController implements AIController {
         return;
       }
     }
+    // ── the volcano reflex ────────────────────────────────────────────
+    //
+    // ⚠️ AIMING AT THE MOUNTAIN WAS NOT ENOUGH, AND COULD NEVER HAVE BEEN.
+    // The network has never seen a volcano: no genome in self-play has ever
+    // faced one, and nothing in the observation describes it. Committed bots
+    // held the target and then went on buying citizens — measured at four to
+    // eight casts across four seats over a thirty-second eruption window, with
+    // the mountain reaching its timer untouched every single time.
+    //
+    // So the swinging is a rule, exactly like the shield reflex above and for
+    // exactly the same reason: there is no trade-off worth weighing while a
+    // volcano is standing, and it is not learnable from a board the policy
+    // cannot see. It picks the hardest thing it can currently pay for, which is
+    // what "actively try to defeat it" means with a clock running.
+    //
+    // Falls THROUGH rather than returning when nothing is ready, so a bot on
+    // cooldown still spends the decision on its economy instead of standing
+    // still for thirty seconds.
+    if (this.volcanoLocked && player.target === VOLCANO_TARGET_ID) {
+      const slot = this.hardestHitFor(knowledge);
+      if (slot !== null) {
+        const ability = this.kit[slot]!;
+        const charges = knowledge.self.kit[slot]?.charges ?? null;
+        const result = activateAbility(match, player, ability, {
+          targetId: VOLCANO_TARGET_ID,
+          // Everything it has: a volcano is a wall on a timer, and holding
+          // charges back for a kingdom that may not be there in thirty seconds
+          // is not a trade worth making.
+          chargesToUse: charges
+            ? chargesToSpend(1, charges.available, charges.costPerCharge, knowledge.self.currency)
+            : undefined,
+        });
+        if (result.ok) {
+          this.stats.casts += 1;
+          return;
+        }
+        this.reject("cast", result.error);
+      }
+    }
+
     switch (action.kind) {
       case "wait":
         this.stats.waits += 1;
