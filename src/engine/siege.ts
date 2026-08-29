@@ -59,13 +59,28 @@ export function siegeEscalation(player: PlayerState): number {
   return player.siege?.level ?? 0;
 }
 
-/** Living kingdoms currently aiming at `victim`, as sorted ids. */
+/**
+ * Living kingdoms currently aiming at `victim` that have also hit it at least
+ * once this match, as sorted ids.
+ *
+ * ⚠️ THE SAME BAR THE RAW COUNT USES. Escalation is the raw count's
+ * long-form cousin, so letting a coalition build stages out of kingdoms that
+ * merely POINT would reintroduce exactly the free bonus `besiegerCount` refuses
+ * — and it would be worth more here, because stages persist as a floor once
+ * earned.
+ */
 function currentBesiegers(
   victim: PlayerState,
   allPlayers: readonly PlayerState[],
 ): string[] {
   return allPlayers
-    .filter((p) => !p.eliminated && p.id !== victim.id && p.target === victim.id)
+    .filter(
+      (p) =>
+        !p.eliminated &&
+        p.id !== victim.id &&
+        p.target === victim.id &&
+        victim.attackedBy.has(p.id),
+    )
     .map((p) => p.id)
     .sort();
 }

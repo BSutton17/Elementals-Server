@@ -49,6 +49,11 @@ function arena(n: number): { match: Match; players: PlayerState[] } {
  * cooldown is `targeting.test.ts`'s subject.
  */
 function aim(attackers: PlayerState[], victim: PlayerState | null): void {
+  // ⚠️ A SIEGE IS BUILT OUT OF KINGDOMS THAT HAVE ACTUALLY ATTACKED. The
+  // escalation counts the same members the raw bonus does, so aiming a kingdom
+  // that has never landed a hit builds nothing — which is its own test at the
+  // bottom of this file. Everywhere else here, the coalition is real.
+  if (victim) for (const a of attackers) victim.attackedBy.add(a.id);
   for (const a of attackers) a.target = victim ? victim.id : null;
 }
 
@@ -350,4 +355,17 @@ test("the real tick loop advances the siege watch", () => {
     if (victim!.eliminated) break;
   }
   assert.equal(siegeEscalation(victim!), 1);
+});
+
+
+test("a coalition that never actually attacks escalates nothing", () => {
+  // The clock only runs on kingdoms that have hit you. Pointing at somebody for
+  // a minute and a half is not a siege, and the stages it would have earned are
+  // a permanent floor — so this is the more valuable half of the rule to hold.
+  const { match, players } = arena(4);
+  const [victim, a, b] = players;
+  a!.target = victim!.id;
+  b!.target = victim!.id;
+  hold(match, TIER1 + GRACE + 20);
+  assert.equal(siegeEscalation(victim!), 0);
 });

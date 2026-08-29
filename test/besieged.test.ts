@@ -50,12 +50,26 @@ function arena(n: number): { match: Match; players: PlayerState[] } {
   return { match, players };
 }
 
+/**
+ * Point `attacker` at `victim` and record that it has landed a hit on them.
+ *
+ * ⚠️ BOTH HALVES, BECAUSE AIMING ALONE IS NO LONGER A SIEGE. The bonuses
+ * count only kingdoms that have actually attacked at some point (see
+ * `besiegerCount`), so a test that merely selects a target now describes a
+ * kingdom that is LOOKING at you — which is exactly what the tests at the
+ * bottom of this file are for.
+ */
+function besiege(match: Match, attacker: PlayerState, victim: PlayerState): void {
+  victim.attackedBy.add(attacker.id);
+  selectTarget(match, attacker, victim.id);
+}
+
 test("no bonus when nobody, or only one enemy, is targeting you", () => {
   const { match, players } = arena(4);
   const [me, a] = players;
   assert.equal(besiegedDamageMultiplier(me, match.gameState!.getPlayers()), 1);
 
-  selectTarget(match, a, me.id); // a single besieger — a fair fight, still ×1
+  besiege(match, a, me); // a single besieger — a fair fight, still ×1
   assert.equal(besiegedDamageMultiplier(me, match.gameState!.getPlayers()), 1);
 });
 
@@ -64,11 +78,11 @@ test("each enemy beyond the first adds the per-attacker bonus", () => {
   const [me, a, b, c] = players;
   const all = match.gameState!.getPlayers();
 
-  selectTarget(match, a, me.id);
-  selectTarget(match, b, me.id); // 2 besiegers -> 1 stack
+  besiege(match, a, me);
+  besiege(match, b, me); // 2 besiegers -> 1 stack
   assert.equal(besiegedDamageMultiplier(me, all), dmgAt(1));
 
-  selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
+  besiege(match, c, me); // 3 besiegers -> 2 stacks
   assert.equal(besiegedDamageMultiplier(me, all), dmgAt(2));
 });
 
@@ -77,9 +91,9 @@ test("eliminated attackers and non-targeters don't count", () => {
   const [me, a, b, c] = players;
   const all = match.gameState!.getPlayers();
 
-  selectTarget(match, a, me.id);
-  selectTarget(match, b, me.id);
-  selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
+  besiege(match, a, me);
+  besiege(match, b, me);
+  besiege(match, c, me); // 3 besiegers -> 2 stacks
   b.eliminated = true; // down to 2 living besiegers -> 1 stack
   assert.equal(besiegedDamageMultiplier(me, all), dmgAt(1));
 });
@@ -88,7 +102,7 @@ test("the bonus is capped: extra besiegers past the cap add nothing", () => {
   // A full lobby: 7 enemies pile onto one kingdom (7 besiegers -> 6 stacks).
   const { match, players } = arena(8);
   const me = players[0];
-  for (let i = 1; i < 8; i++) selectTarget(match, players[i], me.id);
+  for (let i = 1; i < 8; i++) besiege(match, players[i]!, me);
   const all = match.gameState!.getPlayers();
 
   // Lower the cap to 2 stacks: the 7 besiegers clamp down to it.
@@ -138,16 +152,16 @@ test("besieged grants no bonus income in a fair 1v1, but pays out when ganged up
   const all = match.gameState!.getPlayers();
 
   assert.equal(besiegedIncomePerTick(me, all), 0); // nobody targeting
-  selectTarget(match, a, me.id);
+  besiege(match, a, me);
   assert.equal(besiegedIncomePerTick(me, all), 0); // one attacker — still nothing
 
-  selectTarget(match, b, me.id); // 2 besiegers -> 1 stack
+  besiege(match, b, me); // 2 besiegers -> 1 stack
   assert.equal(
     besiegedIncomePerTick(me, all),
     COMBAT.BESIEGED_INCOME_PER_ATTACKER / TICK.RATE,
   );
 
-  selectTarget(match, c, me.id); // 3 besiegers -> 2 stacks
+  besiege(match, c, me); // 3 besiegers -> 2 stacks
   assert.equal(
     besiegedIncomePerTick(me, all),
     (2 * COMBAT.BESIEGED_INCOME_PER_ATTACKER) / TICK.RATE,
@@ -157,8 +171,8 @@ test("besieged grants no bonus income in a fair 1v1, but pays out when ganged up
 test("the passive-income phase adds the besieged bonus to earnings", () => {
   const { match, players } = arena(4);
   const [me, a, b] = players;
-  selectTarget(match, a, me.id);
-  selectTarget(match, b, me.id); // 1 besieged stack on `me`
+  besiege(match, a, me);
+  besiege(match, b, me); // 1 besieged stack on `me`
 
   me.economy.currency = 0;
   const bonusPerTick = COMBAT.BESIEGED_INCOME_PER_ATTACKER / TICK.RATE;
@@ -199,8 +213,8 @@ test("a besieged attacker's Water Ball hits harder end to end", () => {
   const unbesieged = 10_000 - plain.players[3].castle.hp;
 
   // Two enemies pile onto `me` (1 stack); `me` fires at a third.
-  selectTarget(match, a, me.id);
-  selectTarget(match, b, me.id);
+  besiege(match, a, me);
+  besiege(match, b, me);
   c.castle.hp = 10_000;
   activateAbility(match, me, WATER_BALL, { targetId: c.id, forceCrit: false });
   const expected = Math.round(unbesieged * dmgAt(1));
@@ -212,7 +226,7 @@ test("a besieged attacker's Water Ball hits harder end to end", () => {
 
 /** Points `attackers` at `victim`. */
 function gangUpOn(victim: PlayerState, attackers: PlayerState[], match: Match) {
-  for (const a of attackers) selectTarget(match, a, victim.id);
+  for (const a of attackers) besiege(match, a, victim);
 }
 
 test("gold production scales by the besieged rate per attacker beyond the first", () => {
@@ -316,3 +330,66 @@ test("the damage bonus is untouched by the income change", () => {
     dmgAt(1),
   );
 })
+
+
+// --- a selection is not a siege ---------------------------------------------
+
+test("a kingdom that only POINTS at you is not besieging you", () => {
+  // ⚠️ THE WHOLE POINT OF THE RULE. Aiming costs nothing, so without this a
+  // table could hand one kingdom the full damage and income bonus by all
+  // clicking it and never swinging — and two players could park their targets
+  // on each other and farm it for the whole match.
+  const { match, players } = arena(4);
+  const [me, a, b, c] = players;
+  const all = match.gameState!.getPlayers();
+
+  selectTarget(match, a!, me!.id);
+  selectTarget(match, b!, me!.id);
+  selectTarget(match, c!, me!.id);
+  assert.equal(besiegedDamageMultiplier(me!, all), 1, "three onlookers paid a bonus");
+  assert.equal(besiegedIncomeMultiplier(me!, all), 1);
+});
+
+test("it counts from the moment it lands its first hit", () => {
+  const { match, players } = arena(4);
+  const [me, a, b] = players;
+  const all = match.gameState!.getPlayers();
+
+  selectTarget(match, a!, me!.id);
+  selectTarget(match, b!, me!.id);
+  assert.equal(besiegedDamageMultiplier(me!, all), 1);
+
+  // `a` swings for real. Two are aimed, but only one has ever attacked.
+  me!.attackedBy.add(a!.id);
+  assert.equal(besiegedDamageMultiplier(me!, all), 1, "one attacker is a fair fight");
+
+  me!.attackedBy.add(b!.id);
+  assert.equal(besiegedDamageMultiplier(me!, all), dmgAt(1));
+});
+
+test("and it keeps counting while they reload", () => {
+  // Someone who has been hammering you for a minute and is between casts is
+  // still besieging you — the record is of the match, not of this tick.
+  const { match, players } = arena(4);
+  const [me, a, b] = players;
+  const all = match.gameState!.getPlayers();
+
+  besiege(match, a!, me!);
+  besiege(match, b!, me!);
+  assert.equal(besiegedDamageMultiplier(me!, all), dmgAt(1));
+  // No further damage is dealt; they simply stay pointed at me.
+  assert.equal(besiegedDamageMultiplier(me!, all), dmgAt(1));
+});
+
+test("hitting somebody ELSE does not make you their besieger", () => {
+  const { match, players } = arena(4);
+  const [me, a, b, c] = players;
+  const all = match.gameState!.getPlayers();
+
+  // `a` and `b` have both attacked `c`, and are now aimed at me.
+  c!.attackedBy.add(a!.id);
+  c!.attackedBy.add(b!.id);
+  selectTarget(match, a!, me!.id);
+  selectTarget(match, b!, me!.id);
+  assert.equal(besiegedDamageMultiplier(me!, all), 1);
+});

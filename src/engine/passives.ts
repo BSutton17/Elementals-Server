@@ -105,14 +105,29 @@ export function elementalDamageMultiplier(
   return mult;
 }
 
-/** Living enemies currently targeting `player`. */
+/**
+ * Living enemies currently targeting `player` who have ALSO hit it at least
+ * once this match.
+ *
+ * ⚠️ A SELECTION IS NOT A SIEGE. Being aimed at costs nothing and proves
+ * nothing: a table that all clicked one kingdom and never swung would hand it
+ * the full besieged damage and income bonus for free, and two friends could
+ * park their targets on each other and farm it all game. What the bonus is
+ * compensation for is actually being attacked, so a kingdom counts only once
+ * it has landed damage — at any point in the match, not necessarily now,
+ * because someone who has been hammering you for a minute and is reloading is
+ * still besieging you.
+ */
 export function besiegerCount(
   player: PlayerState,
   allPlayers: readonly PlayerState[],
 ): number {
   let n = 0;
   for (const p of allPlayers) {
-    if (!p.eliminated && p.id !== player.id && p.target === player.id) n++;
+    if (p.eliminated || p.id === player.id) continue;
+    if (p.target !== player.id) continue;
+    if (!player.attackedBy.has(p.id)) continue;
+    n++;
   }
   return n;
 }

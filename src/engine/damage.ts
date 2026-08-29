@@ -289,7 +289,12 @@ export function resolveDamage(
   // Same place, same knowledge: this is where the attacker is known and the
   // final post-mitigation figure exists.
   attacker.stats.damageDealt += Math.max(0, final);
-  if (final > 0) defender.lastDamagedById = attacker.id;
+  if (final > 0) {
+    defender.lastDamagedById = attacker.id;
+    // The same moment answers "has this kingdom ever actually attacked me",
+    // which is what the besieged bonuses are gated on (see `besiegerCount`).
+    defender.attackedBy.add(attacker.id);
+  }
 
   return {
     amount: final,

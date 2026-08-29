@@ -97,6 +97,11 @@ export function broadcastGameState(io: Server, match: Match): void {
     serverTime: Date.now(),
     players: state.getPlayers().map((p) => ({
       ...p,
+      // Server-side bookkeeping, and of no use to a client: who has ever hit
+      // whom only gates the besieged bonuses. A Set serializes to `{}` in any
+      // case, so leaving it in would put an empty object on the wire for every
+      // player twenty times a second.
+      attackedBy: undefined,
       economy: { ...p.economy, nextCitizenCost: citizenCost(p) },
       castle: {
         ...p.castle,

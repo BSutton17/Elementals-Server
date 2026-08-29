@@ -273,6 +273,8 @@ export interface EffectDefinition {
     shieldOnlyAmount?: number;
     /** spawnCaprice: ticks between target re-rolls. */
     scrambleTicks?: number;
+    /** spawnVolcano: health the mountain gets per living kingdom. */
+    hpPerPlayer?: number;
     /** lavaFloor: multiplier applied to every burn on the field. */
     burnMultiplier?: number;
     /** smokeScreen: damage dealt to each kingdom currently targeting the caster. */
@@ -2036,7 +2038,7 @@ function applyEffect(
     }
 
     case "spawnVolcano": {
-      spawnVolcano(match, caster.id, p.durationTicks ?? 0);
+      spawnVolcano(match, caster.id, p.durationTicks ?? 0, p.hpPerPlayer);
       break;
     }
 

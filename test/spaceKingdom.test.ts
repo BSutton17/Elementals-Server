@@ -98,10 +98,22 @@ test("Vast Universe — income scales +10% per kingdom targeting Space", () => {
   const { players } = cosmos(4);
   const [space, b, c, d] = players;
   assert.equal(besiegerIncomeMultiplier(space, players), 1); // nobody yet
+
+  // ⚠️ AIMED AND HAVING ACTUALLY ATTACKED. Every besieger count in the engine
+  // asks for both now (see `besiegerCount`) — otherwise Space and a friend
+  // could farm this passive all match by pointing at each other and never
+  // swinging, which is the same free bonus the besieged curve refuses.
   b.target = space.id;
+  space.attackedBy.add(b.id);
   assert.ok(Math.abs(besiegerIncomeMultiplier(space, players) - 1.1) < 1e-9);
+
+  // A third kingdom that only LOOKS is worth nothing.
   c.target = space.id;
+  assert.ok(Math.abs(besiegerIncomeMultiplier(space, players) - 1.1) < 1e-9);
+
+  space.attackedBy.add(c.id);
   d.target = space.id;
+  space.attackedBy.add(d.id);
   assert.ok(Math.abs(besiegerIncomeMultiplier(space, players) - 1.3) < 1e-9);
 });
 

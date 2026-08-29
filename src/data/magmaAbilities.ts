@@ -1,4 +1,5 @@
 import { MAGMA, TICK } from "./balance.js";
+import { VOLCANO_HP_PER_PLAYER_MAX } from "../engine/volcano.js";
 import type { AbilityDefinition } from "../engine/abilities.js";
 import type { StatusEffectDefinition } from "../engine/status.js";
 
@@ -175,9 +176,9 @@ export const FLOOR_IS_LAVA: AbilityDefinition = {
   id: "floorIsLava",
   name: "Floor is Lava",
   kind: "utility",
-  cost: 195,
-  unlockCost: 98,
-  cooldownTicks: Math.round(46.5 * TICK.RATE), // 33.25 s
+  cost: 395,
+  unlockCost: 198,
+  cooldownTicks: Math.round(55 * TICK.RATE), // 33.25 s
   targeting: { mode: "self" },
   effects: [
     {
@@ -245,7 +246,8 @@ export const FLOOR_IS_LAVA: AbilityDefinition = {
 
 /**
  * The End of the World (ultimate): a volcano in the middle of the battlefield
- * with 1000 health per living kingdom and twenty seconds on the clock.
+ * with 1000 health per living kingdom and twenty seconds on the clock — or,
+ * fully upgraded, 1500 per kingdom with fifteen seconds to break it.
  *
  * Everyone but Magma has to swing at it, and the eruption is scored per
  * kingdom: each one takes `5000 - what they personally dealt to it`. That makes
@@ -283,6 +285,10 @@ export const THE_END_OF_THE_WORLD: AbilityDefinition = {
       changes: {
         cooldownTicks: 1002,
         costMultiplier: 0.85,
+        // ⚠️ HALF AGAIN AS MUCH WALL, ON TOP OF LEVEL 1'S SHORTER CLOCK.
+        // Tiers merge cumulatively onto one params object, so this raises the
+        // health without touching the fifteen seconds set above it.
+        effectParams: [{ hpPerPlayer: VOLCANO_HP_PER_PLAYER_MAX }],
       },
     },
   ],

@@ -15,6 +15,7 @@ import {
   resolveVolcano,
   applyVolcanoStatus,
   VOLCANO_HP_PER_PLAYER,
+  VOLCANO_HP_PER_PLAYER_MAX,
 } from "../src/engine/volcano.js";
 import { FIRENADO } from "../src/data/fireAbilities.js";
 import { WATER_BALL } from "../src/data/waterAbilities.js";
@@ -308,6 +309,43 @@ test("the volcano is sized off the living kingdoms", () => {
   assert.equal(volcano.maxHp, VOLCANO_HP_PER_PLAYER * 2); // two living kingdoms
   assert.equal(volcano.hp, volcano.maxHp);
   assert.equal(volcano.ownerId, a.id);
+});
+
+test("fully upgraded, the volcano is half again as big", () => {
+  const { match, a } = magmaMatch();
+  // Unlock, then both tiers.
+  for (let i = 0; i < 3; i++) {
+    assert.equal(unlockOrUpgradeAbility(match, a, THE_END_OF_THE_WORLD.id).ok, true);
+  }
+  assert.equal(activateAbility(match, a, THE_END_OF_THE_WORLD).ok, true);
+
+  const volcano = match.gameState!.volcano!;
+  assert.equal(volcano.maxHp, VOLCANO_HP_PER_PLAYER_MAX * 2);
+  assert.equal(volcano.hp, volcano.maxHp);
+});
+
+test("the health upgrade does not undo level 1's shorter clock", () => {
+  // ⚠️ TIERS MERGE ONTO ONE PARAMS OBJECT, so a level-2 change that named
+  // the same effect could have overwritten level 1's `durationTicks` back to
+  // the base twenty seconds. Both tiers touch effect 0; only their own keys
+  // should move.
+  const { match, a } = magmaMatch();
+  for (let i = 0; i < 3; i++) {
+    assert.equal(unlockOrUpgradeAbility(match, a, THE_END_OF_THE_WORLD.id).ok, true);
+  }
+  assert.equal(activateAbility(match, a, THE_END_OF_THE_WORLD).ok, true);
+  const volcano = match.gameState!.volcano!;
+  assert.equal(volcano.endTick - match.tick, 15 * TICK.RATE);
+});
+
+test("one upgrade in, it is still the base size", () => {
+  // The health is the LAST tier's reward; buying halfway must not pay it early.
+  const { match, a } = magmaMatch();
+  for (let i = 0; i < 2; i++) {
+    assert.equal(unlockOrUpgradeAbility(match, a, THE_END_OF_THE_WORLD.id).ok, true);
+  }
+  assert.equal(activateAbility(match, a, THE_END_OF_THE_WORLD).ok, true);
+  assert.equal(match.gameState!.volcano!.maxHp, VOLCANO_HP_PER_PLAYER * 2);
 });
 
 test("everyone but Magma can target and hit the volcano", () => {

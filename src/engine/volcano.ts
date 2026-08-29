@@ -27,6 +27,17 @@ import type { VolcanoStatus } from "../match/GameState.js";
 /** How much a volcano is worth per living kingdom. */
 export const VOLCANO_HP_PER_PLAYER = 1000;
 
+/**
+ * And what it is worth once the ultimate is fully upgraded.
+ *
+ * ⚠️ THE UPGRADE MAKES THE WALL TALLER, NOT THE CLOCK LONGER. Level 1
+ * already SHORTENS the timer, so the two tiers pull the same lever from
+ * opposite ends: less time, then more health. Scaled per living kingdom like
+ * the base figure, because the eruption is scored per kingdom — a flat bonus
+ * would be trivial at a full table and unbreakable in a duel.
+ */
+export const VOLCANO_HP_PER_PLAYER_MAX = 1500;
+
 /** True while a volcano is standing and its timer has not run out. */
 export function volcanoIsLive(match: Match): boolean {
   const v = match.gameState?.volcano;
@@ -37,10 +48,15 @@ export function volcanoIsLive(match: Match): boolean {
  * Puts a volcano on the field. Sized off the kingdoms that are actually still
  * playing, so a late-game duel does not face a wall built for eight.
  */
-export function spawnVolcano(match: Match, ownerId: string, durationTicks: number): void {
+export function spawnVolcano(
+  match: Match,
+  ownerId: string,
+  durationTicks: number,
+  hpPerPlayer: number = VOLCANO_HP_PER_PLAYER,
+): void {
   const state = match.gameState!;
   const living = state.getPlayers().filter((p) => !p.eliminated).length;
-  const maxHp = VOLCANO_HP_PER_PLAYER * living;
+  const maxHp = hpPerPlayer * living;
 
   state.volcano = {
     ownerId,

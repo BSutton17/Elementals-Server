@@ -470,6 +470,18 @@ export interface PlayerState {
    */
   lastDamagedById: string | null;
   /**
+   * Every kingdom that has landed damage on this one at any point in the match.
+   *
+   * ⚠️ AIMING IS NOT ATTACKING, AND ONLY ATTACKING PAYS. The besieged
+   * bonuses are compensation for being ganged up on, and pointing at somebody
+   * costs nothing — a table could hand one kingdom a permanent damage and
+   * income bonus by all selecting it and never swinging, or a player could park
+   * their own selection on a friend to farm it. Membership here is earned by
+   * dealing damage, and it is never given back: the point is that the coalition
+   * WAS real, not that it is still swinging this second.
+   */
+  attackedBy: Set<string>;
+  /**
    * Persistent-siege bookkeeping: who has been ganging up on this kingdom, for
    * how long, and how many extra besieged stages they have earned it. Advanced
    * once per tick by `engine/siege.ts`; read by `besiegedStacks`.
@@ -632,6 +644,7 @@ export function createPlayerState(
     attackJournal: [],
     stats: createMatchStats(),
     lastDamagedById: null,
+    attackedBy: new Set<string>(),
     siege: createSiegeWatch(),
     supernovaMeter: 0,
     rageMeter: 0,
