@@ -6,6 +6,8 @@ import {
   unlockOrUpgradeAbility,
 } from "../engine/purchases.js";
 import { selectTarget } from "../engine/targeting.js";
+import { volcanoIsLive } from "../engine/volcano.js";
+import { VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { dispelStatus } from "../engine/purchases.js";
 import { TICK } from "../data/balance.js";
 import { placeRouletteBet } from "../engine/roulette.js";
@@ -35,6 +37,30 @@ import { randomNetwork, type Network } from "./network.js";
  * so a NEAT phenotype drops in with no change here — which is the point of
  * building the runtime before the algorithm.
  */
+
+/**
+ * How long, in seconds, bots leave each other and the table alone at the start
+ * of a match.
+ *
+ * ⚠️ THE OPENING IS THE ECONOMY PHASE, AND A BOT THAT OPENS BY PUNCHING
+ * SOMEBODY MAKES IT A RACE. Nobody has a shield, an unlock or a second citizen
+ * yet, so the first hit lands into a defenceless castle and the whole table is
+ * reacting before it has built anything. Bots simply do not pick a target for
+ * this long; with nothing selected they spend the opening the way a person does
+ * — buying citizens and unlocking a kit.
+ */
+const OPENING_TRUCE_SECONDS = 15;
+
+/**
+ * Per-second chance a bot commits to the volcano while one is standing.
+ *
+ * ⚠️ ROLLED ONCE A SECOND, NOT ONCE A DECISION. Hard bots decide several
+ * times a second and Easy ones far less often, so a per-decision roll would
+ * make difficulty silently decide how fast the table answers "The End of the
+ * World". Rolled on the wall clock, every bot commits at the same rate and the
+ * mountain gets the same reception whoever is sitting at the table.
+ */
+const VOLCANO_LOCK_CHANCE = 0.5;
 
 export interface NetworkControllerOptions {
   readonly network: Network;
@@ -154,6 +180,19 @@ export class NetworkController implements AIController {
   private readonly kit: readonly AbilityDefinition[];
   private readonly phase: number;
   private subscribed = false;
+
+  /**
+   * Committed to the volcano: no swapping off until it is broken or gone.
+   *
+   * ⚠️ THE LOCK IS THE BOT'S OWN RULE, NOT THE ENGINE'S. `selectTarget`
+   * would happily let it wander off — a human can. What makes a volcano a
+   * crisis is that the table stays on it, and a bot that re-thought its target
+   * twice a second would drift back to whichever kingdom looked weakest and
+   * leave the mountain to erupt on everybody.
+   */
+  private volcanoLocked = false;
+  /** The last whole second the volcano roll was made in. */
+  private lastVolcanoRollSecond = -1;
 
   readonly stats: ControllerStats = {
     decisions: 0, casts: 0, invests: 0, citizens: 0, repairs: 0,
@@ -315,9 +354,42 @@ export class NetworkController implements AIController {
   ): void {
     const { match, player } = ctx;
 
-    // Retargeting first, so a cast made this decision uses the new target —
-    // the same order a player clicking a castle then an ability produces.
-    if (decision.retargetSlot !== null) {
+    // ── the volcano, and the opening truce ────────────────────────────
+    //
+    // Both are rules rather than learned behaviour, for the same reason the
+    // shield reflex below is: neither has a trade-off worth weighing, and
+    // neither is reachable through a network that has no idea a volcano exists.
+    const volcano = match.gameState?.volcano;
+    const mountainStanding =
+      volcanoIsLive(match) && volcano !== null && volcano?.ownerId !== player.id;
+
+    if (!mountainStanding) {
+      // Broken, erupted, or Magma's own: the lock means nothing now.
+      this.volcanoLocked = false;
+    } else if (this.volcanoLocked) {
+      // Something else moved the selection — an elimination clearing it, a
+      // Supernova forcing it, a Caprice scramble. Put it back.
+      if (player.target !== VOLCANO_TARGET_ID) {
+        selectTarget(match, player, VOLCANO_TARGET_ID);
+      }
+    } else {
+      const second = Math.floor(match.tick / TICK.RATE);
+      if (second !== this.lastVolcanoRollSecond) {
+        this.lastVolcanoRollSecond = second;
+        if (this.rng() < VOLCANO_LOCK_CHANCE) {
+          if (selectTarget(match, player, VOLCANO_TARGET_ID).ok) {
+            this.volcanoLocked = true;
+            this.stats.retargets += 1;
+          }
+        }
+      }
+    }
+
+    // Retargeting, so a cast made this decision uses the new target — the same
+    // order a player clicking a castle then an ability produces. Skipped while
+    // the truce holds and while this bot is committed to the mountain.
+    const truceHolds = match.tick < OPENING_TRUCE_SECONDS * TICK.RATE;
+    if (decision.retargetSlot !== null && !truceHolds && !this.volcanoLocked) {
       const enemy = orderEnemies(knowledge)[decision.retargetSlot];
       if (enemy !== undefined) {
         const result = selectTarget(match, player, enemy.id);

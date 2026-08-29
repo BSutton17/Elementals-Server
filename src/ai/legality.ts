@@ -14,6 +14,7 @@ import {
   orderEnemies,
 } from "./actions.js";
 import type { PlayerKnowledge } from "./knowledge.js";
+import { VOLCANO_TARGET_ID } from "../match/GameState.js";
 
 /**
  * The action mask.
@@ -75,9 +76,23 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
   // `attackable`, not merely alive: the engine applies its targeting bans to the
   // current selection too, so a target that Flooded this seat is still selected
   // and no longer castable at.
+  /**
+   * The volcano counts as a selection.
+   *
+   * ⚠️ WITHOUT THIS, A BOT AIMED AT THE VOLCANO CANNOT SWING AT ALL. "The
+   * End of the World" is not a kingdom, so it is nowhere in `enemies` — the
+   * selection test came back false, every single-target attack was masked
+   * illegal, and a bot that had committed to the mountain stood and watched it
+   * erupt. The engine has always accepted the cast; only the mask did not.
+   * Attacks and ultimates ONLY, because the engine refuses everything else
+   * against it (see the volcano branch in `activateAbility`).
+   */
+  const volcanoSelected =
+    knowledge.self.targetId === VOLCANO_TARGET_ID && knowledge.field.volcanoLive;
   const selected =
-    knowledge.self.targetId !== null &&
-    knowledge.enemies.some((e) => e.id === knowledge.self.targetId && e.attackable);
+    volcanoSelected ||
+    (knowledge.self.targetId !== null &&
+      knowledge.enemies.some((e) => e.id === knowledge.self.targetId && e.attackable));
   // An allEnemies cast resolves against every living enemy the seat is not
   // BARRED from — Caprice's single-target protection does not stop it, but a
   // targeting ban does, and the engine refuses with INVALID_TARGET when the
@@ -125,7 +140,13 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
       // An enemy-directed cast with nothing to resolve against is refused by
       // the engine, so it is not a legal choice here either.
       (ability.targetRequirement === "none" ||
-        (ability.targetRequirement === "selected" ? selected : anyUnbanned));
+        (ability.targetRequirement === "selected" ? selected : anyUnbanned)) &&
+      // A rock takes attacks and ultimates and nothing else — offering a debuff
+      // or a heal at it is a decision the engine spends and refuses.
+      (!volcanoSelected ||
+        ability.targetRequirement === "none" ||
+        ability.kind === "attack" ||
+        ability.kind === "ultimate");
     if (!castable) continue;
     mask[CAST_BASE + slot] = 1;
     if (ability.charges !== null) anyChargeCastable = true;
