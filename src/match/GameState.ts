@@ -44,17 +44,77 @@ export interface VolcanoState {
 }
 
 /**
- * A status on the volcano. A deliberately thin slice of `StatusEffectInstance`:
+ * A status on something in the middle of the field that is not a kingdom — the
+ * volcano, the monster. A deliberately thin slice of `StatusEffectInstance`:
  * modifiers, targeting bans and the rest of the player machinery have nothing
  * to act on here, so they are not carried.
  */
-export interface VolcanoStatus {
+export interface FieldEntityStatus {
   id: string;
   /** Who applied it — tick damage keeps being credited to them. */
   sourceId: string;
   remainingTicks: number;
   stacks: number;
   tickEffects?: StatusTickEffect[];
+}
+
+/** The volcano's name for it, kept so existing imports keep reading naturally. */
+export type VolcanoStatus = FieldEntityStatus;
+
+/** The sentinel target id that means "the monster", not a kingdom. */
+export const MONSTER_TARGET_ID = "__monster__";
+
+/**
+ * The monster: the one centrepiece nobody summoned.
+ *
+ * Sized off the living table like the volcano, but with NO clock — it leaves
+ * when it is killed and not before, and it hits the whole field on its own
+ * cadence for as long as it stands. See `engine/monster.ts`.
+ */
+export interface MonsterState {
+  /** Damage it can still absorb. At 0 it is dead and the rewards are paid. */
+  hp: number;
+  /** What it started at: `MONSTER.HP_PER_PLAYER` per living kingdom. */
+  maxHp: number;
+  /**
+   * Damage each kingdom has personally dealt it, by player id.
+   *
+   * Unlike the volcano's contributions this is NOT display-only: the biggest
+   * number here takes one of the two rewards, so it is scored state.
+   */
+  damage: Record<string, number>;
+  /** Who landed the most recent hit — holds the finishing blow when it dies. */
+  lastHitBy: string | null;
+  /** Tick of its next attack cycle. */
+  nextAttackTick: number;
+  /**
+   * What each kingdom takes on the next SUCCESSFUL cycle. Starts at
+   * `MONSTER.ATTACK_DAMAGE` and climbs every time a cycle lands, so a monster
+   * left standing gets steadily more expensive to ignore.
+   */
+  attackDamage: number;
+  /** Statuses riding on it — burns chip it and are credited to whoever set them. */
+  statuses: FieldEntityStatus[];
+}
+
+/**
+ * The spawn clock.
+ *
+ * A COUNTDOWN rather than a target tick, because it does not run continuously:
+ * it is frozen while any centrepiece holds the middle of the field (including a
+ * monster), so "30 seconds" means thirty seconds of a clear field.
+ */
+export interface MonsterSpawnState {
+  /** Ticks of unblocked play left before the next roll. */
+  ticksUntilRoll: number;
+  /**
+   * The next roll is thrown away rather than rolled.
+   *
+   * Set when a monster dies, so the earliest a second one can appear is two
+   * intervals later. Without it a monster could be killed and replaced a tick
+   * afterwards, and the table would never get the breather it just earned.
+   */
+  skipNextRoll: boolean;
 }
 
 /**
@@ -179,6 +239,18 @@ export class GameState {
    * none is out.
    */
   caprice: CapriceState | null = null;
+
+  /**
+   * The monster standing in the middle of the field, or null when there is
+   * none. Not owned by any kingdom — see `engine/monster.ts`.
+   */
+  monster: MonsterState | null = null;
+
+  /**
+   * The monster spawn clock. Null until the first tick arms it, so the interval
+   * is read through the parameter gate rather than frozen at construction.
+   */
+  monsterSpawn: MonsterSpawnState | null = null;
 
   /**
    * Telegraphed strikes waiting to land (Light's "Light Show"). Resolved once

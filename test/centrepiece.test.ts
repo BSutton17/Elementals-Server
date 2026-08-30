@@ -126,7 +126,12 @@ test("every centre-of-the-field ability is registered", () => {
   // The guard is driven entirely off this list. An ability that spawns
   // something in the middle and is not registered here is invisible to it, and
   // will happily land on top of whatever is already there.
-  assert.equal(CENTREPIECES.length, CLAIMS.length);
+  //
+  // Counted against the CASTABLE entries only. The monster also claims the
+  // centre but nothing casts it — the field rolls for it — so it has no spawn
+  // effect and no entry in CLAIMS, and it is asserted separately below.
+  const castable = CENTREPIECES.filter((c) => c.spawnEffect !== null);
+  assert.equal(castable.length, CLAIMS.length);
   for (const c of CLAIMS) {
     assert.ok(
       centrepieceSpawnedBy(c.ability),
@@ -135,9 +140,19 @@ test("every centre-of-the-field ability is registered", () => {
   }
   // Registered under the names the players know them by.
   assert.deepEqual(
-    [...CENTREPIECES].map((c) => c.name).sort(),
+    castable.map((c) => c.name).sort(),
     CLAIMS.map((c) => c.name).sort(),
   );
+});
+
+test("the monster claims the centre without being an ability", () => {
+  // The one entry nothing casts. It must hold the slot in the "blocks
+  // ultimates" direction while never being reachable in the "refuse a
+  // duplicate cast" direction — an ability can never spawn a second monster
+  // because no ability spawns the first one.
+  const monster = CENTREPIECES.find((c) => c.name === "The Monster");
+  assert.ok(monster, "the monster is not registered as a centrepiece");
+  assert.equal(monster!.spawnEffect, null);
 });
 
 test("ordinary abilities claim nothing", () => {

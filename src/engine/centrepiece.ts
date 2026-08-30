@@ -27,10 +27,23 @@ import { capriceIsActive } from "./caprice.js";
  * centre-of-the-field ability is mutually exclusive with every existing one, in
  * both directions, without touching `activateAbility` at all. Nothing else in
  * the engine needs to know it exists.
+ *
+ * Not everything here is an ability. The monster is rolled for by the field
+ * rather than cast by a kingdom, so it has no spawn effect — but it claims the
+ * centre exactly as hard as the rest, and it holds the slot for as long as it
+ * is alive, which unlike every other entry has no upper bound.
  */
 export interface Centrepiece {
-  /** The effect primitive that puts this thing on the field. */
-  readonly spawnEffect: EffectDefinition["type"];
+  /**
+   * The effect primitive that puts this thing on the field, or null when
+   * nothing casts it.
+   *
+   * Null is the monster's case and only the monster's: it is not an ability, so
+   * no cast can ever be refused for "would spawn a second one". It still holds
+   * the slot in the other direction — while it stands, every ability that WOULD
+   * spawn a centrepiece is refused.
+   */
+  readonly spawnEffect: EffectDefinition["type"] | null;
   /** What it is called, for the rejection reported to the caster. */
   readonly name: string;
   /** True while it is standing in the middle of the field. */
@@ -77,6 +90,20 @@ export const CENTREPIECES: readonly Centrepiece[] = [
       );
     },
   },
+  {
+    // The monster. The only entry here that nobody cast — the field rolls for
+    // it — which is why its spawn effect is null. Registering it here is what
+    // gives it both halves of the exclusivity rule for free: no monster may
+    // spawn while an ultimate holds the centre (the spawn clock consults
+    // `standingCentrepiece`), and no ultimate may be cast while a monster
+    // stands. See `engine/monster.ts`.
+    spawnEffect: null,
+    name: "The Monster",
+    isStanding: (match) => {
+      const monster = match.gameState?.monster;
+      return !!monster && monster.hp > 0;
+    },
+  },
 ];
 
 /**
@@ -101,6 +128,11 @@ export function standingCentrepiece(match: Match): Centrepiece | null {
  */
 export function centrepieceSpawnedBy(ability: AbilityDefinition): Centrepiece | null {
   return (
-    CENTREPIECES.find((c) => ability.effects.some((e) => e.type === c.spawnEffect)) ?? null
+    CENTREPIECES.find(
+      (c) =>
+        // A centrepiece nothing casts (the monster) is never "spawned by" an
+        // ability, so it can never refuse one for being a duplicate of itself.
+        c.spawnEffect !== null && ability.effects.some((e) => e.type === c.spawnEffect),
+    ) ?? null
   );
 }

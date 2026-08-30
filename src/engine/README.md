@@ -18,7 +18,9 @@ The engine is generic **by default**, not absolutely. A handful of kingdoms carr
 a bespoke subsystem that no reasonable primitive expresses, and those live here as
 named modules: `blackjack.ts`, `roulette.ts`, `slotMachine.ts` (Joker),
 `volcano.ts`, `hotAsh.ts`, `lavaFloor.ts` (Magma), `crawlers.ts`, `caprice.ts`
-(Insects), `centrepiece.ts` (who may hold the middle of the field).
+(Insects), `centrepiece.ts` (who may hold the middle of the field), and
+`monster.ts` — the one centrepiece that belongs to no kingdom at all: the field
+rolls for it, it has no timer, and it leaves only when the table kills it.
 
 This is accepted and documented in ARCHITECTURE.md §1 — but it is a cost, so:
 

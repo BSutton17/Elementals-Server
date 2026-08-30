@@ -89,8 +89,19 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
    */
   const volcanoSelected =
     knowledge.self.targetId === VOLCANO_TARGET_ID && knowledge.field.volcanoLive;
+  /**
+   * The monster counts as a selection for exactly the same reason.
+   *
+   * Asked of `knowledge` rather than by comparing against the engine's sentinel
+   * id: this module is not one of the authorized simulation readers, and the
+   * downstream boundary test refuses an import of GameState here.
+   */
+  const monsterSelected =
+    knowledge.self.targetIsMonster && knowledge.field.monster !== null;
+  /** Aimed at something in the middle of the field that is not a kingdom. */
+  const fieldSelected = volcanoSelected || monsterSelected;
   const selected =
-    volcanoSelected ||
+    fieldSelected ||
     (knowledge.self.targetId !== null &&
       knowledge.enemies.some((e) => e.id === knowledge.self.targetId && e.attackable));
   // An allEnemies cast resolves against every living enemy the seat is not
@@ -141,9 +152,10 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
       // the engine, so it is not a legal choice here either.
       (ability.targetRequirement === "none" ||
         (ability.targetRequirement === "selected" ? selected : anyUnbanned)) &&
-      // A rock takes attacks and ultimates and nothing else — offering a debuff
-      // or a heal at it is a decision the engine spends and refuses.
-      (!volcanoSelected ||
+      // A rock or a monster takes attacks and ultimates and nothing else —
+      // offering a debuff or a heal at one is a decision the engine spends and
+      // refuses.
+      (!fieldSelected ||
         ability.targetRequirement === "none" ||
         ability.kind === "attack" ||
         ability.kind === "ultimate");

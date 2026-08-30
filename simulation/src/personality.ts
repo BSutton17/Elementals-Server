@@ -13,6 +13,8 @@ import {
   unlockOrUpgradeAbility,
 } from "../../src/engine/purchases.js";
 import { selectTarget } from "../../src/engine/targeting.js";
+import { monsterIsAlive } from "../../src/engine/monster.js";
+import { MONSTER_TARGET_ID } from "../../src/match/GameState.js";
 import { canMultiTargetAttacks, multiTargetLimit } from "../../src/engine/passives.js";
 import { computeStat } from "../../src/engine/modifiers.js";
 import { getCooldown } from "../../src/engine/cooldowns.js";
@@ -453,6 +455,29 @@ export class PersonalityAI implements AIController {
 
   private chooseTarget({ match, player, rng }: AIContext): void {
     const state = match.gameState!;
+
+    // ⚠️ THE MONSTER OVERRIDES EVERY TARGETING PREFERENCE, and it has to.
+    //
+    // No profile here knows what a centrepiece is; the heuristics pick between
+    // KINGDOMS, weighing amplification and priority. That is survivable for
+    // every other thing that holds the middle of the field, because they all
+    // resolve on a timer whether or not anybody engages. The monster does not:
+    // it stands until it is killed, hitting the whole table harder every cycle.
+    // Left to these heuristics it would never be attacked at all, and every
+    // simulated match past 1:30 would end as "the monster beat the table" —
+    // which would quietly make every balance reading taken after this point a
+    // reading of a different game.
+    //
+    // The spend priority is untouched, so a seat still buys and defends around
+    // it; only who it is pointed at is overridden. `cast` aims at
+    // `player.target`, so committing here is the whole integration.
+    if (monsterIsAlive(match)) {
+      if (player.target !== MONSTER_TARGET_ID) {
+        selectTarget(match, player, MONSTER_TARGET_ID);
+      }
+      return;
+    }
+
     const enemies = state
       .getPlayers()
       .filter((p) => p.id !== player.id && !p.eliminated);
@@ -803,7 +828,14 @@ export class PersonalityAI implements AIController {
         }
         activateAbility(match, player, opt.ability, {
           targetId: player.target ?? undefined,
-          targetIds: this.multiTargetIds(ctx, opt.effective),
+          // A multi-target list would REPLACE the single target, and the engine
+          // only recognises a field entity as a lone requested id — so a spread
+          // cast would silently swing at kingdoms while the seat believes it is
+          // fighting the monster.
+          targetIds:
+            player.target === MONSTER_TARGET_ID
+              ? undefined
+              : this.multiTargetIds(ctx, opt.effective),
           chargesToUse: opt.chargesToUse,
         });
         note(opt.ability, "cast", {
@@ -917,7 +949,14 @@ export class PersonalityAI implements AIController {
       // Gameplay dice draw from the match-level RNG (#203).
       activateAbility(match, player, opt.ability, {
         targetId: player.target ?? undefined,
-        targetIds: this.multiTargetIds(ctx, opt.effective),
+        // A multi-target list would REPLACE the single target, and the engine
+        // only recognises a field entity as a lone requested id — so a spread
+        // cast would silently swing at kingdoms while the seat believes it is
+        // fighting the monster.
+        targetIds:
+          player.target === MONSTER_TARGET_ID
+            ? undefined
+            : this.multiTargetIds(ctx, opt.effective),
         chargesToUse: opt.chargesToUse,
       });
       note(opt.ability, "cast", {
@@ -970,11 +1009,26 @@ export class PersonalityAI implements AIController {
       .getPlayers()
       .filter((p) => p.id !== player.id && !p.eliminated);
     const mode = effective.targeting.mode;
+    /**
+     * ⚠️ THE MONSTER IS A TARGET WORTH VALUING, AND IT IS NOT A PLAYER.
+     *
+     * `target` is resolved through `getPlayers()`, so aiming at the monster
+     * left it undefined, `enemyHits` fell to zero, and every single-target
+     * attack scored a value of exactly 0 — worth nothing, never cast, at any
+     * price. Measured before this: seats committed to a monster and then stood
+     * there, and it finished all nine probe matches at FULL health while its
+     * cycles escalated past 2,000 damage and killed the table.
+     *
+     * It counts as one hit, and nothing more elaborate: the amplification pass
+     * below is a read of a defender's statuses and resistances, and a monster
+     * has neither. Its raw damage is exactly what an attack is worth here.
+     */
+    const monsterTargeted = player.target === MONSTER_TARGET_ID && monsterIsAlive(match);
     const enemyHits =
       mode === "allEnemies"
         ? enemies.length
         : mode === "singleEnemy"
-          ? target && !target.eliminated
+          ? monsterTargeted || (target && !target.eliminated)
             ? 1
             : 0
           : 0;

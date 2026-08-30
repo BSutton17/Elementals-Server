@@ -24,11 +24,24 @@ import { FIREBALL } from "../src/data/fireAbilities.js";
 const DUEL: PlayerSpec[] = [{ kingdomId: "fire" }, { kingdomId: "fire" }];
 
 /**
- * Two levers with a strong, smooth effect on match duration in this matchup
- * (measured: baseline ≈ 14.9k ticks; doubling income + halving HP ≈ 6.2k).
- * The objective wants 6k-tick matches, so there is clear room to improve.
+ * Two levers with a strong, smooth effect on match duration in this matchup.
+ *
+ * ⚠️ THE TARGET HAS TO LEAVE THE OPTIMIZER SOMETHING TO FIND, and what
+ * counts as room moves whenever the game does. These duels used to run ≈ 14.9k
+ * ticks, so a 6k target was a long way downhill. The monster changed that: it
+ * arrives ninety seconds in and hits both seats every ten to fifteen seconds,
+ * and duels now finish at ≈ 6.1k on baseline parameters — which is to say
+ * almost exactly ON the old target, leaving nothing to improve and failing a
+ * test about the optimizer for a reason that had nothing to do with it.
+ *
+ * Re-measured on the current game: baseline ≈ 6.1k ticks, double income
+ * ≈ 3.3k, half HP + double income ≈ 2.5k, double HP ≈ 8.7k. A 3k target sits
+ * clearly downhill of baseline and well inside what these two levers can
+ * reach.
  */
 const DURATION_LEVERS = ["castle.startingHp", "economy.incomePerCitizen"];
+/** What the duration objective aims at. See the note above. */
+const DURATION_TARGET = 3_000;
 
 test("optimization consistently improves the configured objective", () => {
   const result = optimize({
@@ -37,7 +50,7 @@ test("optimization consistently improves the configured objective", () => {
     matchesPerBatch: 3,
     players: DUEL,
     maxTicks: 20_000,
-    objective: matchDurationObjective(6_000),
+    objective: matchDurationObjective(DURATION_TARGET),
     parameterIds: DURATION_LEVERS,
     mutationScale: 0.5,
   });
@@ -167,7 +180,7 @@ test("each iteration reports labelled changes and before/after metrics", () => {
     matchesPerBatch: 3,
     players: DUEL,
     maxTicks: 20_000,
-    objective: matchDurationObjective(6_000),
+    objective: matchDurationObjective(DURATION_TARGET),
     parameterIds: DURATION_LEVERS,
     mutationScale: 0.5,
     onIteration: (r) => r.changes.forEach((c) => seen.push(c.label)),

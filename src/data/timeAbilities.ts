@@ -194,7 +194,7 @@ export const BLIP: AbilityDefinition = {
   kind: "utility",
   cost: 105,
   unlockCost: 53,
-  cooldownTicks: Math.round(5.4 * TICK.RATE), // 9 s
+  cooldownTicks: Math.round(15.4 * TICK.RATE), // 9 s
   targeting: { mode: "self" },
   effects: [
     { type: "undoLastAttack", target: "self", params: {} },

@@ -471,6 +471,79 @@ export const MAGMA = {
   VOLCANO_TIMER_SECONDS: 20,
 } as const;
 
+/**
+ * The monster: the one thing on the field that nobody summoned.
+ *
+ * Every ultimate that owns the middle of the battlefield belongs to a kingdom
+ * that chose to spend on it. This does not. Ninety seconds in, the field starts
+ * rolling for a monster, and once one is standing the table has a shared problem
+ * that no single kingdom can solve and none of them asked for.
+ *
+ * ⚠️ IT HAS NO TIMER. Every other centrepiece leaves on its own; this one leaves
+ * when it is dead. That is what makes it a cooperation engine rather than
+ * another thing to wait out — waiting costs 250 a head and rising, and the four
+ * centre-of-the-field ultimates stay locked out the whole time it stands.
+ *
+ * The rewards are deliberately split so that the kingdom which hits hardest and
+ * the kingdom which lands the final blow are usually not the same seat: Water
+ * and Love cannot win a damage race, but anybody can take the last swing.
+ */
+export const MONSTER = {
+  /**
+   * How long into a match the field starts rolling, in seconds.
+   *
+   * Late enough that the economy phase is over and kits are unlocked. A monster
+   * arriving while everyone is still buying citizens is not a shared problem,
+   * it is a coin flip about who had bought an attack yet.
+   */
+  FIRST_ROLL_SECONDS: 90,
+  /** Seconds between spawn rolls after the first. */
+  ROLL_INTERVAL_SECONDS: 30,
+  /**
+   * Spawn chance per roll is `living kingdoms / this`.
+   *
+   * Scaled by the table on purpose: a duel faces 20% a roll and a seven-player
+   * game 70%, which is the right shape twice over. A big table both wants the
+   * interruption more (seven-way free-for-alls stalemate) and can actually pay
+   * the 14,000 health bill.
+   */
+  SPAWN_CHANCE_DIVISOR: 10,
+  /** Health per living kingdom. */
+  HP_PER_PLAYER: 2000,
+  /** Seconds between attack cycles — rolled fresh each time, inclusive range. */
+  ATTACK_INTERVAL_MIN_SECONDS: 10,
+  ATTACK_INTERVAL_MAX_SECONDS: 15,
+  /**
+   * Chance an attack cycle lands. ONE roll for the whole table, not one per
+   * kingdom: when it swings, everybody is hit, and when it misses, nobody is.
+   * A per-player roll would average out into a steady drain; a shared roll makes
+   * each cycle an event the whole table watches.
+   */
+  ATTACK_CHANCE: 0.75,
+  /** Damage the first successful cycle deals to each kingdom. */
+  ATTACK_DAMAGE: 250,
+  /**
+   * How much a successful cycle raises the damage of every cycle after it,
+   * rolled in this inclusive range.
+   *
+   * Per CYCLE, not per kingdom hit — a cycle that strikes seven castles raises
+   * it once. Escalating per hit would multiply the ramp by the table size, and
+   * a seven-player game would be dealing four-figure hits inside two minutes.
+   */
+  ATTACK_ESCALATION_MIN: 25,
+  ATTACK_ESCALATION_MAX: 50,
+  /**
+   * Gold-production multiplier per reward earned, and how long it lasts.
+   *
+   * The two rewards MULTIPLY rather than being a separate "both" tier: one
+   * reward is ×1.5, and a kingdom that both out-damaged everyone and landed the
+   * finishing blow gets ×1.5 twice — ×2.25. Stated as one number so the "both"
+   * case cannot drift away from the single case.
+   */
+  REWARD_MULTIPLIER: 1.5,
+  REWARD_DURATION_SECONDS: 30,
+} as const;
+
 /** Targeting rules. */
 export const TARGETING = {
   /** Anti-spam cooldown between switching targets, in seconds. */

@@ -44,12 +44,60 @@ import {
   volcanoIsLive,
   applyVolcanoStatus,
 } from "./volcano.js";
-import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { damageMonster, monsterIsAlive, applyMonsterStatus } from "./monster.js";
+import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { spawnCaprice, capriceIsActive, capriceProtects } from "./caprice.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
 import { DARK, INSECTS, SPACE, TICK } from "../data/balance.js";
+
+/**
+ * Things in the middle of the field you can swing at that are not kingdoms.
+ *
+ * A cast aimed at one of these skips most of the pipeline: no redirects, no
+ * targeting bans, no crits, no defender-side modifiers, no elimination — none
+ * of it has anything to act on. Its plain damage is chipped off the entity and
+ * whatever status the attack carries is laid on it as well.
+ *
+ * A TABLE RATHER THAN A SECOND `if`. This started as one hard-coded volcano
+ * branch in two places; adding the monster to it by copy would have meant two
+ * more near-identical blocks and two more chances for the pair to drift. Each
+ * entry supplies the three operations the cast path needs, and the path itself
+ * no longer names anything on the field.
+ */
+interface FieldTarget {
+  /** The sentinel target id that means this thing. */
+  readonly id: string;
+  isLive(match: Match): boolean;
+  damage(match: Match, attackerId: string, amount: number): number;
+  applyStatus(
+    match: Match,
+    sourceId: string,
+    definition: StatusEffectDefinition,
+    durationTicks: number,
+    stacks?: number,
+  ): unknown;
+}
+
+const FIELD_TARGETS: readonly FieldTarget[] = [
+  {
+    id: VOLCANO_TARGET_ID,
+    isLive: volcanoIsLive,
+    damage: damageVolcano,
+    applyStatus: applyVolcanoStatus,
+  },
+  {
+    id: MONSTER_TARGET_ID,
+    isLive: monsterIsAlive,
+    damage: damageMonster,
+    applyStatus: applyMonsterStatus,
+  },
+];
+
+/** The field entity `targetId` names, or undefined for a kingdom. */
+const fieldTargetFor = (targetId: string | null | undefined): FieldTarget | undefined =>
+  targetId ? FIELD_TARGETS.find((t) => t.id === targetId) : undefined;
 
 /**
  * Space's Supernova level (0–3) from a meter value, using the cumulative
@@ -857,8 +905,8 @@ function activateAbilityInner(
     );
 
   let targets: PlayerState[];
-  /** Damage bound for the volcano instead of a kingdom, if this cast hit it. */
-  let volcanoStrike = 0;
+  /** Damage bound for a field entity instead of a kingdom, if this cast hit one. */
+  let fieldStrike: { target: FieldTarget; amount: number } | null = null;
   // Air's wind passive (Epic 9 VFX): records shots turned aside so the renderer
   // can play the attacker → Air → new-target deflection. `via` is the kingdom
   // that intercepted the shot; `to` is where it was hurled instead.
@@ -890,12 +938,15 @@ function activateAbilityInner(
             : [options.targetIds[0]!]
           : [options.targetId ?? caster.target];
 
-      // Swinging at the volcano: it is not a kingdom, so it skips the parts of
-      // the pipeline that need one — redirects, targeting bans, crits, and
-      // every defender-side modifier. Its plain damage is chipped off it, and
-      // any status the attack carries is laid on it as well (see below).
-      if (requestedIds.length === 1 && requestedIds[0] === VOLCANO_TARGET_ID) {
-        if (!volcanoIsLive(match)) return { ok: false, error: "INVALID_TARGET" };
+      // Swinging at something in the middle of the field — the volcano, the
+      // monster. It is not a kingdom, so it skips the parts of the pipeline
+      // that need one: redirects, targeting bans, crits, and every
+      // defender-side modifier. Its plain damage is chipped off it, and any
+      // status the attack carries is laid on it as well (see below).
+      const aimedAtField =
+        requestedIds.length === 1 ? fieldTargetFor(requestedIds[0]) : undefined;
+      if (aimedAtField) {
+        if (!aimedAtField.isLive(match)) return { ok: false, error: "INVALID_TARGET" };
         if (ability.kind !== "attack" && ability.kind !== "ultimate") {
           return { ok: false, error: "INVALID_TARGET" };
         }
@@ -903,12 +954,12 @@ function activateAbilityInner(
           .filter((e) => e.type === "damage")
           .reduce((sum, e) => sum + (e.params.amount ?? 0), 0);
         if (total <= 0) return { ok: false, error: "INVALID_TARGET" };
-        volcanoStrike = total;
+        fieldStrike = { target: aimedAtField, amount: total };
       }
 
       targets = [];
       for (const targetId of requestedIds) {
-        if (targetId === VOLCANO_TARGET_ID) continue; // handled above
+        if (fieldTargetFor(targetId)) continue; // handled above
         if (!targetId) return { ok: false, error: "TARGET_REQUIRED" };
         // Normally you cannot aim at yourself. While a Caprice is out you can
         // — the scramble puts people on their own castle on purpose, and
@@ -1177,18 +1228,20 @@ function activateAbilityInner(
   // 6. Apply each effect primitive in order, to every resolved target.
   const damage: DamageApplication[] = [];
 
-  // A swing at the volcano ends here: the cost and cooldown are already paid
-  // above, and the per-kingdom effect pipeline cannot run against a rock.
-  if (volcanoStrike > 0) {
-    damageVolcano(match, caster.id, volcanoStrike);
+  // A swing at a field entity ends here: the cost and cooldown are already paid
+  // above, and the per-kingdom effect pipeline cannot run against a rock or a
+  // monster.
+  if (fieldStrike !== null) {
+    fieldStrike.target.damage(match, caster.id, fieldStrike.amount);
 
     // …but the attack is not cut in half. Anything it inflicts — a burn, a
-    // freeze, anything — is laid on the mountain too, on the same chance roll
-    // it would face against a castle. A DoT then burns the volcano down and is
-    // credited to whoever set it, so lighting it counts toward breaking it
-    // exactly as swinging at it does. Statuses with nothing to act on (a
-    // freeze has no attack to stop) simply ride along inert.
-    const volcanoRng = options.rng ?? match.rng;
+    // freeze, anything — is laid on it too, on the same chance roll it would
+    // face against a castle. A DoT then burns the thing down and is credited to
+    // whoever set it, so lighting it counts exactly as swinging at it does —
+    // which for the monster means a burn can take both the last hit and the
+    // damage crown. Statuses with nothing to act on (a freeze has no attack to
+    // stop) simply ride along inert.
+    const fieldRng = options.rng ?? match.rng;
     for (const effect of effective.effects) {
       if (effect.type !== "status" || effect.target !== "target") continue;
       const status = effect.params.status;
@@ -1196,11 +1249,11 @@ function activateAbilityInner(
       if (
         effect.chance !== undefined &&
         !options.guaranteeChances &&
-        volcanoRng() >= effect.chance
+        fieldRng() >= effect.chance
       ) {
         continue;
       }
-      applyVolcanoStatus(
+      fieldStrike.target.applyStatus(
         match,
         caster.id,
         status,
@@ -1208,7 +1261,7 @@ function activateAbilityInner(
         effect.params.stacks ?? 1,
       );
     }
-    return { ok: true, damage: [], targetId: VOLCANO_TARGET_ID };
+    return { ok: true, damage: [], targetId: fieldStrike.target.id };
   }
 
   // Frozen Focus (Epic 11): while the caster holds guarantee stacks, an

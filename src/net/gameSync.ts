@@ -142,9 +142,28 @@ export function broadcastGameState(io: Server, match: Match): void {
           ticksRemaining: Math.max(0, state.volcano.endTick - state.tick),
         }
       : null,
+    // The monster. Synced to everyone for the same reason the volcano is: it is
+    // the whole table's problem, everyone has to be able to click it, and the
+    // health bar falling is the only feedback that the field is winning.
+    //
+    // No countdown, because it does not have one — it leaves when it is dead.
+    // What replaces it is `attackDamage`, which is the number that actually
+    // decides whether to keep swinging or go buy a shield, and which climbs
+    // every time a cycle lands.
+    monster: state.monster
+      ? {
+          hp: state.monster.hp,
+          maxHp: state.monster.maxHp,
+          attackDamage: state.monster.attackDamage,
+          /** Ticks until its next swing — the shield-buying clock. */
+          ticksUntilAttack: Math.max(0, state.monster.nextAttackTick - state.tick),
+          damage: { ...state.monster.damage },
+        }
+      : null,
     // What currently holds the middle of the battlefield, by name, or null when
-    // it is clear — Magma's volcano, Insects' butterfly, Space's black hole or
-    // Light's disc. Only one may ever stand there (`engine/centrepiece.ts`).
+    // it is clear — Magma's volcano, Insects' butterfly, Space's black hole,
+    // Light's disc, or the monster. Only one may ever stand there
+    // (`engine/centrepiece.ts`).
     //
     // Sent as the ANSWER rather than as the ingredients. The client only needs
     // it to grey out the ultimates the server is about to refuse, and two of

@@ -7,7 +7,8 @@ import {
 } from "../engine/purchases.js";
 import { selectTarget } from "../engine/targeting.js";
 import { volcanoIsLive } from "../engine/volcano.js";
-import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { monsterIsAlive } from "../engine/monster.js";
+import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { dispelStatus } from "../engine/purchases.js";
 import { TICK } from "../data/balance.js";
 import { placeRouletteBet } from "../engine/roulette.js";
@@ -52,7 +53,8 @@ import { randomNetwork, type Network } from "./network.js";
 const OPENING_TRUCE_SECONDS = 15;
 
 /**
- * Per-second chance a bot commits to the volcano while one is standing.
+ * Per-second chance a bot commits to whatever holds the middle of the field —
+ * a volcano, or a monster.
  *
  * ⚠️ ROLLED ONCE A SECOND, NOT ONCE A DECISION. Hard bots decide several
  * times a second and Easy ones far less often, so a per-decision roll would
@@ -60,7 +62,18 @@ const OPENING_TRUCE_SECONDS = 15;
  * World". Rolled on the wall clock, every bot commits at the same rate and the
  * mountain gets the same reception whoever is sitting at the table.
  */
-const VOLCANO_LOCK_CHANCE = 0.5;
+const FIELD_LOCK_CHANCE = 0.5;
+
+/**
+ * Target ids that mean "a thing in the middle of the field", not a kingdom.
+ *
+ * Held as a set so the staleness check below cannot silently miss one when a
+ * third field entity is added.
+ */
+const FIELD_TARGET_IDS: ReadonlySet<string> = new Set([
+  VOLCANO_TARGET_ID,
+  MONSTER_TARGET_ID,
+]);
 
 export interface NetworkControllerOptions {
   readonly network: Network;
@@ -182,17 +195,26 @@ export class NetworkController implements AIController {
   private subscribed = false;
 
   /**
-   * Committed to the volcano: no swapping off until it is broken or gone.
+   * The thing in the middle of the field this bot has committed to — the
+   * volcano's or the monster's sentinel id — or null when it is playing the
+   * ordinary game. No swapping off until that thing is gone.
    *
    * ⚠️ THE LOCK IS THE BOT'S OWN RULE, NOT THE ENGINE'S. `selectTarget`
    * would happily let it wander off — a human can. What makes a volcano a
    * crisis is that the table stays on it, and a bot that re-thought its target
    * twice a second would drift back to whichever kingdom looked weakest and
    * leave the mountain to erupt on everybody.
+   *
+   * The monster inherits this wholesale, and needs it more: the volcano at
+   * least leaves on its own after twenty seconds, while a monster the table
+   * drifts away from stands there permanently, hitting everybody harder every
+   * cycle. Holding the id rather than a boolean is what lets one lock serve
+   * both — they can never be standing at the same time (`centrepiece.ts`), so
+   * there is only ever one thing it could mean.
    */
-  private volcanoLocked = false;
-  /** The last whole second the volcano roll was made in. */
-  private lastVolcanoRollSecond = -1;
+  private fieldLock: string | null = null;
+  /** The last whole second the field-commitment roll was made in. */
+  private lastFieldRollSecond = -1;
 
   readonly stats: ControllerStats = {
     decisions: 0, casts: 0, invests: 0, citizens: 0, repairs: 0,
@@ -381,6 +403,26 @@ export class NetworkController implements AIController {
     return best;
   }
 
+  /**
+   * What is standing in the middle of the field for THIS bot to swing at, or
+   * null when there is nothing.
+   *
+   * At most one can ever be standing — the centrepiece rule guarantees it — so
+   * this returns an id rather than a list. Magma is the one exception in the
+   * whole system: it is the kingdom its own eruption spares, so helping the
+   * field break its own volcano would be pure downside and it is not offered
+   * the target. The monster has no owner and therefore no exemption; everybody
+   * is on the hook for it equally, which is the point of it.
+   */
+  private fieldTargetFor(match: AIContext["match"], player: PlayerState): string | null {
+    if (monsterIsAlive(match)) return MONSTER_TARGET_ID;
+    const volcano = match.gameState?.volcano ?? null;
+    if (volcanoIsLive(match) && volcano !== null && volcano.ownerId !== player.id) {
+      return VOLCANO_TARGET_ID;
+    }
+    return null;
+  }
+
   /** Re-decides with the chosen head suppressed. */
   private secondBest(first: Decision): Decision {
     this.altMask.set(this.mask);
@@ -397,31 +439,47 @@ export class NetworkController implements AIController {
   ): void {
     const { match, player } = ctx;
 
-    // ── the volcano, and the opening truce ────────────────────────────
+    // ── the middle of the field, and the opening truce ────────────────
     //
     // Both are rules rather than learned behaviour, for the same reason the
     // shield reflex below is: neither has a trade-off worth weighing, and
     // neither is reachable through a network that has no idea a volcano exists.
-    const volcano = match.gameState?.volcano;
-    const mountainStanding =
-      volcanoIsLive(match) && volcano !== null && volcano?.ownerId !== player.id;
+    const standing = this.fieldTargetFor(match, player);
 
-    if (!mountainStanding) {
-      // Broken, erupted, or Magma's own: the lock means nothing now.
-      this.volcanoLocked = false;
-    } else if (this.volcanoLocked) {
+    if (standing === null) {
+      // Broken, erupted, killed, or Magma's own: the lock means nothing now.
+      this.fieldLock = null;
+      // ⚠️ AND THE SELECTION MUST GO WITH IT, or the seat keeps aiming at a
+      // corpse. Dropping the lock only stops this controller from RE-imposing
+      // the target; `player.target` still holds the sentinel, and every
+      // single-target cast against a dead field entity is refused
+      // INVALID_TARGET. Nothing else clears it either — the network only moves
+      // the selection when it happens to pick the retarget head, which can be
+      // many seconds of doing nothing.
+      //
+      // Measured on the shipped champion before this: seats spent 13,227 of
+      // 32,240 seat-ticks — 41% of the match — aimed at a monster that was
+      // already dead, unable to attack anything for the whole of it.
+      //
+      // Latent for the volcano since the lock was written; it simply never
+      // showed, because a volcano is rare and lasts twenty seconds. A monster
+      // arrives every half-minute and leaves a corpse every time.
+      if (player.target !== null && FIELD_TARGET_IDS.has(player.target)) {
+        selectTarget(match, player, null);
+      }
+    } else if (this.fieldLock === standing) {
       // Something else moved the selection — an elimination clearing it, a
       // Supernova forcing it, a Caprice scramble. Put it back.
-      if (player.target !== VOLCANO_TARGET_ID) {
-        selectTarget(match, player, VOLCANO_TARGET_ID);
+      if (player.target !== standing) {
+        selectTarget(match, player, standing);
       }
     } else {
       const second = Math.floor(match.tick / TICK.RATE);
-      if (second !== this.lastVolcanoRollSecond) {
-        this.lastVolcanoRollSecond = second;
-        if (this.rng() < VOLCANO_LOCK_CHANCE) {
-          if (selectTarget(match, player, VOLCANO_TARGET_ID).ok) {
-            this.volcanoLocked = true;
+      if (second !== this.lastFieldRollSecond) {
+        this.lastFieldRollSecond = second;
+        if (this.rng() < FIELD_LOCK_CHANCE) {
+          if (selectTarget(match, player, standing).ok) {
+            this.fieldLock = standing;
             this.stats.retargets += 1;
           }
         }
@@ -429,15 +487,44 @@ export class NetworkController implements AIController {
     }
 
     // Retargeting, so a cast made this decision uses the new target — the same
-    // order a player clicking a castle then an ability produces. Skipped while
-    // the truce holds and while this bot is committed to the mountain.
+    // order a player clicking a castle then an ability produces. Held back
+    // while the truce runs, and while this bot is committed to the middle of
+    // the field.
     const truceHolds = match.tick < OPENING_TRUCE_SECONDS * TICK.RATE;
-    if (decision.retargetSlot !== null && !truceHolds && !this.volcanoLocked) {
-      const enemy = orderEnemies(knowledge)[decision.retargetSlot];
-      if (enemy !== undefined) {
-        const result = selectTarget(match, player, enemy.id);
+    if (this.fieldLock === null && !truceHolds) {
+      const wanted =
+        decision.retargetSlot !== null
+          ? orderEnemies(knowledge)[decision.retargetSlot]
+          : undefined;
+
+      if (wanted !== undefined) {
+        const result = selectTarget(match, player, wanted.id);
         if (result.ok) this.stats.retargets += 1;
         else this.reject("target", result.error);
+      } else if (player.target === null) {
+        // ── the floor: a seat always has somebody to hit ──────────────
+        //
+        // ⚠️ A BOT WITH NO TARGET CANNOT PLAY AT ALL, and nothing in the policy
+        // guarantees it ever gets one. The targeting head only fires when its
+        // gate output happens to be positive, and the gate is masked off the
+        // moment there is nobody it is not already aimed at — so in a duel a
+        // seat has exactly one window, and if the network does not use it the
+        // seat spends the whole match with every single-enemy cast masked
+        // illegal. Measured on the current champion: two-minute duels finishing
+        // with 0 retargets and 0 casts, seats making four hundred decisions of
+        // which 86% had nothing legal but WAIT.
+        //
+        // So this is a rule, in the same family as the shield reflex: not a
+        // preference the policy should have discovered, but a floor under a
+        // state that is never correct. It only ever fires when the seat is
+        // pointing at NOBODY — the moment it has a target, the network has the
+        // wheel back and decides every switch from then on.
+        const enemy = orderEnemies(knowledge).find(
+          (e) => !e.eliminated && !e.targetBanned && e.targetable,
+        );
+        if (enemy !== undefined && selectTarget(match, player, enemy.id).ok) {
+          this.stats.retargets += 1;
+        }
       }
     }
     if (match.phase !== "active") return;
@@ -594,7 +681,7 @@ export class NetworkController implements AIController {
         return;
       }
     }
-    // ── the volcano reflex ────────────────────────────────────────────
+    // ── the centrepiece reflex ────────────────────────────────────────
     //
     // ⚠️ AIMING AT THE MOUNTAIN WAS NOT ENOUGH, AND COULD NEVER HAVE BEEN.
     // The network has never seen a volcano: no genome in self-play has ever
@@ -609,19 +696,27 @@ export class NetworkController implements AIController {
     // cannot see. It picks the hardest thing it can currently pay for, which is
     // what "actively try to defeat it" means with a clock running.
     //
+    // The monster runs on the same rule. The observation DOES describe it
+    // (inputs 87–90) so a trained network can weigh it, but the rule stays for
+    // the same reason the shield reflex does: a monster nobody commits to never
+    // dies, and "everyone keeps hitting it" is not a strategy worth
+    // rediscovering from scratch every training run.
+    //
     // Falls THROUGH rather than returning when nothing is ready, so a bot on
     // cooldown still spends the decision on its economy instead of standing
     // still for thirty seconds.
-    if (this.volcanoLocked && player.target === VOLCANO_TARGET_ID) {
+    if (this.fieldLock !== null && player.target === this.fieldLock) {
       const slot = this.hardestHitFor(knowledge);
       if (slot !== null) {
         const ability = this.kit[slot]!;
         const charges = knowledge.self.kit[slot]?.charges ?? null;
         const result = activateAbility(match, player, ability, {
-          targetId: VOLCANO_TARGET_ID,
+          targetId: this.fieldLock,
           // Everything it has: a volcano is a wall on a timer, and holding
           // charges back for a kingdom that may not be there in thirty seconds
-          // is not a trade worth making.
+          // is not a trade worth making. A monster has no timer, but it does
+          // have an escalating bill for every cycle it survives, which prices
+          // the held charge the same way.
           chargesToUse: charges
             ? chargesToSpend(1, charges.available, charges.costPerCharge, knowledge.self.currency)
             : undefined,

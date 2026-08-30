@@ -91,13 +91,33 @@ test("all three trained models load and report full provenance", () => {
   }
 });
 
-test("each difficulty loads a genuinely different trained model", () => {
-  const seen = new Set<string>();
+test("all three difficulties are backed by the SAME network", () => {
+  // ⚠️ THIS ASSERTION IS THE INVERSE OF WHAT IT USED TO BE, DELIBERATELY.
+  //
+  // It previously demanded three different genomes, which contradicted the rule
+  // the subsystem is actually built on. `difficulty.ts` states it outright:
+  // difficulty is configuration, never a worse network, "because a damaged
+  // network does not play badly, it plays incoherently, which reads to a player
+  // as broken rather than beatable". Three separately trained genomes make Easy
+  // a DIFFERENT, weaker policy rather than the same policy playing less sharply
+  // — and nothing could keep the three ordered, since three independent runs
+  // land wherever they land.
+  //
+  // So one champion backs all three, and the separation comes entirely from
+  // `DIFFICULTY`: decision cadence (5 / 10 / 20 ticks), softmax temperature,
+  // second-best rate, and Easy's quantized reading of the board. Those are the
+  // axes that map onto how a weaker human plays.
+  const genomes = new Set<string>();
   for (const difficulty of ["easy", "medium", "hard"] as const) {
     const { model } = loadModel(difficulty);
-    seen.add(JSON.stringify(model.genome.connections.slice(0, 5)));
+    genomes.add(JSON.stringify(model.genome.connections));
   }
-  assert.equal(seen.size, 3, "two difficulties are backed by the same network");
+  assert.equal(
+    genomes.size,
+    1,
+    "the difficulties are backed by different networks — difficulty must come " +
+      "from DIFFICULTY's cadence/temperature/noise, not from a weaker genome",
+  );
 });
 
 test("a bot-vs-bot match actually plays and produces action", () => {

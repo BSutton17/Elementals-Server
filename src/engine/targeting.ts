@@ -1,8 +1,9 @@
 import { TARGETING } from "../data/balance.js";
 import { param } from "./parameters.js";
-import { VOLCANO_TARGET_ID } from "../match/GameState.js";
+import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { capriceProtects, capriceScrambles } from "./caprice.js";
 import { volcanoIsLive } from "./volcano.js";
+import { monsterIsAlive } from "./monster.js";
 import { isTargetingBlocked } from "./status.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
@@ -86,6 +87,15 @@ export function selectTarget(
       // eruption spares, so letting it help would be pure downside.
       return { ok: false, error: "INVALID_TARGET" };
     }
+    player.target = targetId;
+    return { ok: true };
+  }
+
+  // The monster is a legal target for EVERYONE while it stands. No owner
+  // exemption, because nobody summoned it: it is the one thing on the field
+  // that every living kingdom has the same reason to hit.
+  if (targetId === MONSTER_TARGET_ID) {
+    if (!monsterIsAlive(match)) return { ok: false, error: "INVALID_TARGET" };
     player.target = targetId;
     return { ok: true };
   }

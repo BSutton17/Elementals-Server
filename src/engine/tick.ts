@@ -7,6 +7,12 @@ import { regenerateIdleKingdoms } from "./idleRegen.js";
 import { drainCrawledKingdoms } from "./crawlers.js";
 import { tickCaprice } from "./caprice.js";
 import { resolveVolcano, tickVolcanoStatuses } from "./volcano.js";
+import {
+  resolveMonster,
+  runMonsterAttacks,
+  tickMonsterSpawn,
+  tickMonsterStatuses,
+} from "./monster.js";
 import { processStatusTicks, tickStatuses } from "./status.js";
 import { tickModifiers } from "./modifiers.js";
 import { tickCooldowns, tickRecharges } from "./cooldowns.js";
@@ -83,6 +89,22 @@ export function tickMatch(match: Match, tick: number): boolean {
   // Light's "Light Show": land any telegraphed field-wide strike whose warning
   // window has run out (also before death detection).
   resolvePendingStrikes(match);
+
+  // The monster. Ordered deliberately:
+  //
+  //  1. the spawn clock, which is frozen while ANY centrepiece stands — run
+  //     first, and before this tick's kill can clear the field, so a monster
+  //     never appears on the same tick another one dies;
+  //  2. burns riding on it, which can be what finishes it;
+  //  3. its attack cycle;
+  //  4. the kill, paying out both rewards.
+  //
+  // All of it before death detection, so a castle that fell to the cycle in
+  // step 3 is eliminated on this tick rather than the next.
+  tickMonsterSpawn(match);
+  tickMonsterStatuses(match);
+  runMonsterAttacks(match);
+  resolveMonster(match);
 
   // Death phase: detect castles at 0 HP and run the elimination process
   // (tickets #69–#70) before checking whether the match is over.

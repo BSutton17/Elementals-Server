@@ -99,6 +99,7 @@ export const VISIBILITY: readonly VisibilityRule[] = [
   { field: "field.tick", scope: "public", source: "state:sync — match timer" },
   { field: "field.volcano", scope: "public", source: "gameSync.ts — broadcast to everyone deliberately" },
   { field: "field.caprice", scope: "public", source: "gameSync.ts — broadcast to everyone deliberately" },
+  { field: "field.monster", scope: "public", source: "gameSync.ts — broadcast to everyone; nobody owns it" },
   { field: "field.centrepiece", scope: "public", source: "gameSync.ts — sent so clients can grey out ultimates" },
 
   // ── revealed ───────────────────────────────────────────────────────────

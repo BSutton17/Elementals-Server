@@ -162,7 +162,7 @@ export const ORIONS_BELT: AbilityDefinition = {
   kind: "utility",
   cost: 200,
   unlockCost: 100,
-  cooldownTicks: 30 * TICK.RATE, // 20 s
+  cooldownTicks: 30 * TICK.RATE, // 30 s
   targeting: { mode: "self" },
   effects: [
     {

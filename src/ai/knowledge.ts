@@ -27,6 +27,7 @@ import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
 import { KINGDOM_IDS, KINGDOM_PASSIVES, type KingdomId } from "../data/kingdoms.js";
 import { CASTLE, DARK, SHIELD, TARGETING, TICK } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
+import { MONSTER_TARGET_ID } from "../match/GameState.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import type { GameplayEvent } from "../engine/events.js";
@@ -199,6 +200,15 @@ export interface SelfKnowledge {
    */
   readonly siegeEndsOnShield: boolean;
   readonly targetId: string | null;
+  /**
+   * This seat is currently aimed at the monster rather than at a kingdom.
+   *
+   * Answered here rather than by comparing `targetId` against the engine's
+   * sentinel id at the call site. `knowledge.ts` is the one module authorized to
+   * read the simulation, so a consumer that has to import GameState to
+   * interpret a field of this type has been handed the wrong shape.
+   */
+  readonly targetIsMonster: boolean;
   readonly switchReady: boolean;
   readonly kit: readonly KitSlotKnowledge[];
 }
@@ -273,6 +283,24 @@ export interface FieldKnowledge {
   readonly capriceActive: boolean;
   /** Living enemies currently aiming at this seat. */
   readonly besiegedBy: number;
+  /**
+   * The monster, if one is standing. All public — it is broadcast to everyone,
+   * because a thing in the middle of the field that nobody owns is not a secret.
+   *
+   * Carried RAW (ticks and gold) rather than pre-normalized, matching
+   * `incomingStrike`: the encoder owns every scaling decision, so a change to
+   * how urgent "eight seconds" feels is one edit in `observation.ts` rather than
+   * a silent change to what this module means.
+   */
+  readonly monster: {
+    readonly hpFraction: number;
+    /** Ticks until its next attack cycle — the shield-buying clock. */
+    readonly ticksUntilAttack: number;
+    /** What a landed cycle costs each kingdom right now. It climbs. */
+    readonly attackDamage: number;
+    /** What this seat has personally taken off it, toward the damage reward. */
+    readonly ownDamage: number;
+  } | null;
 }
 
 export interface RevealKnowledge {
@@ -689,6 +717,7 @@ export function knowledgeFor(
 
   const livingEnemies = enemies.filter((e) => !e.eliminated).length;
   const volcano = state.volcano;
+  const monster = state.monster;
 
   return {
     self: {
@@ -743,6 +772,7 @@ export function knowledgeFor(
       })(),
       siegeEndsOnShield: player.statuses.some((s) => s.endsOnShieldPurchase === true),
       targetId: player.target,
+      targetIsMonster: player.target === MONSTER_TARGET_ID,
       switchReady: tick >= player.targetSwitchReadyTick,
       kit: kitKnowledge,
     },
@@ -755,6 +785,15 @@ export function knowledgeFor(
       volcanoHpFraction: volcano ? volcano.hp / Math.max(1, volcano.maxHp) : 0,
       capriceActive: state.caprice !== null,
       besiegedBy,
+      monster:
+        monster && monster.hp > 0
+          ? {
+              hpFraction: monster.hp / Math.max(1, monster.maxHp),
+              ticksUntilAttack: Math.max(0, monster.nextAttackTick - tick),
+              attackDamage: monster.attackDamage,
+              ownDamage: monster.damage[player.id] ?? 0,
+            }
+          : null,
     },
     reveal: {
       statsRevealed,

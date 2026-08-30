@@ -238,9 +238,9 @@ test("Orion's Belt: incoming attacks can miss and the miss feeds the meter", () 
   const r = activateAbility(match, belted, ORIONS_BELT);
   assert.equal(r.ok, true);
   assert.equal(hasStatus(belted, "orionsBelt"), true);
-  assert.equal(getCooldown(belted, "orionsBeltAbility"), 20 * TICK.RATE);
+  assert.equal(getCooldown(belted, "orionsBeltAbility"), 30 * TICK.RATE);
 
-  // rng 0 forces the 50% miss. The attack whiffs entirely; the belt bearer
+  // rng 0 forces the 45% miss. The attack whiffs entirely; the belt bearer
   // gains a meter point and takes no damage.
   const before = belted.castle.hp;
   const miss = activateAbility(match, attacker, SHOOTING_STAR, { targetId: belted.id, rng: () => 0 });

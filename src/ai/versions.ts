@@ -19,13 +19,17 @@
 export const MODEL_FORMAT_VERSION = 1;
 
 /**
- * The observation contract: the 64 inputs, their order, their normalization,
- * AND the visibility table that decides which of them are gated.
+ * The observation contract: the inputs, their order, their normalization, AND
+ * the visibility table that decides which of them are gated.
  *
  * Bump when any of those change. A test pins this against the observation
  * specification hash so the two cannot drift apart silently.
+ *
+ * v4 — the monster (87–90). Four new inputs and a new public visibility row, so
+ * every v3 model reads a vector four floats longer than the one it was trained
+ * on and is refused rather than run.
  */
-export const OBSERVATION_VERSION = "v3";
+export const OBSERVATION_VERSION = "v4";
 
 /**
  * The action contract: the 22 outputs, their order, and the target ordering

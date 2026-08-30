@@ -119,6 +119,58 @@ export type GameplayEvent =
       contributions: Record<string, number>;
     }
   | {
+      // The monster: the field rolled one up. Nobody cast it, so there is no
+      // owner — it is everybody's problem.
+      type: "monsterSpawned";
+      tick: number;
+      hp: number;
+      maxHp: number;
+      /** What its first landed cycle will cost each kingdom. */
+      attackDamage: number;
+      /** When it swings for the first time. */
+      nextAttackTick: number;
+    }
+  | {
+      type: "monsterDamaged";
+      tick: number;
+      attackerId: string;
+      amount: number;
+      hp: number;
+      maxHp: number;
+    }
+  | {
+      // An attack cycle came due. ONE roll for the whole table, so this either
+      // hit everybody (`landed`, with `targetIds` naming them) or nobody.
+      type: "monsterAttacked";
+      tick: number;
+      landed: boolean;
+      /** What each kingdom was hit for; 0 on a missed cycle. */
+      amount: number;
+      targetIds: string[];
+      nextAttackTick: number;
+    }
+  | {
+      // It is dead, and up to two kingdoms are paid.
+      type: "monsterDefeated";
+      tick: number;
+      /** Who landed the finishing blow, and who dealt the most damage. */
+      lastHitBy: string | null;
+      mostDamageBy: string | null;
+      /** Everyone's contribution, for display. */
+      damage: Record<string, number>;
+      /**
+       * What each rewarded kingdom actually gets. A kingdom holding BOTH
+       * reasons appears once with both listed and the compounded multiplier,
+       * so a consumer never has to know the two stack.
+       */
+      rewards: {
+        playerId: string;
+        reasons: ("lastHit" | "mostDamage")[];
+        multiplier: number;
+        durationTicks: number;
+      }[];
+    }
+  | {
       // Insects' "Infected": the bearer fumbled a swing and it came back at
       // them. Paired with the `attackMissed` for the same swing — this one
       // says the miss also cost them.

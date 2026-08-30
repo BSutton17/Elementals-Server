@@ -113,9 +113,13 @@ test("spins classify into no-match, pair, and triple", () => {
 });
 
 test("the payout table matches the design", () => {
-  assert.deepEqual(outcomeFor("none", null), { kind: "damage", amount: 2000 });
-  assert.deepEqual(outcomeFor("pair", "🪙"), { kind: "damage", amount: 1000 });
-  assert.deepEqual(outcomeFor("triple", "🪙"), { kind: "damage", amount: 500 });
+  // Re-recorded 2026-08-29 against the rebalanced table: the coin hits were
+  // doubled and the no-match hit went 2000 -> 4000. Note the coin is INVERTED
+  // by design — a pair costs more than a triple — so a bare "bigger match is
+  // worse" reading of these numbers is not the rule.
+  assert.deepEqual(outcomeFor("none", null), { kind: "damage", amount: 4000 });
+  assert.deepEqual(outcomeFor("pair", "🪙"), { kind: "damage", amount: 2500 });
+  assert.deepEqual(outcomeFor("triple", "🪙"), { kind: "damage", amount: 1000 });
   assert.equal(outcomeFor("pair", "🗡️").kind, "slowIncome");
   assert.equal(outcomeFor("triple", "🗡️").kind, "raiseCooldowns");
   assert.equal(outcomeFor("pair", "🏰").kind, "suppressPerks");
@@ -159,7 +163,7 @@ test("pulling the lever frees the gold and settles the debt", () => {
   assert.equal(activateAbility(match, a, SLOT_MACHINE, { forceCrit: false }).ok, true);
   b.economy.citizens = 50;
 
-  // Two 🪙 then a 🛡️: a coin pair, a plain 1000 hit.
+  // Two 🪙 then a 🛡️: a coin pair, a plain 2500 hit.
   const spin = spinSlotMachine(
     match,
     b,
@@ -167,7 +171,7 @@ test("pulling the lever frees the gold and settles the debt", () => {
   );
   assert.ok(spin);
   assert.equal(spin!.match, "pair");
-  assert.equal(b.castle.maxHp - b.castle.hp, 1000);
+  assert.equal(b.castle.maxHp - b.castle.hp, 2500);
 
   assert.equal(b.pendingSpin, null, "the debt was not settled");
   const before = b.economy.currency;
@@ -198,7 +202,7 @@ test("the result is held back until revealTick so every screen agrees", () => {
   assert.ok(b.lastSpin);
   assert.equal(b.lastSpin!.revealTick, 100 + SPIN_REVEAL_TICKS);
   assert.equal(b.lastSpin!.symbols.length, 3);
-  assert.equal(b.lastSpin!.outcome, "Took 2000 damage"); // no match
+  assert.equal(b.lastSpin!.outcome, "Took 4000 damage"); // no match
 });
 
 // --- The outcomes -----------------------------------------------------------
@@ -207,7 +211,7 @@ test("a no-match deals the heavy hit", () => {
   const { match, a, b } = slotMatch();
   assert.equal(activateAbility(match, a, SLOT_MACHINE, { forceCrit: false }).ok, true);
   spinSlotMachine(match, b, scripted(rollFor("🪙"), rollFor("🗡️"), rollFor("🛡️")));
-  assert.equal(b.castle.maxHp - b.castle.hp, 2000);
+  assert.equal(b.castle.maxHp - b.castle.hp, 4000);
 });
 
 test("the gold-production nerfs last a long time — that is their sting", () => {
