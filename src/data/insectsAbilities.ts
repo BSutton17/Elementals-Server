@@ -146,7 +146,7 @@ export const BUTTERFLIES: AbilityDefinition = {
   id: "butterflies",
   name: "Butterflies",
   kind: "attack",
-  cost: 494,
+  cost: 394,
   unlockCost: 247,
   cooldownTicks: Math.round(17.35 * TICK.RATE), // 15 s
   targeting: { mode: "singleEnemy" },
@@ -283,7 +283,7 @@ export const CAPRICE: AbilityDefinition = {
   id: "caprice",
   name: "Caprice",
   kind: "ultimate",
-  cost: 482,
+  cost: 582,
   unlockCost: 368,
   cooldownTicks: Math.round(97.8 * TICK.RATE), // 163 s
   targeting: { mode: "self" },
