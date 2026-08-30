@@ -17,7 +17,7 @@ import {
   spawnMonster,
   tickMonsterSpawn,
 } from "../src/engine/monster.js";
-import { MONSTER_TARGET_ID } from "../src/match/GameState.js";
+import { MONSTER_TARGET_ID, MONSTER_KINDS } from "../src/match/GameState.js";
 import { THE_END_OF_THE_WORLD } from "../src/data/magmaAbilities.js";
 import { MONSTER, TICK } from "../src/data/balance.js";
 import type { GameplayEvent } from "../src/engine/events.js";
@@ -426,4 +426,64 @@ test("the clock is armed lazily, so a parameter override still lands", () => {
     FIRST_ROLL_TICKS - 1,
     "the first interval is not 90 seconds",
   );
+});
+
+// --- which one turns up, and how big it is ----------------------------------
+
+test("a monster is one of the five, and never the same one twice running", () => {
+  // ⚠️ THE SERVER PICKS, NOT THE CLIENT. Two players looking at different
+  // creatures in the same match is worse than everyone looking at the same
+  // wrong one, so the kind is rolled here and shipped in the snapshot.
+  //
+  // And the repeat guard is what makes "there are five of these" true ON
+  // SCREEN: a plain uniform roll repeats one time in five, and at that rate a
+  // table concludes the game only has one monster.
+  const rolls = [0.05, 0.3, 0.55, 0.8, 0.99, 0.42, 0.11];
+  let i = 0;
+  const match = table(["fire", "water", "earth"], () => rolls[i++ % rolls.length]!);
+
+  const seen: string[] = [];
+  for (let n = 0; n < 7; n++) {
+    spawnMonster(match);
+    const monster = match.gameState!.monster!;
+    seen.push(monster.kind);
+    assert.ok(MONSTER_KINDS.includes(monster.kind), `unknown kind ${monster.kind}`);
+    match.gameState!.monster = null;
+  }
+
+  for (let n = 1; n < seen.length; n++) {
+    assert.notEqual(seen[n], seen[n - 1], `${seen[n]} spawned twice in a row`);
+  }
+  // And it is not simply cycling one value: several of the five turn up.
+  assert.ok(new Set(seen).size >= 3, `only saw ${[...new Set(seen)].join(", ")}`);
+});
+
+test("every successive monster is worth 500 more health a kingdom", () => {
+  // 2,000 a kingdom, then 2,500, then 3,000. The table is richer and better
+  // armed each time; a later monster built to the opening number is a free
+  // multiplier rather than an interruption.
+  const match = table(["fire", "water", "earth"], () => 0);
+  const living = 3;
+
+  for (const [n, perPlayer] of [2000, 2500, 3000].entries()) {
+    spawnMonster(match);
+    const monster = match.gameState!.monster!;
+    assert.equal(monster.maxHp, perPlayer * living, `spawn ${n + 1}`);
+    assert.equal(monster.hp, monster.maxHp);
+    match.gameState!.monster = null;
+  }
+});
+
+test("the ramp counts the MATCH, and the size counts who is still in it", () => {
+  // Two independent numbers, and both matter: the third monster of a duel is
+  // 3,000 x 2, not 3,000 x however many started.
+  const match = table(["fire", "water", "earth"], () => 0);
+  spawnMonster(match);
+  match.gameState!.monster = null;
+
+  const players = match.gameState!.getPlayers();
+  players[2]!.eliminated = true;
+
+  spawnMonster(match);
+  assert.equal(match.gameState!.monster!.maxHp, 2500 * 2);
 });

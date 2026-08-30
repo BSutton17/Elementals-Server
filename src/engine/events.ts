@@ -16,6 +16,8 @@
  */
 
 /** Why a value changed — an ability id, `status:<id>`, or a system tag. */
+import type { MonsterKind } from "../match/GameState.js";
+
 export type EventCause = string;
 
 export type GameplayEvent =
@@ -123,6 +125,8 @@ export type GameplayEvent =
       // owner — it is everybody's problem.
       type: "monsterSpawned";
       tick: number;
+      /** Which of the five creatures it is. */
+      kind: MonsterKind;
       hp: number;
       maxHp: number;
       /** What its first landed cycle will cost each kingdom. */

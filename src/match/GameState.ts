@@ -71,7 +71,27 @@ export const MONSTER_TARGET_ID = "__monster__";
  * when it is killed and not before, and it hits the whole field on its own
  * cadence for as long as it stands. See `engine/monster.ts`.
  */
+/**
+ * Which creature is standing there.
+ *
+ * ⚠️ THE SERVER OWNS THIS, and it has to: every client must be looking at the
+ * same monster. Rolled once at spawn and sent with the rest of its state — a
+ * client that picked its own would put a different animal on each screen in the
+ * same match.
+ */
+export type MonsterKind = "rock" | "bat" | "dragon" | "spider" | "goblin";
+
+export const MONSTER_KINDS: readonly MonsterKind[] = [
+  "rock",
+  "bat",
+  "dragon",
+  "spider",
+  "goblin",
+];
+
 export interface MonsterState {
+  /** Which of the five it is. */
+  kind: MonsterKind;
   /** Damage it can still absorb. At 0 it is dead and the rewards are paid. */
   hp: number;
   /** What it started at: `MONSTER.HP_PER_PLAYER` per living kingdom. */
@@ -251,6 +271,25 @@ export class GameState {
    * is read through the parameter gate rather than frozen at construction.
    */
   monsterSpawn: MonsterSpawnState | null = null;
+
+  /**
+   * How many monsters this match has seen, including the one on the field.
+   *
+   * Drives the health ramp (`MONSTER.HP_PER_PLAYER_STEP`) and never resets: it
+   * counts the match, not the creature.
+   */
+  monsterSpawnCount = 0;
+
+  /**
+   * The kind that spawned last, so the next roll can avoid repeating it.
+   *
+   * ⚠️ NOT A FAIRNESS RULE, A LEGIBILITY ONE. One kind in five means a
+   * back-to-back repeat lands one time in five, and at that rate a table
+   * genuinely concludes the game only has one monster — which is what a real
+   * uniform roll cost us. Excluding the last one is the cheapest way to make
+   * "there are five of these" true on screen instead of only in the data.
+   */
+  lastMonsterKind: MonsterKind | null = null;
 
   /**
    * Telegraphed strikes waiting to land (Light's "Light Show"). Resolved once

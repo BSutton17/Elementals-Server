@@ -508,8 +508,18 @@ export const MONSTER = {
    * the 14,000 health bill.
    */
   SPAWN_CHANCE_DIVISOR: 10,
-  /** Health per living kingdom. */
+  /** Health per living kingdom, for the FIRST monster of a match. */
   HP_PER_PLAYER: 2000,
+  /**
+   * How much the per-kingdom health grows with every monster after the first.
+   *
+   * ⚠️ PER MATCH, NOT PER MONSTER'S LIFETIME. The second monster of a game is
+   * 2,500 a kingdom, the third 3,000, and so on. The table is richer and better
+   * armed every time one shows up, and a later monster built to the opening
+   * number is a free multiplier rather than an interruption — which is the
+   * opposite of what this mechanic is for.
+   */
+  HP_PER_PLAYER_STEP: 500,
   /** Seconds between attack cycles — rolled fresh each time, inclusive range. */
   ATTACK_INTERVAL_MIN_SECONDS: 10,
   ATTACK_INTERVAL_MAX_SECONDS: 15,

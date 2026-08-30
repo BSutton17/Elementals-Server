@@ -152,6 +152,10 @@ export function broadcastGameState(io: Server, match: Match): void {
     // every time a cycle lands.
     monster: state.monster
       ? {
+          // Which creature it is. Sent because the CLIENT must not choose: two
+          // players looking at different animals in the same match is worse
+          // than everyone looking at the same wrong one.
+          kind: state.monster.kind,
           hp: state.monster.hp,
           maxHp: state.monster.maxHp,
           attackDamage: state.monster.attackDamage,

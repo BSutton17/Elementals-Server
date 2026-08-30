@@ -1,6 +1,11 @@
 import type { Match } from "../match/Match.js";
-import { MONSTER_TARGET_ID } from "../match/GameState.js";
-import type { FieldEntityStatus, GameState, MonsterState } from "../match/GameState.js";
+import { MONSTER_TARGET_ID, MONSTER_KINDS } from "../match/GameState.js";
+import type {
+  FieldEntityStatus,
+  GameState,
+  MonsterKind,
+  MonsterState,
+} from "../match/GameState.js";
 import type { PlayerState } from "../match/playerState.js";
 import { MONSTER, TICK } from "../data/balance.js";
 import { param } from "./parameters.js";
@@ -122,15 +127,40 @@ export function tickMonsterSpawn(match: Match): void {
 }
 
 /**
+ * Rolls which creature turns up, never the same one twice running.
+ *
+ * Uses the match's own `rng` like every other roll in the engine, so a seeded
+ * match still replays identically.
+ */
+function rollMonsterKind(match: Match): MonsterKind {
+  const state = match.gameState!;
+  const pool = MONSTER_KINDS.filter((k) => k !== state.lastMonsterKind);
+  return pool[Math.min(pool.length - 1, Math.floor(match.rng() * pool.length))]!;
+}
+
+/**
  * Puts a monster on the field. Sized off the kingdoms actually still playing,
- * so a late-game duel does not face a wall built for seven.
+ * so a late-game duel does not face a wall built for seven — and a little
+ * bigger every time, because the table it is interrupting is a little richer.
  */
 export function spawnMonster(match: Match): void {
   const state = match.gameState!;
   const living = state.getPlayers().filter((p) => !p.eliminated).length;
-  const maxHp = param("monster.hpPerPlayer", MONSTER.HP_PER_PLAYER) * living;
+
+  // Every monster after the first is worth more health per kingdom than the one
+  // before it. Counted BEFORE the sum so the first one is the base rate.
+  state.monsterSpawnCount += 1;
+  const hpPerPlayer =
+    param("monster.hpPerPlayer", MONSTER.HP_PER_PLAYER) +
+    param("monster.hpPerPlayerStep", MONSTER.HP_PER_PLAYER_STEP) *
+      (state.monsterSpawnCount - 1);
+  const maxHp = hpPerPlayer * living;
+
+  const kind = rollMonsterKind(match);
+  state.lastMonsterKind = kind;
 
   const monster: MonsterState = {
+    kind,
     hp: maxHp,
     maxHp,
     damage: {},
@@ -147,6 +177,7 @@ export function spawnMonster(match: Match): void {
     state.events.emit({
       type: "monsterSpawned",
       tick: match.tick,
+      kind,
       hp: maxHp,
       maxHp,
       attackDamage: monster.attackDamage,
