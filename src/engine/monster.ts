@@ -27,7 +27,7 @@ import type { StatusEffectDefinition } from "./status.js";
  * leaves on its own. This one leaves when it is dead. That is the entire
  * design: a timer makes waiting a strategy, and waiting is exactly what this
  * mechanic exists to punish. While it stands, the four centre-of-the-field
- * ultimates are locked out (see `centrepiece.ts`) and every ten to fifteen
+ * ultimates are locked out (see `centrepiece.ts`) and every seven to ten
  * seconds the table takes another hit, harder than the last one.
  *
  * KILLING IT PAYS TWO KINGDOMS, and deliberately not the same one twice by

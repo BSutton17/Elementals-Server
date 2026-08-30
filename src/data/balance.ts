@@ -521,8 +521,8 @@ export const MONSTER = {
    */
   HP_PER_PLAYER_STEP: 500,
   /** Seconds between attack cycles — rolled fresh each time, inclusive range. */
-  ATTACK_INTERVAL_MIN_SECONDS: 10,
-  ATTACK_INTERVAL_MAX_SECONDS: 15,
+  ATTACK_INTERVAL_MIN_SECONDS: 7,
+  ATTACK_INTERVAL_MAX_SECONDS: 10,
   /**
    * Chance an attack cycle lands. ONE roll for the whole table, not one per
    * kingdom: when it swings, everybody is hit, and when it misses, nobody is.
