@@ -85,7 +85,7 @@ test("the Great Merchants perk discounts the reported unlock price", () => {
   const listedUnlock = Math.ceil(WATER_BALL.cost * 0.5);
   assert.equal(
     abilityPrices(w)["waterBall"]!.unlock,
-    Math.ceil(listedUnlock * 0.85),
+    Math.ceil(listedUnlock * 0.25),
   );
 });
 

@@ -186,13 +186,13 @@ export const PERKS = {
   /** "Extra Guards": all incoming damage. */
   DAMAGE_REDUCTION_PCT: 0.1,
   /** "Extra Medics": incoming damage-over-time (status tick) damage. */
-  DOT_REDUCTION_PCT: 0.15,
+  DOT_REDUCTION_PCT: 0.5,
   /** "Extra Repairs": every ability cooldown. */
   COOLDOWN_REDUCTION_PCT: 0.1,
   /** "Deep Pockets": gold in the bank at match start. */
   STARTING_GOLD: 150,
   /** "Great Merchants": discount on ability unlock prices. */
-  UNLOCK_DISCOUNT_PCT: 0.15,
+  UNLOCK_DISCOUNT_PCT: 0.75,
   /** "Better Construction": extra health on every shield gained. */
   SHIELD_BONUS_HP: 500,
 
