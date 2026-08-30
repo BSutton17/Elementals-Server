@@ -152,6 +152,28 @@ const REACTION_MAX_TICKS = Math.round(1.5 * TICK.RATE);
 const SHIELD_REFLEX_WINDOW = 3.25 * TICK.RATE;
 
 /**
+ * How much better a play must be than what is already payable before this seat
+ * will skip a cast to bank for it.
+ *
+ * The heuristic controller's value, deliberately unchanged: it solves the same
+ * problem in `simulation/src/personality.ts`, and two different answers to
+ * "is this worth saving for" in one game would be two behaviours to reason
+ * about with nothing to choose between them.
+ */
+const SAVINGS_MARGIN = 1.25;
+
+/**
+ * How far ahead the shortfall may be, in ticks of current income, for a play to
+ * count as reachable. 500 ticks is 25 seconds.
+ *
+ * ⚠️ THIS IS THE GUARD AGAINST A SEAT SAVING FOREVER. A bank with no horizon
+ * lets a poor kingdom pick the most expensive thing it owns and stop attacking
+ * for the rest of the match, which is a worse failure than the spam it is meant
+ * to fix.
+ */
+const SAVINGS_LOOKAHEAD_TICKS = 500;
+
+/**
  * How hard it must hit, as a share of current HP, to be worth blocking.
  *
  * Light Show is 2000 against a 10,000 castle, so a tenth clears this
@@ -270,6 +292,55 @@ export class NetworkController implements AIController {
       reserved = Math.max(reserved, knowledge.self.dispel.cost);
     }
     return reserved;
+  }
+
+  /**
+   * The price of the ability this seat is banking toward, or 0 when nothing is
+   * worth waiting for.
+   *
+   * Two guards decide that, and both matter:
+   *
+   *   • WORTH IT — the candidate must be `SAVINGS_MARGIN` more valuable than
+   *     the best thing already payable. Without it a seat banks for a 400-gold
+   *     ability that hits no harder than the 120-gold one it already owns, and
+   *     buys nothing but silence.
+   *
+   *   • REACHABLE — the shortfall must close inside `SAVINGS_LOOKAHEAD_TICKS`
+   *     at the seat's CURRENT income. Without it a poor seat picks the most
+   *     expensive thing in its kit, can never afford it, and stops attacking
+   *     for the rest of the match. That failure mode is worse than the spam it
+   *     replaces, which is why the reachability test is not optional.
+   *
+   * Cooldown is deliberately NOT a filter. A kingdom's strongest play carries
+   * its longest cooldown, so requiring the target to be castable this instant
+   * is exactly how the filler attack drains the treasury between cycles and the
+   * expensive ability is unaffordable on the one tick it comes up.
+   */
+  private savingsTarget(knowledge: ReturnType<typeof knowledgeFor>): number {
+    const self = knowledge.self;
+    if (self.incomePerTick <= 0) return 0;
+
+    // The bar to beat: the best thing this seat could already cast.
+    let payableValue = 0;
+    for (const ability of self.kit) {
+      if (ability === undefined || !ability.unlocked || !ability.affordable) continue;
+      if (ability.kind !== "attack" && ability.kind !== "ultimate") continue;
+      if (ability.heuristicValue > payableValue) payableValue = ability.heuristicValue;
+    }
+
+    let targetCost = 0;
+    let targetValue = payableValue * SAVINGS_MARGIN;
+    for (const ability of self.kit) {
+      if (ability === undefined || !ability.unlocked || ability.affordable) continue;
+      if (ability.kind !== "attack" && ability.kind !== "ultimate") continue;
+      if (ability.statusBlocked || ability.needsUnsupportedPayload) continue;
+      if (ability.heuristicValue <= targetValue) continue;
+      const shortfall = ability.cost - self.currency;
+      if (shortfall / self.incomePerTick > SAVINGS_LOOKAHEAD_TICKS) continue;
+      targetValue = ability.heuristicValue;
+      targetCost = ability.cost;
+    }
+    return targetCost;
   }
 
   /**
@@ -726,6 +797,44 @@ export class NetworkController implements AIController {
           return;
         }
         this.reject("cast", result.error);
+      }
+    }
+
+    // ── banking for something worth casting ───────────────────────────
+    //
+    // ⚠️ THE NETWORK CANNOT SAVE, AND NOTHING IN THE ACTION SPACE LETS IT.
+    // It picks one head per decision from what is legal RIGHT NOW, and a cast
+    // it can afford is always legal, so the treasury is spent the moment it
+    // covers the cheapest attack in the kit. It never arrives at the price of
+    // anything else.
+    //
+    // Measured over three matches before this rule: 2,648 decision samples at
+    // an average of 106 gold. The three cheapest abilities took 65% of all
+    // casts, and every ability priced at 412 or above was affordable in 0% of
+    // samples and cast exactly zero times across the whole run. That is not a
+    // policy preferring cheap attacks — it is a policy that has never once been
+    // solvent enough to see an expensive one offered.
+    //
+    // So the saving is a rule, for the same reason the shield reflex is: there
+    // is no trade-off worth weighing in "spend your last 120 gold on the
+    // weakest thing you own while the strong one is 30 seconds away", and it is
+    // not reachable through an action space with no bank-this-tick head.
+    //
+    // Deliberately the same shape and the same constants as the heuristic
+    // controller's savings logic, which already solves this — a play must be
+    // SAVINGS_MARGIN better than what is already payable, and reachable inside
+    // SAVINGS_LOOKAHEAD_TICKS, so a seat never freezes hoarding for something
+    // its economy cannot reach.
+    //
+    // Placed AFTER the centrepiece reflex on purpose: a seat committed to a
+    // monster swings with whatever it has, and must never stand in front of one
+    // saving up.
+    if (action.kind === "cast") {
+      const target = this.savingsTarget(knowledge);
+      const price = knowledge.self.kit[action.slot]?.cost ?? 0;
+      if (target > 0 && price > 0 && knowledge.self.currency - price < target) {
+        this.stats.waits += 1;
+        return;
       }
     }
 

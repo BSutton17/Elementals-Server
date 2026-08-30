@@ -1,5 +1,7 @@
 import type { Socket } from "socket.io";
 import { ok, respond } from "./ack.js";
+import { readSessionToken } from "../auth/sessions.js";
+import { isAdmin } from "../db/admin.js";
 import { createId } from "../util/id.js";
 import { logger } from "../util/logger.js";
 
@@ -34,5 +36,33 @@ export function registerSessionHandlers(socket: Socket): void {
       sessionId: socket.data.sessionId,
     });
     respond(ack, ok({ sessionId: socket.data.sessionId }));
+  });
+
+  /**
+   * Attaches the signed-in ACCOUNT to this socket.
+   *
+   * ⚠️ THE SESSION ID IS NOT AN ACCOUNT. It is an anonymous handle that
+   * survives reconnects and says nothing about who the player is — a guest has
+   * one. Anything that has to be decided per ACCOUNT (so far: whether this
+   * player may change a room's rules) needs the signed JWT presented over the
+   * socket as well, because socket events never pass through the HTTP layer
+   * that reads the Authorization header.
+   *
+   * A bad or absent token is not an error: it means "playing as a guest", which
+   * is a supported way to play. It simply leaves the socket without an account.
+   */
+  socket.on("conn:authenticate", (payload: { token?: unknown }, ack: unknown) => {
+    const token = typeof payload?.token === "string" ? payload.token.trim() : "";
+    const accountId = token === "" ? null : readSessionToken(token);
+    socket.data.accountId = accountId ?? undefined;
+    if (accountId === null) {
+      respond(ack, ok({ signedIn: false, admin: false }));
+      return;
+    }
+    void isAdmin(accountId).then((admin) => {
+      socket.data.admin = admin;
+      logger.debug("Socket authenticated", { socketId: socket.id, admin });
+      respond(ack, ok({ signedIn: true, admin }));
+    });
   });
 }

@@ -746,9 +746,17 @@ test("a room cannot exceed the maximum of eight players", async () => {
   }
 });
 
-// --- Host-only room rules ----------------------------------------------------
+// --- Admin-only room rules ---------------------------------------------------
 
-test("the host can let eliminated players keep watching health bars", async () => {
+// ⚠️ THESE ARE THE REFUSALS, AND THAT IS DELIBERATE. Confirming an admin needs
+// the identity table, and these tests run with no database — so over the wire
+// nobody here is one, which is exactly the state worth pinning: the switches
+// refuse by default and only a confirmed admin gets past them. The rules
+// themselves are covered in roomOptions.test.ts.
+
+test("a player who is merely the host cannot change the room rules", async () => {
+  // Anyone can be a host: you create a room and you are one. These two switches
+  // change what a match IS, so they are not a host power.
   const host = connect();
   const joiner = connect();
   try {
@@ -756,68 +764,49 @@ test("the host can let eliminated players keep watching health bars", async () =
     await waitConnected(joiner);
     const created = await host.emitWithAck("lobby:create", { name: "Alice" });
     const roomCode = created.data.match.roomCode;
-    await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
 
-    // Off by default: knowing the whole board is opt-in.
+    // The defaults a private room starts with, for everyone to see.
     assert.equal(created.data.match.eliminatedSeeAllHealth, false);
+    assert.equal(created.data.match.monstersEnabled, true);
 
-    const broadcast = waitForUpdate(joiner, (m) => m.eliminatedSeeAllHealth === true);
-    const res = await host.emitWithAck("lobby:setRules", {
-      eliminatedSeeAllHealth: true,
-    });
-    assert.equal(res.ok, true);
-    assert.equal(res.data.eliminatedSeeAllHealth, true);
+    for (const rules of [
+      { eliminatedSeeAllHealth: true },
+      { monstersEnabled: false },
+    ]) {
+      const res = await host.emitWithAck("lobby:setRules", rules);
+      assert.equal(res.ok, false);
+      assert.equal(res.error.code, "NOT_ALLOWED");
+    }
 
-    // Everyone in the room learns the rule, not just the host who set it.
-    const seen = await broadcast;
-    assert.equal(seen.eliminatedSeeAllHealth, true);
+    // And nothing moved: read back from the room itself, via somebody who was
+    // not part of the attempt.
+    const joined = await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
+    assert.equal(joined.data.match.eliminatedSeeAllHealth, false);
+    assert.equal(joined.data.match.monstersEnabled, true);
   } finally {
     host.close();
     joiner.close();
   }
 });
 
-test("only the host can change the rules, and only before the match starts", async () => {
-  const host = connect();
-  const joiner = connect();
+test("a socket says who it is, and a guest is a normal answer", async () => {
+  const guest = connect();
   try {
-    await waitConnected(host);
-    await waitConnected(joiner);
-    const created = await host.emitWithAck("lobby:create", { name: "Alice" });
-    const roomCode = created.data.match.roomCode;
-    await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
+    await waitConnected(guest);
 
-    const notHost = await joiner.emitWithAck("lobby:setRules", {
-      eliminatedSeeAllHealth: true,
+    // No token: playing as a guest is a supported way to play, not an error.
+    const anon = await guest.emitWithAck("conn:authenticate", {});
+    assert.equal(anon.ok, true);
+    assert.deepEqual(anon.data, { signedIn: false, admin: false });
+
+    // An unreadable token is nobody either — not a crash, and not an admin.
+    const junk = await guest.emitWithAck("conn:authenticate", {
+      token: "not-a-real-token",
     });
-    assert.equal(notHost.ok, false);
-    assert.equal(notHost.error.code, "NOT_HOST");
-
-    const badInput = await host.emitWithAck("lobby:setRules", {
-      eliminatedSeeAllHealth: "yes",
-    });
-    assert.equal(badInput.ok, false);
-    assert.equal(badInput.error.code, "INVALID_INPUT");
-
-    // Once the match is running the rule is locked — changing what players can
-    // see mid-game would move the goalposts under them.
-    await host.emitWithAck("lobby:selectKingdom", { kingdom: "water" });
-    await host.emitWithAck("lobby:selectPerks", { perks: PERKS });
-    await host.emitWithAck("lobby:ready", { ready: true });
-    await joiner.emitWithAck("lobby:selectKingdom", { kingdom: "fire" });
-    await joiner.emitWithAck("lobby:selectPerks", { perks: PERKS });
-    await joiner.emitWithAck("lobby:ready", { ready: true });
-    const started = await host.emitWithAck("lobby:start", {});
-    assert.equal(started.ok, true);
-
-    const tooLate = await host.emitWithAck("lobby:setRules", {
-      eliminatedSeeAllHealth: true,
-    });
-    assert.equal(tooLate.ok, false);
-    assert.equal(tooLate.error.code, "INVALID_PHASE");
+    assert.equal(junk.ok, true);
+    assert.deepEqual(junk.data, { signedIn: false, admin: false });
   } finally {
-    host.close();
-    joiner.close();
+    guest.close();
   }
 });
 

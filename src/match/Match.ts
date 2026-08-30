@@ -41,6 +41,20 @@ export class Match {
   eliminatedSeeAllHealth = false;
 
   /**
+   * Admin setting: whether a monster can arrive at all.
+   *
+   * ⚠️ ON FOR PRIVATE ROOMS, FORCED OFF FOR PUBLIC ONES. A monster is a shared
+   * emergency that costs the whole table gold and attention, and a room of
+   * friends can decide they want that. A stranger dropped into matchmaking
+   * cannot — they queued for a free-for-all, and a mechanic that punishes
+   * everyone who ignores it is not something to hand someone who did not ask.
+   * The constructor derives it from `visibility`, so a public room is never
+   * even briefly monster-enabled; the socket handler then refuses to set it in
+   * one, because a client is not a permission check.
+   */
+  monstersEnabled = true;
+
+  /**
    * How this room is entered.
    *
    * "private" is the original behaviour: someone creates a room, shares the
@@ -93,6 +107,13 @@ export class Match {
     this.createdAt = Date.now();
     this.maxPlayers = options.maxPlayers ?? MATCH.MAX_PLAYERS;
     this.visibility = options.visibility ?? "private";
+    // ⚠️ SET FROM THE VISIBILITY, ONCE, AT CONSTRUCTION. Both optional rules are
+    // off in matchmade rooms: a stranger queued for a free-for-all, not for a
+    // shared emergency, and not to hand whoever dies first a view of the whole
+    // board. Enforcing it here as well as in the socket handler means a public
+    // room is never briefly monster-enabled between being created and being
+    // configured.
+    this.monstersEnabled = this.visibility !== "public";
     this.rng = options.rng ?? Math.random;
   }
 
@@ -238,6 +259,7 @@ export class Match {
     maxPlayers: number;
     maxActivePlayers: number;
     eliminatedSeeAllHealth: boolean;
+    monstersEnabled: boolean;
     visibility: MatchVisibility;
     startsAt: number | null;
     tick: number;
@@ -254,6 +276,7 @@ export class Match {
       maxPlayers: this.maxPlayers,
       maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
       eliminatedSeeAllHealth: this.eliminatedSeeAllHealth,
+      monstersEnabled: this.monstersEnabled,
       visibility: this.visibility,
       startsAt: this.startsAt,
       tick: this.tick,

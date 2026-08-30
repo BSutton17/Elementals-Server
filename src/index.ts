@@ -11,6 +11,7 @@ import { ReconnectionManager } from "./net/ReconnectionManager.js";
 import { broadcastGameState, broadcastGameEvents, broadcastMatchEnded } from "./net/gameSync.js";
 import { createRequestListener } from "./net/health.js";
 import { readSessionToken } from "./auth/sessions.js";
+import { isAdmin } from "./db/admin.js";
 import { closeDb, isDatabaseConfigured } from "./db/client.js";
 import { getMatchIdentity } from "./db/accounts.js";
 import { startAccountSweeper } from "./db/cleanup.js";
@@ -50,6 +51,10 @@ io.use((socket, next) => {
 
   socket.data.accountId = accountId; // null for guests
   socket.data.isGuest = accountId === null;
+  // ⚠️ FALSE UNTIL PROVEN OTHERWISE. Resolved below for a signed-in socket,
+  // but it must already exist and already be false: a handler that reads it
+  // before the lookup lands has to see "no", never `undefined`.
+  socket.data.admin = false;
   socket.data.username = null;
   socket.data.level = null;
   socket.data.loadout = null;
@@ -66,6 +71,19 @@ io.use((socket, next) => {
 
   if (accountId) {
     logger.debug("Socket identified", { accountId, socketId: socket.id });
+    // Same fire-and-forget rule as the profile read below, and for the same
+    // reason: this is a database lookup and the handshake must not wait on one.
+    // A socket that acts before it lands is simply not an admin yet, which is
+    // the safe answer — and the client is told either way (`conn:you`) so the
+    // admin tools appear without needing a reconnect.
+    void isAdmin(accountId)
+      .then((admin) => {
+        socket.data.admin = admin;
+        socket.emit("conn:you", { signedIn: true, admin });
+      })
+      .catch(() => {
+        socket.emit("conn:you", { signedIn: true, admin: false });
+      });
     void getMatchIdentity(accountId)
       .then((identity) => {
         socket.data.username = identity?.username ?? null;

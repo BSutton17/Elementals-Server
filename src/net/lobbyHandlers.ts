@@ -602,47 +602,86 @@ export function registerLobbyHandlers(
    * surviving kingdom's health. Lobby phase only — flipping it mid-match would
    * change what players can see out from under them.
    */
-  socket.on("lobby:setRules", (payload: { eliminatedSeeAllHealth?: unknown }, ack: unknown) => {
-    const roomCode =
-      typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
-    const playerId =
-      typeof socket.data.playerId === "string" ? socket.data.playerId : null;
-    if (!roomCode || !playerId) {
-      respond(ack, fail("INVALID_PHASE", "Not in a room"));
-      return;
-    }
-    const match = matches.getMatch(roomCode);
-    if (!match) {
-      respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
-      return;
-    }
-    if (!match.isHost(playerId)) {
-      respond(ack, fail("NOT_HOST", "Only the host can change the rules"));
-      return;
-    }
-    if (match.phase !== "lobby") {
-      respond(ack, fail("INVALID_PHASE", "The match has already started"));
-      return;
-    }
-    if (typeof payload?.eliminatedSeeAllHealth !== "boolean") {
-      respond(ack, fail("INVALID_INPUT", "eliminatedSeeAllHealth must be a boolean"));
-      return;
-    }
-    // ⚠️ NEVER IN A PUBLIC ROOM. Seeing every surviving kingdom's health after
-    // dying is a real advantage handed to someone who can no longer be punished
-    // for having it, and among friends it is also a coaching channel. Both are
-    // choices a room of people who know each other can make; neither is
-    // something a stranger should be able to switch on for you. Refused here as
-    // well as hidden in the lobby UI — a client is not a permission check.
-    if (match.visibility === "public") {
-      respond(ack, fail("NOT_ALLOWED", "That rule is fixed in public matches"));
-      return;
-    }
+  /**
+   * The room's optional rules — both of them admin-only.
+   *
+   * ⚠️ ADMIN, NOT HOST, AND CHECKED HERE. Anyone can be a host: you create a
+   * room and you are one. These two switches change what a match IS — one hands
+   * dead players the whole board, the other decides whether a shared emergency
+   * shows up at all — so while they are being tuned they belong to the account
+   * that owns the game rather than to whoever happened to click Create Room.
+   * The lobby hides the panel from everybody else, and that is presentation;
+   * this is the check.
+   */
+  socket.on(
+    "lobby:setRules",
+    (
+      payload: { eliminatedSeeAllHealth?: unknown; monstersEnabled?: unknown },
+      ack: unknown,
+    ) => {
+      const roomCode =
+        typeof socket.data.roomCode === "string" ? socket.data.roomCode : null;
+      const playerId =
+        typeof socket.data.playerId === "string" ? socket.data.playerId : null;
+      if (!roomCode || !playerId) {
+        respond(ack, fail("INVALID_PHASE", "Not in a room"));
+        return;
+      }
+      const match = matches.getMatch(roomCode);
+      if (!match) {
+        respond(ack, fail("ROOM_NOT_FOUND", "No match found"));
+        return;
+      }
+      if (socket.data.admin !== true) {
+        respond(ack, fail("NOT_ALLOWED", "Only an admin can change these rules"));
+        return;
+      }
+      if (match.phase !== "lobby") {
+        respond(ack, fail("INVALID_PHASE", "The match has already started"));
+        return;
+      }
+      // ⚠️ NEVER IN A PUBLIC ROOM. Seeing every surviving kingdom's health
+      // after dying is a real advantage handed to someone who can no longer be
+      // punished for having it, and among friends it is also a coaching
+      // channel; a monster is a shared emergency that costs everybody gold and
+      // attention. Both are choices a room of people who know each other can
+      // make, and neither is something a stranger should be able to switch on
+      // for you. Refused here as well as hidden in the lobby UI — a client is
+      // not a permission check.
+      if (match.visibility === "public") {
+        respond(ack, fail("NOT_ALLOWED", "Those rules are fixed in public matches"));
+        return;
+      }
 
-    match.eliminatedSeeAllHealth = payload.eliminatedSeeAllHealth;
-    broadcastLobbyUpdate(io, match);
-    respond(ack, ok({ eliminatedSeeAllHealth: match.eliminatedSeeAllHealth }));
-  });
+      // Each field is optional: the panel sends one switch at a time, and
+      // sending neither is a no-op rather than a reset to defaults.
+      const vision = payload?.eliminatedSeeAllHealth;
+      const monsters = payload?.monstersEnabled;
+      if (vision === undefined && monsters === undefined) {
+        respond(ack, fail("INVALID_INPUT", "Nothing to change"));
+        return;
+      }
+      if (vision !== undefined && typeof vision !== "boolean") {
+        respond(ack, fail("INVALID_INPUT", "eliminatedSeeAllHealth must be a boolean"));
+        return;
+      }
+      if (monsters !== undefined && typeof monsters !== "boolean") {
+        respond(ack, fail("INVALID_INPUT", "monstersEnabled must be a boolean"));
+        return;
+      }
+
+      if (vision !== undefined) match.eliminatedSeeAllHealth = vision;
+      if (monsters !== undefined) match.monstersEnabled = monsters;
+      broadcastLobbyUpdate(io, match);
+      respond(
+        ack,
+        ok({
+          eliminatedSeeAllHealth: match.eliminatedSeeAllHealth,
+          monstersEnabled: match.monstersEnabled,
+        }),
+      );
+    },
+  );
 
   socket.on("lobby:start", (_payload: unknown, ack: unknown) => {
     const roomCode =

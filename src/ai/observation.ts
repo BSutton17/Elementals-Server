@@ -21,7 +21,7 @@ import { visibilitySpecHash } from "./visibility.js";
  * where a divisor does not.
  */
 
-export const OBSERVATION_SIZE = 91;
+export const OBSERVATION_SIZE = 87;
 
 /** Where the kingdom one-hot starts. */
 export const KINGDOM_BASE = 64;
@@ -33,16 +33,25 @@ export const DEFENCE_BASE = 80;
 export const THREAT_BASE = 84;
 
 /**
- * Where the monster block starts.
+ * ⚠️ THE MONSTER HAS NO INPUTS, AND THAT IS A DELIBERATE ROLLBACK.
  *
- * APPENDED rather than slotted into the field group at 14–20, where it
- * arguably belongs. Inserting there would renumber the kingdom one-hot, the
- * defence block and the threat block — sixty-odd indices whose meanings are
- * asserted by name across four test files — to buy nothing but tidiness. The
- * version bump invalidates existing models either way; the layout churn would
- * only add ways to get it wrong.
+ * Four were added at 87–90 (live / health / attack urgency / attack severity),
+ * taking the vector to 91 and the contract to v4. Three training runs later —
+ * 35, 37 and 195 generations — every champion produced by that contract played
+ * a passive opening: measured across nine matches at all three difficulties,
+ * the first time a bot aimed at a KINGDOM was 204–371 s in, and one seat never
+ * did at all. The shipped v3 networks do not have that problem.
+ *
+ * So the vector is back to exactly the 87 those networks were trained on, and
+ * they are shipped again while the passivity is worked out. The mechanic is
+ * unaffected: bots fight monsters through the commit-and-swing reflex in
+ * `controller.ts`, which is a rule and never needed the network's opinion.
+ * `knowledge.ts` still carries `field.monster` — `legality.ts` needs it to let
+ * a committed seat swing — it simply is not encoded for the network.
+ *
+ * Restoring them is this constant, the group-9 block, the horizon below, the
+ * size above, and the version in `versions.ts`.
  */
-export const MONSTER_BASE = 87;
 
 /** Where each group starts, so the layout is stated once. */
 export const SELF_BASE = 0;
@@ -237,40 +246,6 @@ export function encode(knowledge: PlayerKnowledge, out: Float32Array): void {
     : 0;
   // Old Friends: no clock and no ransom, so a shield is the whole counterplay.
   out[THREAT_BASE + 2] = bit(self.siegeEndsOnShield);
-
-  // ── Group 9 · the monster (87–90) ───────────────────────────
-  //
-  // ⚠️ THE ONE THING ON THE FIELD WITH NO CLOCK, which is exactly why it needs
-  // its own inputs rather than riding on `centrepieceHeld`. Every other
-  // centrepiece answers "wait it out" correctly; this one never leaves on its
-  // own, and waiting costs the seat a landed cycle every ten to fifteen
-  // seconds, harder each time. A policy that cannot see it can only learn "when
-  // the centre is occupied, sit still" — which is right four times out of five
-  // and catastrophic the fifth.
-  //
-  // Two of these describe the target and two describe the threat, because the
-  // seat is being asked two different questions at once: is this worth
-  // committing to, and am I about to be hit.
-  const monster = field.monster;
-  out[MONSTER_BASE] = bit(monster !== null);
-  // How much is left. Low means the kill — and both rewards — is in reach.
-  out[MONSTER_BASE + 1] = monster ? clamp01(monster.hpFraction) : 0;
-  // Urgency, rising as the swing approaches, scaled the same way a telegraphed
-  // strike is and for the same reason: a fresh cycle reads about 0.5 and climbs
-  // to 1.0, so the input is present immediately rather than only once the
-  // window is already closing.
-  out[MONSTER_BASE + 2] = monster
-    ? clamp01(1 - monster.ticksUntilAttack / MONSTER_ATTACK_HORIZON)
-    : 0;
-  // What the next cycle would cost, against castle HP ALONE rather than
-  // HP + shield. A shield stops a cycle completely — overflow is discarded, not
-  // carried to HP — so folding the shield into the denominator would encode a
-  // shielded seat as "mildly threatened" when the correct reading is "not
-  // threatened at all". Input 1 already carries the shield; the network reads
-  // the two together.
-  out[MONSTER_BASE + 3] = monster
-    ? clamp01(monster.attackDamage / Math.max(1, self.hp))
-    : 0;
 }
 
 /** Standard shield purchase size, used to normalize shield pools. */
@@ -289,15 +264,6 @@ const STANDARD_SHIELD_HP = 1750;
  * correct behaviour rather than a special case.
  */
 const THREAT_HORIZON = 2 * 3.25 * TICK.RATE;
-/**
- * The horizon the monster's next swing is scaled against.
- *
- * Twice its longest interval (15 s), on the same argument as THREAT_HORIZON: a
- * cycle that has only just been rolled reads about 0.5 rather than 0, so the
- * input says "there is a monster and it will swing" from the moment the clock
- * is set instead of going live halfway through.
- */
-const MONSTER_ATTACK_HORIZON = 2 * 15 * TICK.RATE;
 /** The simulation's default per-match tick cap, for match progress. */
 const MAX_TICKS = 24_000;
 /** How long a hit stays "recent" for input 33 (30 s at 20 t/s). */
@@ -313,7 +279,7 @@ const RECENCY_TICKS = 600;
 export function observationSpecHash(): string {
   const text = [
     `size=${OBSERVATION_SIZE}`,
-    `groups=${SELF_BASE},${FIELD_BASE},${REVEAL_BASE},${TARGET_BASE},${KIT_BASE},${MONSTER_BASE}`,
+    `groups=${SELF_BASE},${FIELD_BASE},${REVEAL_BASE},${TARGET_BASE},${KIT_BASE}`,
     `kit=${KIT_SLOTS}x${KIT_STRIDE}`,
     `visibility=${visibilitySpecHash()}`,
     `version=${OBSERVATION_VERSION}`,

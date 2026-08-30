@@ -82,6 +82,10 @@ function rollAttackDelay(match: Match): number {
 export function tickMonsterSpawn(match: Match): void {
   const state = match.gameState;
   if (!state) return;
+  // Switched off for this room: no clock, no rolls, nothing to clean up later.
+  // Checked before the clock is armed rather than at the roll, so a room that
+  // has monsters off never carries spawn state at all.
+  if (!match.monstersEnabled) return;
 
   if (state.monsterSpawn === null) {
     state.monsterSpawn = {

@@ -25,11 +25,20 @@ export const MODEL_FORMAT_VERSION = 1;
  * Bump when any of those change. A test pins this against the observation
  * specification hash so the two cannot drift apart silently.
  *
- * v4 — the monster (87–90). Four new inputs and a new public visibility row, so
- * every v3 model reads a vector four floats longer than the one it was trained
- * on and is refused rather than run.
+ * ⚠️ v4 WAS ROLLED BACK TO v3, DELIBERATELY, AND THIS IS NOT A DOWNGRADE BY
+ * ACCIDENT. v4 added four monster inputs (87–90), taking the vector to 91.
+ * Every champion trained against it opened passively — first kingdom target
+ * 204–371 s in, one seat never — while the v3 networks do not do that. The
+ * vector is therefore back to the exact 87 those networks were trained on so
+ * they can be shipped again while that is fixed.
+ *
+ * The number is v3 rather than a new v5 because the CONTRACT IS BYTE-IDENTICAL
+ * to v3: same 87 indices, same order, same normalizations. `field.monster`
+ * exists in `knowledge.ts` and in the visibility table, but it is not encoded,
+ * so nothing a v3 network reads has changed. A model must be refused when what
+ * it reads differs, and here it does not.
  */
-export const OBSERVATION_VERSION = "v4";
+export const OBSERVATION_VERSION = "v3";
 
 /**
  * The action contract: the 22 outputs, their order, and the target ordering
