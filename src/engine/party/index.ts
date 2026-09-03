@@ -15,6 +15,11 @@ import { BUTTON_MASH_GAME, settleButtonMash } from "./buttonMash.js";
 import { BOMB_ATTACK_GAME, settleBombAttack, bombIsLive } from "./bombAttack.js";
 import { KINGDOM_THIEF_GAME, settleKingdomThief } from "./kingdomThief.js";
 import { PICK_A_CHEST_GAME } from "./pickAChest.js";
+import { DONT_MOVE_GAME } from "./dontMove.js";
+import { KINGDOM_SWAP_GAME, tickKingdomSwaps } from "./kingdomSwap.js";
+import { HAUNTED_GAME, hasGhostsToRaise, tickGhosts } from "./haunted.js";
+import { GOLD_PARTY_GAME } from "./goldParty.js";
+import { CLEAN_UP_GAME } from "./cleanUp.js";
 import type {
   PartyAction,
   PartyActionResult,
@@ -33,6 +38,10 @@ export { buildQuestion as buildMathQuestion } from "./quickMath.js";
 export { longestHolder, bombIsLive } from "./bombAttack.js";
 export { kingdomLabel, rankedFirst, rankedLast } from "./results.js";
 export { shuffleChests } from "./pickAChest.js";
+export { isGhost, isGhostAt, hauntable, hasGhostsToRaise } from "./haunted.js";
+export { kitKingdomOf, mirrorSlot, canUseAbility } from "./kingdomSwap.js";
+export { buildShower } from "./goldParty.js";
+export { buildMess } from "./cleanUp.js";
 
 /**
  * Party Mode.
@@ -65,6 +74,11 @@ export const PARTY_GAMES: readonly PartyGame[] = [
   BOMB_ATTACK_GAME,
   KINGDOM_THIEF_GAME,
   PICK_A_CHEST_GAME,
+  DONT_MOVE_GAME,
+  KINGDOM_SWAP_GAME,
+  HAUNTED_GAME,
+  GOLD_PARTY_GAME,
+  CLEAN_UP_GAME,
 ];
 
 export function partyGame(id: PartyGameId): PartyGame | undefined {
@@ -122,7 +136,12 @@ export function tickPartyClock(match: Match): void {
   const divisor = Math.max(1, param("party.chanceDivisor", PARTY.CHANCE_DIVISOR));
   if (match.rng() >= living / divisor) return;
 
-  const game = PARTY_GAMES[Math.floor(match.rng() * PARTY_GAMES.length)]!;
+  // Only from the games that CAN run: Haunted with nobody dead is a banner
+  // announcing nothing, and it would still hold the next roll for its whole
+  // duration.
+  const playable = PARTY_GAMES.filter((g) => g.canStart?.(match) !== false);
+  if (playable.length === 0) return;
+  const game = playable[Math.floor(match.rng() * playable.length)]!;
   startParty(match, game.id);
 }
 
@@ -137,6 +156,7 @@ export function startParty(match: Match, gameId: PartyGameId): PartySession | nu
   if (!state || state.party !== null) return null;
   const game = partyGame(gameId);
   if (!game) return null;
+  if (game.canStart?.(match) === false) return null;
 
   const players = contenders(match);
   if (players.length === 0) return null;
@@ -188,6 +208,9 @@ export function startParty(match: Match, gameId: PartyGameId): PartySession | nu
 export function partyBlocksCentrepieces(match: Match): boolean {
   const session = match.gameState?.party;
   if (!session || session.resolvedTick !== null) return false;
+  // Weather does not hold the middle of the field either: a thirty-second swap
+  // that also banned every ultimate would be a far bigger event than the swap.
+  if (partyGame(session.gameId)?.holdsAttacks === false) return false;
   if (session.firstFinishTick === null) return true;
   const grace = Math.round(
     param("party.centrepieceGrace", PARTY.CENTREPIECE_GRACE_SECONDS) * TICK.RATE,
@@ -216,14 +239,28 @@ export function partySuppressesAttacks(match: Match): boolean {
   const session = match.gameState?.party;
   if (!session) return false;
   if (session.resolvedTick !== null) return false;
+  // An ambient game never pauses the war — see `holdsAttacks`. Nobody finishes
+  // weather, so the hold would run for its whole duration.
+  if (partyGame(session.gameId)?.holdsAttacks === false) return false;
   return session.firstFinisherId === null;
 }
 
 /** Runs the active session: per-player ticks, bots, and the clock that ends it. */
 export function tickParty(match: Match): void {
   const state = match.gameState;
-  const session = state?.party;
-  if (!state || !session) return;
+  if (!state) return;
+
+  // ⚠️ BEFORE THE SESSION CHECK, AND OUTSIDE IT. A ghost's welcome and a
+  // borrowed kit both outlive the session that granted them — the session is
+  // cleared four seconds after it resolves, and Haunted runs for twenty-five.
+  // Expiring them here means they end on their own clock however the session
+  // ends, rather than leaving a dead player attacking, or somebody holding
+  // another kingdom's abilities, for the rest of the match.
+  tickGhosts(match);
+  tickKingdomSwaps(match);
+
+  const session = state.party;
+  if (!session) return;
 
   const game = partyGame(session.gameId);
   if (!game) {

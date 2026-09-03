@@ -8,6 +8,7 @@ import { isTargetingBlocked } from "./status.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
 import { partyBlocksTargeting } from "./party/index.js";
+import { isGhostAt } from "./party/haunted.js";
 
 /**
  * Target selection (tickets #61–#62). A player may aim their kingdom at another
@@ -63,7 +64,11 @@ export function selectTarget(
   }
 
   if (match.phase !== "active") return { ok: false, error: "INVALID_PHASE" };
-  if (player.eliminated) return { ok: false, error: "ELIMINATED" };
+  // Ghosts aim like anybody else. They still cannot BE aimed at: the check on
+  // the target below asks `target.eliminated`, and a ghost is still eliminated.
+  if (player.eliminated && !isGhostAt(player, match.tick)) {
+    return { ok: false, error: "ELIMINATED" };
+  }
 
   // Space's Supernova (L2/L3) forces every kingdom onto its victim and locks
   // the selection: no swaps (or clears) while the lock is active. Re-selecting

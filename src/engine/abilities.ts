@@ -49,6 +49,8 @@ import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { spawnCaprice, capriceIsActive, capriceProtects } from "./caprice.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
 import { partyBlocksCentrepieces, partySuppressesAttacks } from "./party/index.js";
+import { isGhostAt } from "./party/haunted.js";
+import { canUseAbility, kitKingdomOf, mirrorSlot } from "./party/kingdomSwap.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
 import { DARK, INSECTS, SPACE, TICK } from "../data/balance.js";
@@ -469,12 +471,15 @@ export interface AbilityDefinition {
  * nightmare). Empty string for an unknown kingdom, which matches no ability.
  */
 export function basicAttackIdFor(player: PlayerState): string {
-  return abilitiesForKingdom(player.kingdomId)[0]?.id ?? "";
+  // The kit they are HOLDING, which is somebody else's during a Kingdom Swap.
+  return abilitiesForKingdom(kitKingdomOf(player))[0]?.id ?? "";
 }
 
 /** The player's current upgrade level for an ability (0 = base). */
 export function getUpgradeLevel(player: PlayerState, abilityId: string): number {
-  return player.upgrades[abilityId] ?? 0;
+  // A borrowed ability is levelled by the slot it occupies in the player's OWN
+  // kit — see `mirrorSlot`. Without that, every swapped ability reads level 0.
+  return player.upgrades[mirrorSlot(player, abilityId)] ?? 0;
 }
 
 /**
@@ -790,7 +795,17 @@ function activateAbilityInner(
 
   // 2. Validate phase and actor.
   if (match.phase !== "active") return { ok: false, error: "INVALID_PHASE" };
-  if (caster.eliminated) return { ok: false, error: "ELIMINATED" };
+  // Holding another kingdom's kit means holding ONLY that one. Refused here
+  // rather than merely hidden on the bar, because a hidden button is not a rule.
+  if (!canUseAbility(caster, ability.id)) {
+    return { ok: false, error: "NOT_ACTIVATABLE" };
+  }
+
+  // A ghost is eliminated and may act anyway — that narrow exception is the
+  // entirety of Haunted (see `party/haunted.ts`).
+  if (caster.eliminated && !isGhostAt(caster, match.tick)) {
+    return { ok: false, error: "ELIMINATED" };
+  }
 
   // ⚠️ PARTY MODE HOLDS ATTACKS UNTIL SOMEBODY FINISHES. A table looking at a
   // maze cannot defend itself, so anything that would hurt a kingdom waits for

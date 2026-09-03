@@ -338,6 +338,38 @@ export const PARTY = {
   LOCK_REWARD: 400,
   LOCKPICK_MAX_SECONDS: 35,
 
+  /** Don't Move: how long to sit still, and what a twitch costs. */
+  DONT_MOVE_SECONDS: 6,
+  DONT_MOVE_PENALTY: 5000,
+
+  /**
+   * Kingdom Swap: how long a borrowed kit lasts.
+   *
+   * Long enough to actually cast something twice — a swap shorter than a
+   * cooldown is a swap the player never gets to use.
+   */
+  SWAP_SECONDS: 30,
+
+  /** Haunted: how long the dead walk, and what they walk with. */
+  HAUNTED_SECONDS: 25,
+  GHOST_CITIZENS: 45,
+
+  /** Gold Party: ten seconds of rain, and what each coin is worth. */
+  GOLD_PARTY_SECONDS: 10,
+  COINS_PER_SECOND: 4,
+  COIN_BRONZE: 25,
+  COIN_SILVER: 50,
+  COIN_GOLD: 100,
+
+  /**
+   * Clean Up: how long the mess lasts and how much of it there is.
+   *
+   * Twenty seconds is the longest event in the mode by some way, and it can be
+   * because it takes nothing: no damage, no gold, no penalty for ignoring it.
+   */
+  CLEAN_UP_SECONDS: 20,
+  MESS_SPLATS: 7,
+
   /**
    * The barrier games (Kingdom Thief, Pick a Chest): how long the table has to
    * commit, and how late the countdown appears.

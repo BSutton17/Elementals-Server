@@ -12,6 +12,7 @@ import {
 } from "./passives.js";
 import { earn, roundMoney } from "./money.js";
 import { partyStopsProduction } from "./party/index.js";
+import { isGhostAt } from "./party/haunted.js";
 
 /**
  * A player's effective per-tick income: citizens × rate, adjusted by any active
@@ -44,7 +45,10 @@ export function recalcIncome(player: PlayerState): void {
 export function applyPassiveIncome(state: GameState): void {
   const players = state.getPlayers();
   for (const player of players) {
-    if (player.eliminated) continue;
+    // A ghost draws income for as long as it walks: it was handed citizens so
+    // it could actually play, and a kit it cannot afford to cast is a kit it
+    // does not have.
+    if (player.eliminated && !isGhostAt(player, state.tick)) continue;
     // Joker's casino: production stops dead until the machine in front of this
     // player is dealt with — the lever pulled, or the bet placed. Not a
     // modifier but a hard stop, so stalling costs the full rate.

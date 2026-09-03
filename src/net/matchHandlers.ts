@@ -18,6 +18,7 @@ import { squashCrawler } from "../engine/crawlers.js";
 import { ALL_ABILITIES } from "../data/abilitiesRegistry.js";
 import { selectTarget } from "../engine/targeting.js";
 import type { TransactionResult } from "../engine/transactions.js";
+import { mirrorSlot } from "../engine/party/kingdomSwap.js";
 
 export interface MatchDeps {
   matches: MatchManager;
@@ -76,7 +77,9 @@ export function registerMatchHandlers(
       }
 
       // Abilities must be bought before they can be cast (unlock = 50% of cost).
-      if (!player.unlocked[abilityId]) {
+      // A borrowed ability counts as bought if the SLOT it occupies was bought
+      // in the player's own kit — see `mirrorSlot`.
+      if (!player.unlocked[mirrorSlot(player, abilityId)]) {
         respond(ack, fail("NOT_ACTIVATABLE", "Ability not unlocked"));
         return;
       }

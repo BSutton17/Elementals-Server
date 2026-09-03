@@ -523,6 +523,34 @@ export interface PlayerState {
    * spin. Their gold production is frozen until they pull the lever — there is
    * no way to decline, only to stall. Null when nothing is owed.
    */
+  /**
+   * While this tick is below it, an ELIMINATED player may act (Party Mode's
+   * "Haunted").
+   *
+   * ⚠️ A SEPARATE RIGHT, NOT A RESURRECTION, AND THE DIFFERENCE IS THE WHOLE
+   * MECHANIC. `resolveWinner` ends a match when at most one player is not
+   * eliminated, so clearing `eliminated` to bring a ghost back would stop a
+   * finished match from ending AND could hand the win to a kingdom that died
+   * minutes ago. Nothing about their elimination changes; this grants the
+   * narrow ability to cast and aim, for a few seconds, and every other rule
+   * that asks "are you out?" still gets yes — which is also why a ghost cannot
+   * be damaged or targeted without a single line being written for it.
+   */
+  ghostUntilTick?: number;
+
+  /**
+   * Whose ABILITIES this player is using (Party Mode's "Kingdom Swap"), and
+   * until when.
+   *
+   * ⚠️ AN OVERRIDE READ BY THE ABILITY LAYER ALONE. `kingdomId` drives the
+   * castle's colour, its skin, the roster, the scoreboard, the passives and the
+   * win screen — writing a borrowed kingdom into it would turn Water's castle
+   * into Fire's mid-match and put the wrong name on the result. Everything
+   * except "which abilities does this bar show" keeps reading `kingdomId`.
+   */
+  abilityKingdomId?: KingdomId;
+  abilitySwapUntilTick?: number;
+
   pendingSpin: { sourceId: string; abilityId: string; atTick: number } | null;
   /**
    * Joker's Roulette: a wheel is in front of this player and they owe a bet.

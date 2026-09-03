@@ -29,7 +29,12 @@ export type PartyGameId =
   | "buttonMash"
   | "bombAttack"
   | "kingdomThief"
-  | "pickAChest";
+  | "pickAChest"
+  | "dontMove"
+  | "kingdomSwap"
+  | "haunted"
+  | "goldParty"
+  | "cleanUp";
 
 /** How a player left the game. `null` while they are still in it. */
 export type PartyOutcome = "won" | "lost" | null;
@@ -119,6 +124,34 @@ export interface PartyGame {
   readonly maxSeconds: number;
   /** True while this game stops the player's gold production. */
   readonly stopsProduction: boolean;
+
+  /**
+   * Whether the war pauses while this runs. Defaults to true.
+   *
+   * ⚠️ AMBIENT GAMES MUST SET THIS FALSE, AND IT IS NOT A PREFERENCE. Attacks
+   * are held until the FIRST kingdom finishes — which works for a game somebody
+   * can finish. Nobody finishes weather: Haunted, a Kingdom Swap and a spilled
+   * screen have no completion at all, so the hold would last their entire
+   * duration and freeze the match for half a minute. Worse, it would make
+   * Haunted self-defeating: the ghosts are raised to attack, and the hold would
+   * forbid exactly that.
+   *
+   * The rule of thumb is whether the player is HEADS-DOWN. A maze takes your
+   * eyes off the board and deserves the hold; a mess on your screen does not
+   * stop you playing, it just makes it harder.
+   */
+  readonly holdsAttacks?: boolean;
+
+  /**
+   * Whether this game can run at all right now.
+   *
+   * ⚠️ CHECKED BEFORE THE ROLL PICKS IT, NOT AFTER. Haunted needs somebody to
+   * raise; without a dead player it is a banner announcing nothing. A game that
+   * set itself up and then did nothing would still burn the table's turn and
+   * hold the next roll for its full duration, so the roll simply does not
+   * consider it. Games with no such condition leave this undefined.
+   */
+  canStart?(match: Match): boolean;
 
   setup(match: Match, players: PlayerState[]): PartySetup;
 

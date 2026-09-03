@@ -17,6 +17,7 @@ import { standingCentrepiece } from "../engine/centrepiece.js";
 import { SHIELD } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
 import { partyForWire } from "./partySync.js";
+import { kitKingdomOf, mirrorSlot } from "../engine/party/kingdomSwap.js";
 
 /**
  * Broadcasts the current authoritative game state to everyone in a match's room
@@ -61,10 +62,12 @@ export interface AbilityPrices {
  */
 export function abilityPrices(p: PlayerState): Record<string, AbilityPrices> {
   const prices: Record<string, AbilityPrices> = {};
-  for (const def of abilitiesForKingdom(p.kingdomId)) {
-    const level = p.upgrades[def.id] ?? 0;
+  // The kit they are HOLDING — another kingdom's during a Kingdom Swap — priced
+  // against the slots they own in their own.
+  for (const def of abilitiesForKingdom(kitKingdomOf(p))) {
+    const level = p.upgrades[mirrorSlot(p, def.id)] ?? 0;
     const resolved = resolveAbility(def, level);
-    const unlocked = p.unlocked[def.id] === true;
+    const unlocked = p.unlocked[mirrorSlot(p, def.id)] === true;
     const nextTier = (def.upgradePath ?? []).find((t) => t.level === level + 1);
 
     prices[def.id] = {
