@@ -82,8 +82,10 @@ test("repairing the castle restores HP for money, capped at max", () => {
 
   const result = repairCastle(match, a);
   assert.equal(result.ok, true);
-  // Repairs REPAIR_AMOUNT (1000) HP for the flat base cost ($500).
-  assert.equal(a.castle.hp, a.castle.maxHp - 1000);
+  // Repairs REPAIR_AMOUNT for the flat base cost. Both read from balance
+  // rather than being written out, so a repair pass moves this test with it
+  // instead of breaking it.
+  assert.equal(a.castle.hp, a.castle.maxHp - (2000 - CASTLE.REPAIR_AMOUNT));
   assert.equal(a.economy.currency, 2000 - CASTLE.REPAIR_COST);
 });
 

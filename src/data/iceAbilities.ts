@@ -30,7 +30,14 @@ export const FROZEN_STATUS: StatusEffectDefinition = {
 /** The standard Frozen duration (design: "cannot attack for 4 seconds"). */
 export const FROZEN_DURATION = 4 * TICK.RATE;
 
-/** Frostbite: the bearer's production is slowed by 50% (Ice's retaliation). */
+/**
+ * Frostbite: the bearer's production runs at 80% (Ice's retaliation passive).
+ *
+ * Applied to whoever ATTACKS Ice, 15% of the time, for 5 seconds
+ * (`kingdoms.ts`). The victim's own client frosts the citizens readout while it
+ * holds — a production debuff nobody can see is a smaller number with no
+ * explanation attached.
+ */
 export const FROSTBITE_STATUS: StatusEffectDefinition = {
   id: "frostbite",
   name: "Frostbite",

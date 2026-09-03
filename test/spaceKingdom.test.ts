@@ -13,7 +13,7 @@ import { tickMatch } from "../src/engine/tick.js";
 import { earn } from "../src/engine/money.js";
 import { isKingdomId } from "../src/data/kingdoms.js";
 import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
-import { TICK } from "../src/data/balance.js";
+import { SPACE, TICK } from "../src/data/balance.js";
 import {
   SHOOTING_STAR,
   SATURNS_RINGS,
@@ -259,6 +259,21 @@ test("Orion's Belt: a landed attack still hits (chance not met)", () => {
   assert.equal(belted.castle.hp, belted.castle.maxHp - STAR);
 });
 
+/**
+ * Ticks the beam home.
+ *
+ * ⚠️ A COLLAPSE NO LONGER HURTS ANYBODY ON ITS OWN TICK. The Judgment Beam
+ * takes three seconds to reach the castle it is pointed at, and the damage now
+ * waits for it — otherwise kingdoms died before the weapon that killed them had
+ * fired, and the beam then played over an empty seat.
+ */
+const DUMP_DELAY_TICKS = Math.round(SPACE.BLACK_HOLE_DUMP_DELAY_SECONDS * TICK.RATE);
+
+function landTheBeam(match: Match, fromTick: number): number {
+  for (let t = fromTick + 1; t <= fromTick + DUMP_DELAY_TICKS; t++) tickMatch(match, t);
+  return fromTick + DUMP_DELAY_TICKS;
+}
+
 test("Black Hole swallows every attack, then dumps on a kingdom that stayed out", () => {
   const { match, players } = arena(["space", "space", "plains"]);
   const [owner, attacker, bystander] = players;
@@ -281,6 +296,10 @@ test("Black Hole swallows every attack, then dumps on a kingdom that stayed out"
   // out is the one the collapse is for.
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
   assert.equal(match.gameState!.blackHole, null);
+  // Nothing yet: the beam is still crossing the field.
+  assert.equal(bystander.castle.hp, bystander.castle.maxHp, "hit before the beam fired");
+
+  landTheBeam(match, 10 * TICK.RATE);
   assert.equal(bystander.castle.hp, bystander.castle.maxHp - STAR);
   assert.equal(attacker.castle.hp, attacker.castle.maxHp, "the feeder was taxed twice");
 });
@@ -303,6 +322,7 @@ test("Black Hole falls back to the last feeder when the whole field engaged", ()
   assert.equal(match.gameState!.blackHole!.lastAttackerId, second.id);
 
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  landTheBeam(match, 10 * TICK.RATE);
   // Two Shooting Stars went into the pool, so the collapse pays out both.
   assert.equal(second.castle.hp, second.castle.maxHp - 2 * STAR);
   assert.equal(first.castle.hp, first.castle.maxHp);
@@ -348,7 +368,49 @@ test("Black Hole skips Space and dumps on a kingdom that can take it", () => {
   );
 
   for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  landTheBeam(match, 10 * TICK.RATE);
   assert.equal(otherSpace.castle.hp, otherSpace.castle.maxHp, "Space took the dump");
   assert.equal(plains.castle.hp, plains.castle.maxHp - 2 * STAR);
 });
 
+
+test("a fatal Black Hole dump waits for its beam before it kills anybody", () => {
+  // ⚠️ THE BUG THIS EXISTS FOR. The collapse used to deal its damage on its own
+  // tick, three seconds before the Judgment Beam reached the castle. A kingdom
+  // the dump would kill was eliminated and REMOVED from the field first, so the
+  // beam then fired at an empty seat — the biggest effect in the game playing
+  // over a kingdom that had already lost.
+  const { match, players } = arena(["space", "space", "plains"]);
+  const [owner, , bystander] = players;
+
+  assert.equal(activateAbility(match, owner, BLACK_HOLE).ok, true);
+  // Pool enough to end them outright.
+  match.gameState!.blackHole!.accumulated = bystander.castle.maxHp * 2;
+
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  assert.equal(match.gameState!.blackHole, null, "the hole is closed");
+  assert.equal(bystander.eliminated, false, "died before the beam fired");
+  assert.equal(bystander.castle.hp, bystander.castle.maxHp, "hurt before the beam fired");
+
+  landTheBeam(match, 10 * TICK.RATE);
+  assert.equal(bystander.castle.hp, 0);
+  assert.equal(bystander.eliminated, true, "the beam landed and did not kill");
+});
+
+test("a dump aimed at a kingdom that dies first simply does not land", () => {
+  // The beam has been pointed at that castle for three seconds; it does not
+  // swing across to somebody else on arrival.
+  const { match, players } = arena(["space", "space", "plains"]);
+  const [owner, other, bystander] = players;
+
+  assert.equal(activateAbility(match, owner, BLACK_HOLE).ok, true);
+  match.gameState!.blackHole!.accumulated = 500;
+
+  for (let t = 1; t <= 10 * TICK.RATE; t++) tickMatch(match, t);
+  bystander.castle.hp = 0;
+  bystander.eliminated = true;
+
+  const before = other.castle.hp;
+  landTheBeam(match, 10 * TICK.RATE);
+  assert.equal(other.castle.hp, before, "the dump found a new victim mid-flight");
+});

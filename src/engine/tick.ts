@@ -16,7 +16,11 @@ import {
 import { processStatusTicks, tickStatuses } from "./status.js";
 import { tickModifiers } from "./modifiers.js";
 import { tickCooldowns, tickRecharges } from "./cooldowns.js";
-import { collapseBlackHoles, resolvePendingStrikes } from "./abilities.js";
+import {
+  collapseBlackHoles,
+  resolveBlackHoleDump,
+  resolvePendingStrikes,
+} from "./abilities.js";
 import { processDeaths } from "./elimination.js";
 import { resolveWinner } from "./winConditions.js";
 
@@ -78,6 +82,11 @@ export function tickMatch(match: Match, tick: number): boolean {
   // the pooled damage on the last kingdom that fed it (before death detection so
   // a fatal dump is resolved this tick).
   collapseBlackHoles(match);
+
+  // ...and the damage it pooled, three seconds later, when the Judgment Beam
+  // actually reaches the castle it has been pointed at. Before death detection
+  // for the same reason as the collapse: a fatal dump settles on its own tick.
+  resolveBlackHoleDump(match);
 
   // Magma's "The End of the World": break it or wear it. Resolved before death
   // detection so a fatal eruption settles on the same tick.

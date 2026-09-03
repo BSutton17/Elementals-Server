@@ -17,7 +17,7 @@ export const CASTLE = {
   /** Starting Castle HP for every player. */
   STARTING_HP: 10_000,
   /** Maximum HP restored by a single repair action. */
-  REPAIR_AMOUNT: 1000,
+  REPAIR_AMOUNT: 1250,
   /** Flat base cost of a repair (before growth scaling). */
   REPAIR_COST: 350,
   /**
@@ -190,7 +190,7 @@ export const PERKS = {
   /** "Extra Repairs": every ability cooldown. */
   COOLDOWN_REDUCTION_PCT: 0.1,
   /** "Deep Pockets": gold in the bank at match start. */
-  STARTING_GOLD: 150,
+  STARTING_GOLD: 250,
   /** "Great Merchants": discount on ability unlock prices. */
   UNLOCK_DISCOUNT_PCT: 0.75,
   /** "Better Construction": extra health on every shield gained. */
@@ -295,6 +295,24 @@ export const SPACE = {
    * (250 total). The last entry doubles as the full-charge cap.
    */
   SUPERNOVA_LEVEL_THRESHOLDS: [50, 150, 250],
+  /**
+   * Seconds between a Black Hole collapsing and its pooled damage landing.
+   *
+   * ⚠️ THIS NUMBER BELONGS TO THE ANIMATION, and the animation is on the other
+   * side of the wire. The collapse plays as implosion → a 2.6s crackling
+   * singularity hold → a 0.5s beam charge → the Judgment Beam, so nothing
+   * actually touches the victim's castle until 3.1 seconds after the event
+   * (`BLACK_HOLE_CONFIG` in the client's `render/effects.ts`). Dealing the
+   * damage on the collapse tick killed kingdoms three seconds before the beam
+   * that killed them existed — and an eliminated castle is removed, so the beam
+   * then fired at nothing.
+   *
+   * The extra half second past 3.1 puts the number on screen while the beam is
+   * pouring into the castle rather than at the instant it arrives.
+   *
+   * If the client's collapse timings change, this changes with them.
+   */
+  BLACK_HOLE_DUMP_DELAY_SECONDS: 3.6,
 } as const;
 
 /** Dark kingdom — the Unlimited Rage meter. */

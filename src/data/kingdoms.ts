@@ -180,7 +180,7 @@ export type KingdomPassive = (
  * Ice (Epic 11):
  *  - "Cold Embrace" — Ice attacks have a 10% chance to Freeze opponents.
  *  - "Frostbite" — attackers have a 15% chance to have their production
- *    slowed by 50% for a short duration.
+ *    slowed to 80% for 5 seconds.
  *  - (weakness) Burn lasts 1.5× longer on Ice.
  *
  * Nature (Epic 12):

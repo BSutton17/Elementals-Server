@@ -2966,24 +2966,22 @@ export function collapseBlackHoles(match: Match): void {
   const bus = state.events;
   const victim = blackHoleVictim(match, hole);
   if (victim && !victim.eliminated && hole.accumulated > 0) {
-    const applied = applyDamage(victim, hole.accumulated, { tick: match.tick });
-    if (bus.enabled) {
-      bus.emit({
-        type: "damage",
-        tick: match.tick,
-        sourceId: hole.ownerId,
-        targetId: victim.id,
-        amount: applied.absorbedByShield + applied.dealtToHp,
-        absorbedByShield: applied.absorbedByShield,
-        dealtToHp: applied.dealtToHp,
-        overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
-        crit: false,
-        cause: "blackHole",
-      });
-      if (applied.absorbedByShield > 0 && victim.castle.shield <= 0) {
-        bus.emit({ type: "shieldDestroyed", tick: match.tick, playerId: victim.id, cause: "blackHole" });
-      }
-    }
+    // ⚠️ SCHEDULED, NOT DEALT. The beam that carries this damage does not reach
+    // the castle for three seconds (see SPACE.BLACK_HOLE_DUMP_DELAY_SECONDS).
+    // Dealing it here killed kingdoms before the weapon that killed them had
+    // fired, and an eliminated castle is removed from the field, so the beam
+    // then had nothing to hit.
+    state.pendingBlackHoleDump = {
+      ownerId: hole.ownerId,
+      victimId: victim.id,
+      amount: hole.accumulated,
+      resolveTick:
+        match.tick +
+        Math.round(
+          param("space.blackHoleDumpDelaySeconds", SPACE.BLACK_HOLE_DUMP_DELAY_SECONDS) *
+            TICK.RATE,
+        ),
+    };
   }
   if (bus.enabled) {
     bus.emit({
@@ -2993,6 +2991,46 @@ export function collapseBlackHoles(match: Match): void {
       victimId: victim && !victim.eliminated ? victim.id : null,
       amount: hole.accumulated,
     });
+  }
+}
+
+/**
+ * Lands a collapsed Black Hole's pooled damage, once its beam has arrived.
+ *
+ * The victim was chosen when the hole closed and does not change: the beam has
+ * been visibly pointed at that castle for three seconds, and re-picking on
+ * arrival would fire it at one kingdom and hurt another.
+ *
+ * A victim eliminated while the beam travelled takes nothing — they are already
+ * out, and there is no one to inherit a dump that was aimed at them.
+ */
+export function resolveBlackHoleDump(match: Match): void {
+  const state = match.gameState;
+  if (!state) return;
+  const dump = state.pendingBlackHoleDump;
+  if (!dump || match.tick < dump.resolveTick) return;
+
+  state.pendingBlackHoleDump = null;
+  const victim = state.getPlayer(dump.victimId);
+  if (!victim || victim.eliminated || dump.amount <= 0) return;
+
+  const bus = state.events;
+  const applied = applyDamage(victim, dump.amount, { tick: match.tick });
+  if (!bus.enabled) return;
+  bus.emit({
+    type: "damage",
+    tick: match.tick,
+    sourceId: dump.ownerId,
+    targetId: victim.id,
+    amount: applied.absorbedByShield + applied.dealtToHp,
+    absorbedByShield: applied.absorbedByShield,
+    dealtToHp: applied.dealtToHp,
+    overkill: applied.incoming - applied.absorbedByShield - applied.dealtToHp,
+    crit: false,
+    cause: "blackHole",
+  });
+  if (applied.absorbedByShield > 0 && victim.castle.shield <= 0) {
+    bus.emit({ type: "shieldDestroyed", tick: match.tick, playerId: victim.id, cause: "blackHole" });
   }
 }
 

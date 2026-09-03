@@ -12,7 +12,7 @@ import { earn } from "../src/engine/money.js";
 import { isKingdomId } from "../src/data/kingdoms.js";
 import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
 import { citizenCost, repairCastle } from "../src/engine/purchases.js";
-import { TICK } from "../src/data/balance.js";
+import { CASTLE, TICK } from "../src/data/balance.js";
 import {
   TOUGH_LOVE,
   CUPIDS_ARROW,
@@ -119,9 +119,10 @@ test("Feel the love! — a REPAIR another kingdom buys also feeds Love", () => {
   const before = love.castle.hp;
   const r = repairCastle(match, water);
   assert.equal(r.ok, true);
-  // Repair restores 1000 HP; Love gets 10% = 100.
-  assert.equal(water.castle.hp, water.castle.maxHp - 5000 + 1000);
-  assert.equal(love.castle.hp, before + 100);
+  // Love takes 10% of whatever the repair restored — both derived from balance,
+  // so the tithe stays pinned to the repair rather than to a number typed here.
+  assert.equal(water.castle.hp, water.castle.maxHp - 5000 + CASTLE.REPAIR_AMOUNT);
+  assert.equal(love.castle.hp, before + CASTLE.REPAIR_AMOUNT * 0.1);
 });
 
 test("Tough Love: damage, cost, cooldown", () => {

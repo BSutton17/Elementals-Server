@@ -270,6 +270,21 @@ export class GameState {
    * The monster spawn clock. Null until the first tick arms it, so the interval
    * is read through the parameter gate rather than frozen at construction.
    */
+  /**
+   * A collapsed Black Hole's damage, waiting for its beam to arrive.
+   *
+   * The victim and the amount are decided AT COLLAPSE (the client aims the beam
+   * off that same event); only the damage waits. Never more than one: a hole
+   * runs for at least ten seconds, so a second collapse cannot overtake a dump
+   * that is only 3.6 seconds behind.
+   */
+  pendingBlackHoleDump: {
+    ownerId: string;
+    victimId: string;
+    amount: number;
+    resolveTick: number;
+  } | null = null;
+
   monsterSpawn: MonsterSpawnState | null = null;
 
   /**
