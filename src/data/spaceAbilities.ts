@@ -198,7 +198,7 @@ export const BLACK_HOLE: AbilityDefinition = {
   kind: "ultimate",
   cost: 750,
   unlockCost: 473,
-  cooldownTicks: Math.round(37.85 * TICK.RATE), // 54 s
+  cooldownTicks: Math.round(75 * TICK.RATE), // 75 s
   targeting: { mode: "self" },
   effects: [
     { type: "createBlackHole", target: "self", params: { blackHoleDurationTicks: 10 * TICK.RATE } }, // 10 s
@@ -210,7 +210,7 @@ export const BLACK_HOLE: AbilityDefinition = {
       level: 2,
       cost: 1500,
       changes: {
-        cooldownTicks: 681, // 76.5 s
+        cooldownTicks:  Math.round(65.85 * TICK.RATE), // 65.85 s
         costMultiplier: 0.85,
       },
     },

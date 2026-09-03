@@ -75,7 +75,7 @@ export const CUPIDS_ARROW: AbilityDefinition = {
   kind: "attack",
   cost: 336,
   unlockCost: 168,
-  cooldownTicks: Math.round(7.7 * TICK.RATE), // 7.5 s
+  cooldownTicks: Math.round(14.7 * TICK.RATE), // 7.5 s
   targeting: { mode: "singleEnemy" },
   effects: [
     { type: "damage", target: "target", params: { amount: 392, element: "love" } },
@@ -91,7 +91,7 @@ export const CUPIDS_ARROW: AbilityDefinition = {
       level: 2,
       cost: 300,
       changes: {
-        cooldownTicks: 139,
+        cooldownTicks:  Math.round(10.7 * TICK.RATE),
         costMultiplier: 0.85,
       },
     },

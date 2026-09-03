@@ -36,7 +36,7 @@ export const VOLCANO_HP_PER_PLAYER = 1000;
  * the base figure, because the eruption is scored per kingdom — a flat bonus
  * would be trivial at a full table and unbreakable in a duel.
  */
-export const VOLCANO_HP_PER_PLAYER_MAX = 1500;
+export const VOLCANO_HP_PER_PLAYER_MAX = 2750;
 
 /** True while a volcano is standing and its timer has not run out. */
 export function volcanoIsLive(match: Match): boolean {

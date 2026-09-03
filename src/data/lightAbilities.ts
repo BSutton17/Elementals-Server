@@ -129,7 +129,7 @@ export const FIREFLIES: AbilityDefinition = {
   kind: "attack",
   cost: 153,
   unlockCost: 77,
-  cooldownTicks: Math.round(13.4 * TICK.RATE), // 16.5 s
+  cooldownTicks: Math.round(13.4 * TICK.RATE), // 13.4 s
   targeting: { mode: "singleEnemy" },
   effects: [
     { type: "damage", target: "target", params: { amount: 338, element: "light" } },
@@ -145,7 +145,7 @@ export const FIREFLIES: AbilityDefinition = {
       level: 2,
       cost: 300,
       changes: {
-        cooldownTicks: 219,
+        cooldownTicks: Math.round(10.4 * TICK.RATE),
         costMultiplier: 0.85,
       },
     },
@@ -320,7 +320,7 @@ export const LIGHT_SHOW: AbilityDefinition = {
   kind: "ultimate",
   cost: 450,
   unlockCost: 275,
-  cooldownTicks: Math.round(45 * TICK.RATE), // 900 ticks (45 s)
+  cooldownTicks: Math.round(55 * TICK.RATE), // 900 ticks (45 s)
   targeting: { mode: "self" },
   effects: [
     {
@@ -340,7 +340,7 @@ export const LIGHT_SHOW: AbilityDefinition = {
       level: 2,
       cost: 900,
       changes: {
-        cooldownTicks: 817, // 45 s -> 40.85 s
+        cooldownTicks: Math.round(45 * TICK.RATE), // 45 s -> 40.85 s
         costMultiplier: 0.85,
       },
     },

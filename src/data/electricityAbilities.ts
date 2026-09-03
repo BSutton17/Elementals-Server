@@ -172,7 +172,7 @@ export const THUNDERDOME: AbilityDefinition = {
   kind: "attack",
   cost: 418,
   unlockCost: 209,
-  cooldownTicks: Math.round(12.8 * TICK.RATE), // 21 s
+  cooldownTicks: Math.round(18.8 * TICK.RATE), // 21 s
   targeting: { mode: "singleEnemy" },
   effects: [
     {
@@ -205,7 +205,7 @@ export const THUNDERDOME: AbilityDefinition = {
       level: 3,
       cost: 400,
       changes: {
-        cooldownTicks: 165, // 270 ticks (13.5 s)
+        cooldownTicks: Math.round(15.8 * TICK.RATE), // 270 ticks (13.5 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
       },
     },
@@ -256,7 +256,7 @@ export const HACK: AbilityDefinition = {
       level: 2,
       cost: 500,
       changes: {
-        cooldownTicks: Math.round(25 * TICK.RATE * 0.85), // 425 ticks (21.25 s)
+        cooldownTicks: Math.round(45 * TICK.RATE * 0.85), // 425 ticks (21.25 s)
         costMultiplier: 0.85, // cooldown reductions also cut the price 15% (rounded down)
       },
     },
@@ -301,7 +301,7 @@ export const THUNDERING_FATE: AbilityDefinition = {
   kind: "ultimate",
   cost: 503,
   unlockCost: 526,
-  cooldownTicks: Math.round(151.2 * TICK.RATE), // 3024 ticks (151.2 s)
+  cooldownTicks: Math.round(121.2 * TICK.RATE), // 3024 ticks (151.2 s)
   targeting: { mode: "self" },
   effects: [
     {

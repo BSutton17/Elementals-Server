@@ -262,8 +262,8 @@ export const THE_END_OF_THE_WORLD: AbilityDefinition = {
   name: "The End of the World",
   kind: "ultimate",
   cost: 1000,
-  unlockCost: 628,
-  cooldownTicks: Math.round(55.65 * TICK.RATE), // 92.75 s
+  unlockCost: 578,
+  cooldownTicks: Math.round(75.65 * TICK.RATE), // 92.75 s
   targeting: { mode: "self" },
   effects: [
     {
@@ -283,7 +283,7 @@ export const THE_END_OF_THE_WORLD: AbilityDefinition = {
       level: 2,
       cost: 1600,
       changes: {
-        cooldownTicks: 1002,
+        cooldownTicks:  Math.round(65.65 * TICK.RATE),
         costMultiplier: 0.85,
         // ⚠️ HALF AGAIN AS MUCH WALL, ON TOP OF LEVEL 1'S SHORTER CLOCK.
         // Tiers merge cumulatively onto one params object, so this raises the
