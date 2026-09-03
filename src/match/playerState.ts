@@ -35,6 +35,17 @@ export interface EconomyState {
   incomePerTick: number;
   /** How many citizens the player has purchased (drives progressive cost). */
   citizensPurchased: number;
+  /**
+   * Gold owed that the purse could not cover — paid off out of INCOME.
+   *
+   * ⚠️ THE ALTERNATIVE IS A NEGATIVE BALANCE, WHICH NOTHING ELSE UNDERSTANDS.
+   * Party Blackjack lets a player double and split past what they hold, because
+   * being allowed to overreach is the whole appeal. What it must not do is push
+   * `currency` below zero: every price check, affordability gate and HUD reads
+   * that number. So the shortfall parks here and `applyPassiveIncome` withholds
+   * production until it is worked off.
+   */
+  productionDebt?: number;
 }
 
 export type ModifierOp = "add" | "mult";

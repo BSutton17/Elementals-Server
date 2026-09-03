@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RECONNECT } from "../data/balance.js";
 import { logger, type LogLevel } from "../util/logger.js";
 
@@ -26,14 +28,31 @@ const rawEnvironment = process.env.NODE_ENV;
  * so this is a no-op in environments that inject variables directly (e.g. prod).
  * Later files do not overwrite variables already set (Node's loadEnvFile only
  * sets keys that are not already defined in process.env).
+ *
+ * ⚠️ RESOLVED AGAINST THIS PACKAGE, NOT THE WORKING DIRECTORY. `loadEnvFile(".env")`
+ * looks in `process.cwd()`, so the server picked up its database credentials
+ * only when it happened to be launched from `Server/`. Started from the repo
+ * root, from an editor, or by a watcher with a different cwd, it booted with no
+ * DATABASE_URL and no JWT_SECRET — and the failure is nearly silent, because
+ * everything still runs: matches work, sockets connect, and only the account
+ * layer quietly stops answering. That is a 503 on `/profile` and an admin check
+ * that fails closed, which looks exactly like "my account is broken".
+ *
+ * The cwd is still tried as a fallback, so a deployment that puts .env
+ * somewhere else keeps working.
  */
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
 const loadEnvFiles = (): void => {
-  const files = [".env", `.env.${rawEnvironment ?? "development"}`, ".env.local"];
-  for (const file of files) {
-    try {
-      process.loadEnvFile(file);
-    } catch {
-      // File does not exist / not readable — expected; ignore.
+  const names = [".env", `.env.${rawEnvironment ?? "development"}`, ".env.local"];
+  for (const name of names) {
+    for (const candidate of [resolve(packageRoot, name), name]) {
+      try {
+        process.loadEnvFile(candidate);
+        break; // found it; the cwd copy would only duplicate
+      } catch {
+        // Not there — try the next location, then the next file.
+      }
     }
   }
 };

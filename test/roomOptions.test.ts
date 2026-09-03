@@ -37,13 +37,19 @@ function table(visibility: "public" | "private"): Match {
 
 const FIRST_ROLL_TICKS = MONSTER.FIRST_ROLL_SECONDS * TICK.RATE;
 
-test("a private room has monsters, a public one does not", () => {
-  // ⚠️ THE DEFAULT IS THE RULE FOR PUBLIC ROOMS, not a starting point someone
-  // can move. A monster is a shared emergency that costs the whole table gold
-  // and attention; a table of friends can agree to that, and a stranger who
-  // queued for a free-for-all did not.
-  assert.equal(table("private").monstersEnabled, true);
-  assert.equal(table("public").monstersEnabled, false);
+test("monsters are off until somebody asks for them, and party mode is not", () => {
+  // ⚠️ TWO DIFFERENT DEFAULTS, ON PURPOSE. A monster is an interruption bolted
+  // onto the match and is opted into from the admin panel. Party Mode is the
+  // house style for a room of friends, so it runs unless the room is
+  // matchmaking — where a stranger queued for a free-for-all and agreed to
+  // neither.
+  const private_ = table("private");
+  assert.equal(private_.monstersEnabled, false);
+  assert.equal(private_.partyModeEnabled, true);
+
+  const public_ = table("public");
+  assert.equal(public_.monstersEnabled, false);
+  assert.equal(public_.partyModeEnabled, false);
 });
 
 test("with monsters off, nothing ever arrives", () => {
@@ -65,6 +71,11 @@ test("the same room with them on gets one on the first roll", () => {
   // The control: the only difference between this and the test above is the
   // switch, which is what makes it evidence rather than a passing assertion.
   const match = table("private");
+  match.monstersEnabled = true; // opted in, the way the admin panel does it
+  // ⚠️ AND PARTY MODE OUT OF THE WAY. A running minigame blocks the middle of
+  // the field — that is the point of the grace — so leaving it on would make
+  // this test about the party clock rather than about the monster switch.
+  match.partyModeEnabled = false;
   for (let i = 0; i < FIRST_ROLL_TICKS; i++) tickMatch(match, match.tick + 1);
   assert.notEqual(match.gameState!.monster, null, "no monster with the rule on");
 });
@@ -74,6 +85,7 @@ test("both rules ride along in the lobby payload", () => {
   // what it sent, so a refused change snaps back instead of lying about the
   // room.
   const serialized = table("private").serialize();
-  assert.equal(serialized.monstersEnabled, true);
+  assert.equal(serialized.monstersEnabled, false);
+  assert.equal(serialized.partyModeEnabled, true);
   assert.equal(serialized.eliminatedSeeAllHealth, false);
 });

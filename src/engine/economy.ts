@@ -11,6 +11,7 @@ import {
   productionMultiplier,
 } from "./passives.js";
 import { earn, roundMoney } from "./money.js";
+import { partyStopsProduction } from "./party/index.js";
 
 /**
  * A player's effective per-tick income: citizens × rate, adjusted by any active
@@ -51,7 +52,24 @@ export function applyPassiveIncome(state: GameState): void {
       player.economy.incomePerTick = 0;
       continue;
     }
+    // Party Mode: a blocking minigame stops production until this player has
+    // dealt with it. Same hard stop as the casino above rather than a modifier
+    // — stalling has to cost the full rate or stalling is a strategy.
+    if (partyStopsProduction(state, player)) {
+      player.economy.incomePerTick = 0;
+      continue;
+    }
     recalcIncome(player);
+    // A Party Blackjack loss the purse could not cover is worked off out of
+    // income: what would have been earned pays the debt down instead, and the
+    // player earns nothing until it is clear. See `playerState.productionDebt`.
+    const debt = player.economy.productionDebt ?? 0;
+    if (debt > 0) {
+      const paid = Math.min(debt, player.economy.incomePerTick);
+      player.economy.productionDebt = roundMoney(debt - paid);
+      player.economy.incomePerTick = roundMoney(player.economy.incomePerTick - paid);
+      if (player.economy.incomePerTick <= 0) continue;
+    }
     // Time's "Back to the Future": time runs backward on this treasury — the
     // castle LOSES its gold/sec instead of earning, floored at 0, for the
     // ultimate's duration. Suppresses income entirely (no besieged bonus).

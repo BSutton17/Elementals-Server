@@ -1,4 +1,5 @@
 import type { StatusEffectDefinition } from "../engine/status.js";
+import type { PartySession } from "../engine/party/types.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer } from "./types.js";
 import {
@@ -284,6 +285,17 @@ export class GameState {
     amount: number;
     resolveTick: number;
   } | null = null;
+
+  /** The minigame currently in front of the table, or null. */
+  party: PartySession | null = null;
+
+  /**
+   * The countdown to the next party roll.
+   *
+   * Armed lazily like the monster's, so a parameter override set after the
+   * match starts still lands on the first interval.
+   */
+  partyClock: { ticksUntilRoll: number } | null = null;
 
   monsterSpawn: MonsterSpawnState | null = null;
 

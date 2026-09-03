@@ -29,6 +29,11 @@ export interface HeadlessCreateOptions {
   label?: string;
   /** Match-level RNG (#203) — the sole source of gameplay randomness. */
   rng?: () => number;
+  /**
+   * Run Party Mode inside the simulation. Off unless a study is specifically
+   * about it — see `createHeadlessMatch`.
+   */
+  partyMode?: boolean;
 }
 
 /** Builds a started, socketless Match from player specs. */
@@ -49,6 +54,19 @@ export function createHeadlessMatch(
     match.addPlayer(seat);
   });
   match.hostId = "p0";
+
+  // ⚠️ PARTY MODE OFF UNLESS ASKED FOR, AND MONSTERS TOO. Both are real parts
+  // of a real match, and both are poison to a BALANCE simulation: a minigame
+  // holds attacks, freezes production and hands out gold that no ability
+  // earned, so damage-per-gold and time-to-kill stop being measurements of the
+  // kit and start being measurements of how many minigames the run happened to
+  // roll. A simulator whose numbers move when an unrelated subsystem is tuned
+  // is not a simulator.
+  //
+  // Anything studying Party Mode itself turns it back on deliberately.
+  match.partyModeEnabled = options.partyMode === true;
+  match.monstersEnabled = false;
+
   match.start(createMatchConfig(match));
   return match;
 }

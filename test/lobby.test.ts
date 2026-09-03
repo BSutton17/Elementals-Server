@@ -765,9 +765,11 @@ test("a player who is merely the host cannot change the room rules", async () =>
     const created = await host.emitWithAck("lobby:create", { name: "Alice" });
     const roomCode = created.data.match.roomCode;
 
-    // The defaults a private room starts with, for everyone to see.
+    // The defaults a private room starts with, for everyone to see: monsters
+    // are opted into, Party Mode is the house style.
     assert.equal(created.data.match.eliminatedSeeAllHealth, false);
-    assert.equal(created.data.match.monstersEnabled, true);
+    assert.equal(created.data.match.monstersEnabled, false);
+    assert.equal(created.data.match.partyModeEnabled, true);
 
     for (const rules of [
       { eliminatedSeeAllHealth: true },
@@ -782,7 +784,7 @@ test("a player who is merely the host cannot change the room rules", async () =>
     // not part of the attempt.
     const joined = await joiner.emitWithAck("lobby:join", { roomCode, name: "Bob" });
     assert.equal(joined.data.match.eliminatedSeeAllHealth, false);
-    assert.equal(joined.data.match.monstersEnabled, true);
+    assert.equal(joined.data.match.monstersEnabled, false);
   } finally {
     host.close();
     joiner.close();

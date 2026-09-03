@@ -49,6 +49,17 @@ function table(
   const match = new Match("1234", { rng });
   kingdoms.forEach((k, i) => match.addPlayer(matchPlayer(`p${i}`, k)));
   match.hostId = "p0";
+  // ⚠️ PARTY MODE OFF, BECAUSE THESE TESTS PIN A DICE SEQUENCE. Every roll in
+  // the engine draws from the match's single RNG stream (#203, so a seeded
+  // match replays exactly), which means a second subsystem rolling on its own
+  // clock SHIFTS every draw after it. These tests inject an rng that counts
+  // calls to control the monster's roll specifically; leaving Party Mode
+  // running would have it eating draws from the same stream and quietly
+  // rewriting what the monster rolled.
+  match.partyModeEnabled = false;
+  // Monsters are opt-in now (the admin panel switches them on), and this whole
+  // file is about what happens when they are on.
+  match.monstersEnabled = true;
   match.start(createMatchConfig(match));
   for (const p of match.gameState!.getPlayers()) earn(p, 1_000_000);
   return match;

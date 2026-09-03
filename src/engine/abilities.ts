@@ -48,6 +48,7 @@ import { damageMonster, monsterIsAlive, applyMonsterStatus } from "./monster.js"
 import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { spawnCaprice, capriceIsActive, capriceProtects } from "./caprice.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
+import { partyBlocksCentrepieces, partySuppressesAttacks } from "./party/index.js";
 import { getActiveParameterSet, param } from "./parameters.js";
 import { recalcIncome } from "./economy.js";
 import { DARK, INSECTS, SPACE, TICK } from "../data/balance.js";
@@ -649,6 +650,7 @@ export type AbilityError =
   | "NOT_ENRAGED" // Unlimited Rage is not fully charged yet
   | "MEMORY_NOT_FULL" // Kitsune Rush needs a completely full Ancient Memory
   | "BASIC_ATTACKS_ONLY" // Never-ending nightmare bars everything but the basic
+  | "PARTY_IN_PROGRESS" // a minigame is up and nobody has finished it yet
   | "CHOICE_REQUIRED" // Yin and Yang needs the caster to pick a side
   | "SECOND_TARGET_REQUIRED" // BFFS!!! needs a second distinct kingdom selected
   | "FIELD_OCCUPIED"; // something already holds the middle of the battlefield
@@ -789,6 +791,27 @@ function activateAbilityInner(
   // 2. Validate phase and actor.
   if (match.phase !== "active") return { ok: false, error: "INVALID_PHASE" };
   if (caster.eliminated) return { ok: false, error: "ELIMINATED" };
+
+  // ⚠️ PARTY MODE HOLDS ATTACKS UNTIL SOMEBODY FINISHES. A table looking at a
+  // maze cannot defend itself, so anything that would hurt a kingdom waits for
+  // the first player to complete the minigame. Buffs, shields and repairs stay
+  // legal — this stops the shooting, it does not freeze the game.
+  if (
+    (ability.kind === "attack" || ability.kind === "ultimate") &&
+    partySuppressesAttacks(match)
+  ) {
+    return { ok: false, error: "PARTY_IN_PROGRESS" };
+  }
+
+  // ⚠️ AND NOTHING TAKES THE MIDDLE OF THE FIELD FOR A MOMENT AFTER. Checked
+  // separately from the attack gate above because it outlives it: attacks come
+  // back the instant one kingdom finishes, a centrepiece waits another few
+  // seconds so the players still playing are not met by an ultimate they never
+  // saw cast. Read off the ability's EFFECTS, like every other centrepiece
+  // rule, so a new one is covered without declaring itself.
+  if (centrepieceSpawnedBy(ability) !== null && partyBlocksCentrepieces(match)) {
+    return { ok: false, error: "PARTY_IN_PROGRESS" };
+  }
 
   // Frozen-style attack bans (Epic 11): crowd-control statuses that stop the
   // bearer from attacking (Ice's Frozen, Blizzard). Non-attacks stay legal.

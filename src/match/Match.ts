@@ -43,16 +43,25 @@ export class Match {
   /**
    * Admin setting: whether a monster can arrive at all.
    *
-   * ⚠️ ON FOR PRIVATE ROOMS, FORCED OFF FOR PUBLIC ONES. A monster is a shared
-   * emergency that costs the whole table gold and attention, and a room of
-   * friends can decide they want that. A stranger dropped into matchmaking
-   * cannot — they queued for a free-for-all, and a mechanic that punishes
-   * everyone who ignores it is not something to hand someone who did not ask.
-   * The constructor derives it from `visibility`, so a public room is never
-   * even briefly monster-enabled; the socket handler then refuses to set it in
-   * one, because a client is not a permission check.
+   * ⚠️ OFF EVERYWHERE BY DEFAULT, INCLUDING PRIVATE ROOMS. A monster is a shared
+   * emergency that costs the whole table gold and attention; it is opt-in, and
+   * the admin panel is where it is opted into. Public rooms cannot turn it on
+   * at all — a stranger queued for a free-for-all, not for this — and the
+   * socket handler refuses there regardless, because a client is not a
+   * permission check.
    */
-  monstersEnabled = true;
+  monstersEnabled = false;
+
+  /**
+   * Admin setting: whether Party Mode runs at all.
+   *
+   * ⚠️ ON BY DEFAULT IN ANY PRIVATE ROOM. Unlike monsters, Party Mode is the
+   * house style rather than an interruption bolted onto it — a room of friends
+   * is the audience it was built for, and having to switch it on every match
+   * would mean most matches never saw it. Still off in matchmaking: a stranger
+   * queued for a free-for-all did not agree to be dropped into a maze.
+   */
+  partyModeEnabled = true;
 
   /**
    * How this room is entered.
@@ -113,7 +122,10 @@ export class Match {
     // board. Enforcing it here as well as in the socket handler means a public
     // room is never briefly monster-enabled between being created and being
     // configured.
-    this.monstersEnabled = this.visibility !== "public";
+    // Monsters stay off until somebody asks for them; Party Mode is on in any
+    // room that is not matchmaking.
+    this.monstersEnabled = false;
+    this.partyModeEnabled = this.visibility !== "public";
     this.rng = options.rng ?? Math.random;
   }
 
@@ -260,6 +272,7 @@ export class Match {
     maxActivePlayers: number;
     eliminatedSeeAllHealth: boolean;
     monstersEnabled: boolean;
+    partyModeEnabled: boolean;
     visibility: MatchVisibility;
     startsAt: number | null;
     tick: number;
@@ -277,6 +290,7 @@ export class Match {
       maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
       eliminatedSeeAllHealth: this.eliminatedSeeAllHealth,
       monstersEnabled: this.monstersEnabled,
+      partyModeEnabled: this.partyModeEnabled,
       visibility: this.visibility,
       startsAt: this.startsAt,
       tick: this.tick,

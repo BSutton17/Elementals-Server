@@ -12,6 +12,7 @@ import { param } from "./parameters.js";
 import { applyDamage } from "./combat.js";
 import { addModifier } from "./modifiers.js";
 import { standingCentrepiece } from "./centrepiece.js";
+import { partyBlocksCentrepieces, partySuppressesAttacks } from "./party/index.js";
 import type { StatusEffectDefinition } from "./status.js";
 
 /**
@@ -102,6 +103,11 @@ export function tickMonsterSpawn(match: Match): void {
 
   // Anything in the middle of the field — a monster included — holds the clock.
   if (standingCentrepiece(match) !== null) return;
+  // And so does a running minigame, for a few seconds past its first finisher:
+  // a monster arriving as the table looks up from a maze is the same
+  // unfairness as an ultimate doing it. Frozen, not skipped, like every other
+  // hold on this clock.
+  if (partyBlocksCentrepieces(match)) return;
 
   clock.ticksUntilRoll -= 1;
   if (clock.ticksUntilRoll > 0) return;
@@ -339,6 +345,10 @@ export function runMonsterAttacks(match: Match): void {
   const monster = state?.monster;
   if (!state || !monster || monster.hp <= 0) return;
   if (match.tick < monster.nextAttackTick) return;
+  // A minigame is up and nobody has finished it: the monster waits its turn
+  // like everybody else. Its clock is NOT pushed back — the swing it would have
+  // taken is simply skipped, so a party cannot be used to starve it of cycles.
+  if (partySuppressesAttacks(match)) return;
 
   monster.nextAttackTick = match.tick + rollAttackDelay(match);
   const bus = state.events;

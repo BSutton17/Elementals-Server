@@ -5,6 +5,7 @@ import type { MatchManager } from "../match/MatchManager.js";
 import type { ReconnectionManager } from "./ReconnectionManager.js";
 import { registerLobbyHandlers } from "./lobbyHandlers.js";
 import { registerMatchHandlers } from "./matchHandlers.js";
+import { registerPartyHandlers } from "./partyHandlers.js";
 import { broadcastLobbyUpdate, removePlayerFromMatch } from "./lobbyRoom.js";
 import { registerSessionHandlers } from "./sessionHandlers.js";
 import { logger } from "../util/logger.js";
@@ -33,6 +34,7 @@ export function registerConnectionHandlers(io: Server, deps: ConnectionDeps): vo
     registerSessionHandlers(socket);
     registerLobbyHandlers(io, socket, { matches, reconnection, gameLoops, publicLobbies });
     registerMatchHandlers(io, socket, { matches });
+    registerPartyHandlers(io, socket, { matches });
 
     socket.on("error", (error: Error) => {
       logger.error("Socket error", { socketId: socket.id, error: error.message });

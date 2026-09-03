@@ -22,6 +22,7 @@ import {
   resolvePendingStrikes,
 } from "./abilities.js";
 import { processDeaths } from "./elimination.js";
+import { tickParty, tickPartyClock } from "./party/index.js";
 import { resolveWinner } from "./winConditions.js";
 
 /**
@@ -98,6 +99,14 @@ export function tickMatch(match: Match, tick: number): boolean {
   // Light's "Light Show": land any telegraphed field-wide strike whose warning
   // window has run out (also before death detection).
   resolvePendingStrikes(match);
+
+  // Party Mode: run the minigame in front of the table, then roll for the next
+  // one. Ordered after combat so a game that pays out or hurts somebody settles
+  // on the same tick everything else did, and before the monster so a party
+  // starting this tick is already visible when the monster clock reads the
+  // field.
+  tickParty(match);
+  tickPartyClock(match);
 
   // The monster. Ordered deliberately:
   //

@@ -16,6 +16,7 @@ import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
 import { standingCentrepiece } from "../engine/centrepiece.js";
 import { SHIELD } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
+import { partyForWire } from "./partySync.js";
 
 /**
  * Broadcasts the current authoritative game state to everyone in a match's room
@@ -164,6 +165,10 @@ export function broadcastGameState(io: Server, match: Match): void {
           damage: { ...state.monster.damage },
         }
       : null,
+    // Party Mode: the minigame in front of the table, or null. Synced to
+    // everyone because it IS everyone's — the banner, the countdown and who has
+    // already finished are all shared facts.
+    party: state.party ? partyForWire(match, state.party) : null,
     // What currently holds the middle of the battlefield, by name, or null when
     // it is clear — Magma's volcano, Insects' butterfly, Space's black hole,
     // Light's disc, or the monster. Only one may ever stand there

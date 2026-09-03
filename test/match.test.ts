@@ -116,10 +116,12 @@ test("serializes to a plain client-facing view", () => {
     maxActivePlayers: MATCH.MAX_ACTIVE_PLAYERS,
     // Host rule, off until the host turns it on.
     eliminatedSeeAllHealth: false,
-    // Monsters are on unless the room turns them off. Part of the snapshot
-    // because the client has to know whether to expect one at all — a lobby
-    // that has them disabled should not be promising the table a boss fight.
-    monstersEnabled: true,
+    // Monsters are OFF until somebody opts in from the admin panel; Party Mode
+    // runs in any room that is not matchmaking. Both are in the snapshot
+    // because the client has to know what to expect — a lobby with monsters
+    // disabled should not be promising the table a boss fight.
+    monstersEnabled: false,
+    partyModeEnabled: true,
     // Rooms are private unless matchmaking made them, and only a public room
     // ever counts down to its own start.
     visibility: "private",

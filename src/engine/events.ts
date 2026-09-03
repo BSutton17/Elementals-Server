@@ -121,6 +121,35 @@ export type GameplayEvent =
       contributions: Record<string, number>;
     }
   | {
+      /** A minigame just dropped in front of the whole table. */
+      type: "partyStarted";
+      tick: number;
+      gameId: string;
+      /** The banner text, so the client never has to keep its own copy. */
+      description: string;
+    }
+  | {
+      /**
+       * The first kingdom finished.
+       *
+       * ⚠️ THIS IS THE ATTACK GATE LIFTING, not a scoreboard entry. Attacks
+       * are held from the moment a minigame starts until this fires.
+       */
+      type: "partyFirstFinish";
+      tick: number;
+      gameId: string;
+      playerId: string;
+    }
+  | {
+      type: "partyEnded";
+      tick: number;
+      gameId: string;
+      /** The result banner, or null for a game whose result is "none". */
+      resultText: string | null;
+      /** Finish order, earliest first. */
+      finishOrder: string[];
+    }
+  | {
       // The monster: the field rolled one up. Nobody cast it, so there is no
       // owner — it is everybody's problem.
       type: "monsterSpawned";

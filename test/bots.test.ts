@@ -71,6 +71,13 @@ function humanPlayer(kingdomId: KingdomId): MatchPlayer {
 function startedMatch(players: MatchPlayer[]): Match {
   const match = new Match(`ROOM${seq}`);
   for (const p of players) match.addPlayer(p);
+  // ⚠️ NO PARTY MODE IN THE AI TESTS. These assert that the trained networks
+  // fight — that a bot buys, aims and casts. Party Mode HOLDS ATTACKS from the
+  // moment a minigame starts until somebody finishes it, and stops production
+  // while a blocking one runs, so a two-minute run can spend a real share of
+  // itself with casting refused. That is correct behaviour and completely
+  // unrelated to whether the AI works, which is what this file is about.
+  match.partyModeEnabled = false;
   match.start(createMatchConfig(match));
   return match;
 }

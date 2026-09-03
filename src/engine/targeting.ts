@@ -7,6 +7,7 @@ import { monsterIsAlive } from "./monster.js";
 import { isTargetingBlocked } from "./status.js";
 import type { Match } from "../match/Match.js";
 import type { PlayerState } from "../match/playerState.js";
+import { partyBlocksTargeting } from "./party/index.js";
 
 /**
  * Target selection (tickets #61–#62). A player may aim their kingdom at another
@@ -54,6 +55,13 @@ export function selectTarget(
   targetId: string | null,
   options: TargetOptions = {},
 ): TargetResult {
+  // ⚠️ BOMB ATTACK TAKES THE CASTLE CLICK. While one is running, clicking a
+  // kingdom passes the bomb — a click that both passed the bomb and re-aimed an
+  // attack would be unusable, so aiming is off for its duration.
+  if (partyBlocksTargeting(match)) {
+    return { ok: false, error: "PARTY_IN_PROGRESS" as never };
+  }
+
   if (match.phase !== "active") return { ok: false, error: "INVALID_PHASE" };
   if (player.eliminated) return { ok: false, error: "ELIMINATED" };
 

@@ -288,6 +288,136 @@ export const SHIELD = {
 
 /** Space kingdom — the Supernova charge meter (Shooting Star / Saturn's Rings /
  *  Orion's Belt misses fill it; Supernova fires at the current level). */
+/**
+ * Party Mode.
+ *
+ * ⚠️ THE ROLL IS THE MONSTER'S ROLL, DELIBERATELY. Same `living / 10` shape,
+ * same freeze while a centrepiece stands. Two different curves for "the field
+ * interrupts the match" would need two explanations and drift apart.
+ *
+ * Rewards on games the spec left open (the maze, memory's win, the lock) are
+ * set here rather than inside the games, so a balance pass is one file.
+ */
+export const PARTY = {
+  /** How long into a match the first roll happens. */
+  FIRST_ROLL_SECONDS: 25,
+  /** Seconds between rolls after that. */
+  ROLL_INTERVAL_SECONDS: 25,
+  /** Chance per roll is `living kingdoms / this`. */
+  CHANCE_DIVISOR: 10,
+  /** How long a result banner stays up before the session clears. */
+  RESULT_SECONDS: 4,
+
+  /** Maze: a 10x10 grid, fifteen seconds, gold for getting out. */
+  MAZE_SIZE: 10,
+  MAZE_SECONDS: 15,
+  MAZE_REWARD: 400,
+
+  /** Spot the difference: how many ornaments, and how forgiving a tap is. */
+  SPOT_ORNAMENTS: 7,
+  /** Castle viewBox units. Generous on purpose — half the table has a thumb. */
+  SPOT_TAP_RADIUS: 16,
+  SPOT_MAX_SECONDS: 30,
+
+  /** Blackjack: the floor on a broke player's stake, and how far a split goes. */
+  BLACKJACK_MIN_STAKE: 100,
+  BLACKJACK_MAX_HANDS: 4,
+  BLACKJACK_MAX_SECONDS: 40,
+
+  /** Memory: the countdown, the flash rate, and what it pays. */
+  MEMORY_COUNTDOWN_SECONDS: 3,
+  MEMORY_FLASH_MS: 650,
+  MEMORY_REWARD: 500,
+  MEMORY_PENALTY: 1000,
+  MEMORY_MAX_SECONDS: 35,
+
+  /** Lockpick: five locks, and the window they are picked in. */
+  LOCK_TARGET: 5,
+  LOCK_ZONE_DEGREES: 46,
+  LOCK_SPEED_DEGREES: 150,
+  LOCK_REWARD: 400,
+  LOCKPICK_MAX_SECONDS: 35,
+
+  /**
+   * The barrier games (Kingdom Thief, Pick a Chest): how long the table has to
+   * commit, and how late the countdown appears.
+   *
+   * ⚠️ THE COUNTDOWN IS HIDDEN UNTIL THE LAST THREE SECONDS ON PURPOSE. A
+   * timer running the whole time turns a decision into a stopwatch — everyone
+   * waits for it and nobody thinks — and in a game whose point is reading the
+   * table, ten seconds of ticking clock is ten seconds of pressure with nothing
+   * to spend it on. Three seconds is a prompt to decide, not a metronome.
+   */
+  CHOICE_SECONDS: 10,
+  COUNTDOWN_VISIBLE_SECONDS: 3,
+
+  /**
+   * How long after the first kingdom finishes a minigame before the middle of
+   * the field can be claimed again.
+   *
+   * ⚠️ ATTACKS COME BACK IMMEDIATELY; CENTREPIECES DO NOT. A volcano, a black
+   * hole or a monster arriving on the same beat a minigame releases the table
+   * means the players still finishing look up from a maze into an ultimate they
+   * had no chance to answer. Three and a half seconds is the width of that
+   * unfairness: long enough for the rest of the table to be back on the board,
+   * short enough that nobody notices a pause.
+   */
+  CENTREPIECE_GRACE_SECONDS: 3.5,
+
+  /** Kingdom Thief: what cooperation pays, what mutual theft costs. */
+  THIEF_KEEP_REWARD: 1000,
+  THIEF_ALL_STEAL_DAMAGE: 2500,
+  THIEF_STEAL_REWARD: 2000,
+
+  /** Pick a Chest: the good one, the poor one, and the trap. */
+  CHEST_BIG: 500,
+  CHEST_SMALL: 150,
+  CHEST_TRAP: 2000,
+
+  /**
+   * Reaction: the wait before the button turns, and what coming last costs.
+   *
+   * Three seconds minimum, not two: the button has to APPEAR before it can be
+   * waited for, and a player whose panel is still sliding in has not started
+   * watching yet. Anything shorter turns "react" into "already be looking".
+   */
+  REACTION_MIN_DELAY_SECONDS: 3,
+  REACTION_MAX_DELAY_SECONDS: 7,
+  REACTION_PENALTY: 2000,
+  REACTION_MAX_SECONDS: 20,
+
+  /** Quick Math: what the slowest correct answer costs. */
+  QUICK_MATH_PENALTY: 1500,
+  QUICK_MATH_MAX_SECONDS: 30,
+
+  /**
+   * Button Mash: five seconds, and the ceiling on a believable click rate.
+   *
+   * ⚠️ THE CAP IS AN ANTI-CHEAT, NOT A REFEREE. Clicks are batched over the
+   * wire, so the count is a number the client chose; twenty a second is well
+   * past what anybody can actually manage (a good masher does twelve), which
+   * makes lying pointless without ever capping honest play.
+   */
+  MASH_SECONDS: 5,
+  MASH_MAX_PER_SECOND: 20,
+  MASH_HEAL: 1000,
+  MASH_PENALTY: 2000,
+
+  /** Bomb Attack: how long it runs, and what it does to whoever held it most. */
+  BOMB_SECONDS: 20,
+  BOMB_DAMAGE: 3000,
+
+  /**
+   * Bot standard lives in `engine/party/bots.ts`, not here.
+   *
+   * ⚠️ DELIBERATELY NOT A BALANCE CONSTANT. How well a bot plays depends on
+   * the DIFFICULTY of its seat (easy 50%, medium 75%, hard 90%) and on the
+   * game, so a single number here was wrong the moment difficulty was honoured
+   * — and a leftover constant that nothing reads is worse than no constant,
+   * because the next person tunes it and nothing happens.
+   */
+} as const;
+
 export const SPACE = {
   /**
    * Cumulative meter "xp" required to reach Supernova levels 1, 2, and 3. The
