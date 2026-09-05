@@ -618,7 +618,13 @@ export function purchaseUpgrade(
   if (!validation.ok) return validation;
 
   spend(player, tierCost);
-  player.upgrades[ability.id] = current + 1;
+  // ⚠️ WRITTEN TO THE SAME SLOT IT WAS READ FROM. `getUpgradeLevel` mirrors a
+  // borrowed ability onto the matching slot of the player's own kingdom, and
+  // writing back under the borrowed id instead put the tier somewhere nothing
+  // ever reads: a player who upgraded during a Kingdom Swap paid for a level
+  // that vanished with the swap. Off a swap, `mirrorSlot` is the identity.
+  const slot = mirrorSlot(player, ability.id);
+  player.upgrades[slot] = current + 1;
 
   // Gameplay event (#204).
   const upgradeBus = match.gameState?.events;
@@ -629,11 +635,11 @@ export function purchaseUpgrade(
   // Permanent stat grants attached to this tier (Epic 10).
   for (const [i, spec] of (next.changes.permanentModifiers ?? []).entries()) {
     addModifier(player, {
-      id: `upgrade:${ability.id}:${next.level}:${i}`,
+      id: `upgrade:${slot}:${next.level}:${i}`,
       stat: spec.stat,
       op: spec.op,
       value: spec.value,
-      sourceId: `upgrade:${ability.id}`,
+      sourceId: `upgrade:${slot}`,
       remainingTicks: null,
     });
   }

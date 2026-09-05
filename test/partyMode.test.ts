@@ -49,6 +49,11 @@ function table(
   kingdoms.forEach((k, i) => match.addPlayer(matchPlayer(`p${i}`, k, bots.includes(`p${i}`))));
   match.hostId = "p0";
   match.start(createMatchConfig(match));
+  // ⚠️ SWITCHED ON EXPLICITLY, BECAUSE THE DEFAULT IS OFF. Party Mode is opted
+  // into from the room options panel like monsters are. Without this line the
+  // roll never fires, and every test in this file that waits for one would pass
+  // by watching nothing happen — which is the same result as a broken clock.
+  match.partyModeEnabled = true;
   for (const p of match.gameState!.getPlayers()) earn(p, 5_000);
   return match;
 }
@@ -425,6 +430,30 @@ test("the dealer's hole card is not on the wire until it is turned", async () =>
   const after = partyForWire(match, match.gameState!.party!);
   const shown = (after.players.p0!.data.game as { dealerHole: unknown }).dealerHole;
   assert.notEqual(shown, null, "the hole card never appeared");
+});
+
+test("standing does not put the panel away before the dealer has played", () => {
+  // ⚠️ SETTLING AND FINISHING WERE THE SAME MOMENT, AND THAT IS THE WHOLE BUG.
+  // Pressing stand resolved the round and marked the player done in one step,
+  // so the hole card, the cards the dealer drew to it and the result were all
+  // decided on a screen that had already been dismissed: the player pressed
+  // stand and was returned to the battlefield poorer, with no idea why.
+  const match = table(["fire", "water"], () => 0.5);
+  startParty(match, "blackjack");
+  const me = match.gameState!.getPlayer("p0")!;
+
+  actOnParty(match, me, { type: "stand" });
+  const mine = match.gameState!.party!.players.p0!;
+  const state = mine.data.game as { settled: boolean; revealUntilTick: number | null };
+
+  // Settled — the money is already decided — but still on screen.
+  assert.equal(state.settled, true, "standing did not resolve the hand");
+  assert.equal(mine.done, false, "the panel closed on the deal");
+  assert.ok(state.revealUntilTick !== null, "no reveal window was opened");
+
+  // It does end on its own, without anybody pressing anything else.
+  runTicks(match, Math.round(PARTY.BLACKJACK_REVEAL_SECONDS * TICK.RATE) + 2);
+  assert.equal(match.gameState!.party!.players.p0!.done, true, "the reveal never ended");
 });
 
 // --- spot the difference -----------------------------------------------------

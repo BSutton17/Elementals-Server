@@ -323,10 +323,26 @@ export const PARTY = {
   BLACKJACK_MIN_STAKE: 100,
   BLACKJACK_MAX_HANDS: 4,
   BLACKJACK_MAX_SECONDS: 40,
+  /**
+   * How long the table stays up after the dealer turns over.
+   *
+   * ⚠️ THE HAND SETTLED THE INSTANT YOU STOOD, AND THE PANEL LEFT WITH IT — so
+   * the dealer's hole card, the cards they drew to it and whether you won were
+   * all decided on a screen nobody saw. The money is not in question here; this
+   * is only the difference between being told the result and watching it.
+   */
+  BLACKJACK_REVEAL_SECONDS: 3.5,
 
   /** Memory: the countdown, the flash rate, and what it pays. */
   MEMORY_COUNTDOWN_SECONDS: 3,
-  MEMORY_FLASH_MS: 650,
+  /**
+   * How long each symbol holds before the next one.
+   *
+   * Slowed by a quarter from 650ms. Everything else about the game is derived
+   * from this — when the question may be asked, how long the round can run —
+   * so it is the only number that moves.
+   */
+  MEMORY_FLASH_MS: 813,
   MEMORY_REWARD: 500,
   MEMORY_PENALTY: 1000,
   MEMORY_MAX_SECONDS: 35,

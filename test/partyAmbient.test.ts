@@ -4,7 +4,7 @@ import { Match } from "../src/match/Match.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { tickMatch } from "../src/engine/tick.js";
 import { earn } from "../src/engine/money.js";
-import { activateAbility } from "../src/engine/abilities.js";
+import { activateAbility, getUpgradeLevel } from "../src/engine/abilities.js";
 import { selectTarget } from "../src/engine/targeting.js";
 import { applyDamage } from "../src/engine/combat.js";
 import { resolveWinner } from "../src/engine/winConditions.js";
@@ -17,9 +17,11 @@ import {
   hasGhostsToRaise,
   kitKingdomOf,
   mirrorSlot,
+  swapGrantsUnlock,
   buildShower,
   buildMess,
 } from "../src/engine/party/index.js";
+import { abilityPrices } from "../src/net/gameSync.js";
 import { PARTY, TICK } from "../src/data/balance.js";
 import type { MatchPlayer, BotDifficulty } from "../src/match/types.js";
 
@@ -220,6 +222,54 @@ test("a borrowed ability is unlocked by the slot you already paid for", () => {
     true,
     "a slot nobody bought read unlocked",
   );
+});
+
+test("a borrowed kit arrives unlocked, even owning nothing yourself", () => {
+  // ⚠️ THE BUG THIS EXISTS FOR MADE THE SWAP UNPLAYABLE. Unlocks are per
+  // ability id, so a borrowed ability counted as bought only if the SAME SLOT
+  // of your own kingdom had been — and early in a match none of them have. A
+  // player was handed five buttons, every one locked, with no way to unlock
+  // them either, and stood there for the full thirty seconds.
+  const match = table(["fire", "water"], () => 0.2);
+  const me = match.gameState!.getPlayer("p0")!;
+  // Deliberately buys NOTHING first: this is the state the bug lived in.
+  assert.equal(Object.keys(me.unlocked).length, 0, "the fixture starts owning something");
+
+  startParty(match, "kingdomSwap");
+  const borrowed = abilitiesForKingdom(kitKingdomOf(me));
+
+  const bar = abilityPrices(me);
+  for (const ability of borrowed) {
+    // `unlock` is the PRICE to buy it, and null once it is bought — so null
+    // here is the client being told there is nothing left to pay.
+    assert.equal(bar[ability.id]?.unlock, null, `${ability.id} went to the client locked`);
+    assert.equal(swapGrantsUnlock(me, ability.id), true, `${ability.id} was refused`);
+  }
+
+  // …and it is the LOAN that unlocks them, not a purchase: nothing was written
+  // into the player's own record, so the swap ending takes the kit back whole.
+  assert.equal(Object.keys(me.unlocked).length, 0, "the loan wrote to the purchase record");
+});
+
+test("upgrading a borrowed ability buys the slot you keep", () => {
+  // Reading and writing used to disagree: the level was read off the mirrored
+  // slot and written under the BORROWED id, so the tier went somewhere nothing
+  // reads and vanished along with the swap. Paid for, then gone.
+  const match = table(["fire", "water"], () => 0.2);
+  const me = match.gameState!.getPlayer("p0")!;
+  const mine = abilitiesForKingdom(me.kingdomId);
+
+  startParty(match, "kingdomSwap");
+  const borrowed = abilitiesForKingdom(kitKingdomOf(me));
+  const slot = 1;
+  const result = unlockOrUpgradeAbility(match, me, borrowed[slot]!.id);
+  assert.equal(result.ok, true, "the upgrade was refused");
+
+  assert.equal(me.upgrades[mine[slot]!.id], 1, "the tier did not land on the kept slot");
+  assert.equal(me.upgrades[borrowed[slot]!.id], undefined, "it was filed under the loan");
+
+  runTicks(match, PARTY.SWAP_SECONDS * TICK.RATE + 2);
+  assert.equal(getUpgradeLevel(me, mine[slot]!.id), 1, "the tier did not survive the swap");
 });
 
 test("your own kit is out while you hold somebody else's", () => {

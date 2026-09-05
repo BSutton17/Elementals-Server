@@ -53,7 +53,7 @@ function arrange(match: Match, gameId: string): void {
   if (gameId !== "haunted") return;
   const victim = match.gameState!.getPlayers()[3];
   victim.eliminated = true;
-  victim.castle.health = 0;
+  victim.castle.hp = 0;
 }
 
 test("the registry is the sixteen, each named once", () => {

@@ -39,7 +39,12 @@ export { longestHolder, bombIsLive } from "./bombAttack.js";
 export { kingdomLabel, rankedFirst, rankedLast } from "./results.js";
 export { shuffleChests } from "./pickAChest.js";
 export { isGhost, isGhostAt, hauntable, hasGhostsToRaise } from "./haunted.js";
-export { kitKingdomOf, mirrorSlot, canUseAbility } from "./kingdomSwap.js";
+export {
+  kitKingdomOf,
+  mirrorSlot,
+  canUseAbility,
+  swapGrantsUnlock,
+} from "./kingdomSwap.js";
 export { buildShower } from "./goldParty.js";
 export { buildMess } from "./cleanUp.js";
 

@@ -37,19 +37,18 @@ function table(visibility: "public" | "private"): Match {
 
 const FIRST_ROLL_TICKS = MONSTER.FIRST_ROLL_SECONDS * TICK.RATE;
 
-test("monsters are off until somebody asks for them, and party mode is not", () => {
-  // ⚠️ TWO DIFFERENT DEFAULTS, ON PURPOSE. A monster is an interruption bolted
-  // onto the match and is opted into from the admin panel. Party Mode is the
-  // house style for a room of friends, so it runs unless the room is
-  // matchmaking — where a stranger queued for a free-for-all and agreed to
-  // neither.
-  const private_ = table("private");
-  assert.equal(private_.monstersEnabled, false);
-  assert.equal(private_.partyModeEnabled, true);
-
-  const public_ = table("public");
-  assert.equal(public_.monstersEnabled, false);
-  assert.equal(public_.partyModeEnabled, false);
+test("neither optional mode runs until somebody asks for it", () => {
+  // ⚠️ THE SAME DEFAULT, AND PARTY MODE DID NOT ALWAYS SHARE IT. It ran in
+  // every private room on the reasoning that a room of friends is the audience
+  // it was built for — but it stops production, holds attacks and takes the
+  // middle of the field, so a table that sat down to play the game got a maze
+  // instead without anyone having chosen it. Both are now switches in the room
+  // options panel, and both start off.
+  for (const visibility of ["private", "public"] as const) {
+    const match = table(visibility);
+    assert.equal(match.monstersEnabled, false, `monsters were on in a ${visibility} room`);
+    assert.equal(match.partyModeEnabled, false, `party mode was on in a ${visibility} room`);
+  }
 });
 
 test("with monsters off, nothing ever arrives", () => {
@@ -80,11 +79,14 @@ test("the same room with them on gets one on the first roll", () => {
   assert.notEqual(match.gameState!.monster, null, "no monster with the rule on");
 });
 
-test("both rules ride along in the lobby payload", () => {
+test("all three rules ride along in the lobby payload", () => {
   // The lobby draws the switches from the broadcast rather than remembering
   // what it sent, so a refused change snaps back instead of lying about the
-  // room.
-  const serialized = table("private").serialize();
+  // room. Asserted with one of them ON: three `false`s would pass just as well
+  // against a payload that had dropped the fields entirely.
+  const match = table("private");
+  match.partyModeEnabled = true;
+  const serialized = match.serialize();
   assert.equal(serialized.monstersEnabled, false);
   assert.equal(serialized.partyModeEnabled, true);
   assert.equal(serialized.eliminatedSeeAllHealth, false);

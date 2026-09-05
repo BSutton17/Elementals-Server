@@ -11,6 +11,7 @@ import { purchaseUpgrade, shareHealGlobally } from "./abilities.js";
 import { removeStatus, settleYinYang } from "./status.js";
 import { validateTransaction, type TransactionResult } from "./transactions.js";
 import { param } from "./parameters.js";
+import { swapGrantsUnlock } from "./party/kingdomSwap.js";
 
 /**
  * Gameplay purchases (ticket #53+). Each purchase validates through the
@@ -320,7 +321,12 @@ export function unlockOrUpgradeAbility(
     return { ok: false, error: "INVALID_TRANSACTION" };
   }
 
-  if (!player.unlocked[abilityId]) {
+  // ⚠️ A BORROWED ABILITY IS ALREADY BOUGHT, SO THIS IS AN UPGRADE. Without
+  // this, a swapped player could be charged an unlock fee for another
+  // kingdom's ability — flagged under an id that stops meaning anything the
+  // moment the swap ends, so the gold buys nothing at all. Falling through to
+  // the upgrade path spends it on the slot they actually keep.
+  if (!player.unlocked[abilityId] && !swapGrantsUnlock(player, abilityId)) {
     const unlockCost = abilityUnlockCost(player, ability);
     const validation = validateTransaction(match, player, unlockCost);
     if (!validation.ok) return validation;

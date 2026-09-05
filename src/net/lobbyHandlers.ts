@@ -603,12 +603,13 @@ export function registerLobbyHandlers(
    * change what players can see out from under them.
    */
   /**
-   * The room's optional rules — both of them admin-only.
+   * The room's optional rules — all three of them admin-only.
    *
    * ⚠️ ADMIN, NOT HOST, AND CHECKED HERE. Anyone can be a host: you create a
-   * room and you are one. These two switches change what a match IS — one hands
-   * dead players the whole board, the other decides whether a shared emergency
-   * shows up at all — so while they are being tuned they belong to the account
+   * room and you are one. These switches change what a match IS — one hands
+   * dead players the whole board, one decides whether a shared emergency shows
+   * up at all, one replaces stretches of the war with minigames — so while they
+   * are being tuned they belong to the account
    * that owns the game rather than to whoever happened to click Create Room.
    * The lobby hides the panel from everybody else, and that is presentation;
    * this is the check.
@@ -616,7 +617,11 @@ export function registerLobbyHandlers(
   socket.on(
     "lobby:setRules",
     (
-      payload: { eliminatedSeeAllHealth?: unknown; monstersEnabled?: unknown },
+      payload: {
+        eliminatedSeeAllHealth?: unknown;
+        monstersEnabled?: unknown;
+        partyModeEnabled?: unknown;
+      },
       ack: unknown,
     ) => {
       const roomCode =
@@ -657,7 +662,8 @@ export function registerLobbyHandlers(
       // sending neither is a no-op rather than a reset to defaults.
       const vision = payload?.eliminatedSeeAllHealth;
       const monsters = payload?.monstersEnabled;
-      if (vision === undefined && monsters === undefined) {
+      const party = payload?.partyModeEnabled;
+      if (vision === undefined && monsters === undefined && party === undefined) {
         respond(ack, fail("INVALID_INPUT", "Nothing to change"));
         return;
       }
@@ -669,15 +675,21 @@ export function registerLobbyHandlers(
         respond(ack, fail("INVALID_INPUT", "monstersEnabled must be a boolean"));
         return;
       }
+      if (party !== undefined && typeof party !== "boolean") {
+        respond(ack, fail("INVALID_INPUT", "partyModeEnabled must be a boolean"));
+        return;
+      }
 
       if (vision !== undefined) match.eliminatedSeeAllHealth = vision;
       if (monsters !== undefined) match.monstersEnabled = monsters;
+      if (party !== undefined) match.partyModeEnabled = party;
       broadcastLobbyUpdate(io, match);
       respond(
         ack,
         ok({
           eliminatedSeeAllHealth: match.eliminatedSeeAllHealth,
           monstersEnabled: match.monstersEnabled,
+          partyModeEnabled: match.partyModeEnabled,
         }),
       );
     },

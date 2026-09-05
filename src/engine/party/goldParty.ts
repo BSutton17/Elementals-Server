@@ -68,7 +68,11 @@ export function buildShower(rng: () => number, seconds: number): Coin[] {
 
 export const GOLD_PARTY_GAME: PartyGame = {
   id: "goldParty",
-  description: "Earn as much gold as you can in 10 seconds",
+  // ⚠️ NOT "…IN 10 SECONDS". The coins fall across the battlefield itself with
+  // no panel and no clock, so naming a duration would be the only countdown on
+  // screen — and knowing exactly when the rain stops turns catching coins into
+  // watching a timer.
+  description: "Gold Party",
   timedSeconds: PARTY.GOLD_PARTY_SECONDS,
   maxSeconds: PARTY.GOLD_PARTY_SECONDS + 2,
   // Ordinary production keeps running: this is a bonus, not a substitute.

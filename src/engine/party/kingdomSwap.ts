@@ -28,7 +28,12 @@ import type { PartyGame, PartySetup } from "./types.js";
  */
 export const KINGDOM_SWAP_GAME: PartyGame = {
   id: "kingdomSwap",
-  description: "You have another kingdom's abilities for 30 seconds",
+  // ⚠️ TWO WORDS, AND THAT IS THE WHOLE ANNOUNCEMENT. This is the one game with
+  // nothing to show: the ability bar has already changed underneath the player,
+  // which says it better than a sentence would. A card explaining the swap sat
+  // over the board for its first seconds — hiding the battlefield the borrowed
+  // kit is for, which is the exact opposite of a swap.
+  description: "Kingdom Swap",
   timedSeconds: PARTY.SWAP_SECONDS,
   maxSeconds: PARTY.SWAP_SECONDS + 2,
   stopsProduction: false,
@@ -136,6 +141,30 @@ export function mirrorSlot(
   const index = borrowed.findIndex((a) => a.id === abilityId);
   if (index < 0) return abilityId; // not a borrowed ability; nothing to mirror
   return abilitiesForKingdom(player.kingdomId)[index]?.id ?? abilityId;
+}
+
+/**
+ * Whether a borrowed ability counts as bought, purely because it is borrowed.
+ *
+ * ⚠️ THE SWAP USED TO HAND OVER A KIT YOU COULD NOT USE. Unlocks are per
+ * ability id, so a borrowed ability was locked unless the SAME SLOT of your own
+ * kingdom had already been bought — and early in a match almost nothing has
+ * been. The result was a player holding five buttons, every one of them locked,
+ * with no way to unlock them either, for the full thirty seconds: not a swap, a
+ * suspension. So the loan includes the buttons.
+ *
+ * Upgrades are still your own: `mirrorSlot` reads the level off the matching
+ * slot of your real kingdom, so a borrowed kit fires at whatever tier you paid
+ * for there and at base level otherwise. You cannot gain power by being
+ * swapped — only reach.
+ */
+export function swapGrantsUnlock(
+  player: { kingdomId: KingdomId; abilityKingdomId?: KingdomId },
+  abilityId: string,
+): boolean {
+  const borrowedFrom = player.abilityKingdomId;
+  if (borrowedFrom === undefined) return false;
+  return abilitiesForKingdom(borrowedFrom).some((a) => a.id === abilityId);
 }
 
 /**

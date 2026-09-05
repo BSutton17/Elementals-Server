@@ -55,13 +55,14 @@ export class Match {
   /**
    * Admin setting: whether Party Mode runs at all.
    *
-   * ⚠️ ON BY DEFAULT IN ANY PRIVATE ROOM. Unlike monsters, Party Mode is the
-   * house style rather than an interruption bolted onto it — a room of friends
-   * is the audience it was built for, and having to switch it on every match
-   * would mean most matches never saw it. Still off in matchmaking: a stranger
-   * queued for a free-for-all did not agree to be dropped into a maze.
+   * ⚠️ OFF EVERYWHERE BY DEFAULT, LIKE MONSTERS. It was briefly on by default
+   * in private rooms, on the reasoning that a room of friends is the audience
+   * it was built for. That was wrong for the same reason monsters are: it
+   * stops production, holds attacks and takes the middle of the field, so a
+   * table that sat down to play the game gets a maze instead without anybody
+   * having asked. It is a mode you choose, not a house style.
    */
-  partyModeEnabled = true;
+  partyModeEnabled = false;
 
   /**
    * How this room is entered.
@@ -122,10 +123,9 @@ export class Match {
     // board. Enforcing it here as well as in the socket handler means a public
     // room is never briefly monster-enabled between being created and being
     // configured.
-    // Monsters stay off until somebody asks for them; Party Mode is on in any
-    // room that is not matchmaking.
+    // Both stay off until somebody asks for them.
     this.monstersEnabled = false;
-    this.partyModeEnabled = this.visibility !== "public";
+    this.partyModeEnabled = false;
     this.rng = options.rng ?? Math.random;
   }
 

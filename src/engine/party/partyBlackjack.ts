@@ -1,4 +1,4 @@
-import { PARTY } from "../../data/balance.js";
+import { PARTY, TICK } from "../../data/balance.js";
 import { earn, getBalance, roundMoney } from "../money.js";
 import { param } from "../parameters.js";
 import type { PlayerState } from "../../match/playerState.js";
@@ -69,6 +69,17 @@ export interface BlackjackState {
   /** Set when the hand is over. */
   settled: boolean;
   net: number;
+  /**
+   * The tick the table clears on, once the dealer has turned over.
+   *
+   * ⚠️ SETTLING AND FINISHING ARE DIFFERENT MOMENTS, AND USED NOT TO BE.
+   * Standing resolved the round and marked the player done in the same breath,
+   * so the panel came down before the dealer's cards had been on screen for a
+   * single frame: the player saw their own hand, pressed stand, and was
+   * returned to the battlefield already poorer. The money is settled at the
+   * first moment; this is the second.
+   */
+  revealUntilTick: number | null;
 }
 
 const SUITS: Suit[] = ["clubs", "diamonds", "hearts", "spades"];
@@ -141,6 +152,7 @@ export function openHand(player: PlayerState, rng: () => number): BlackjackState
     stake,
     owed: 0,
     settled: false,
+    revealUntilTick: null,
     net: 0,
   };
 }
@@ -305,16 +317,27 @@ export const BLACKJACK_GAME: PartyGame = {
         return { ok: false, error: "Unknown action" };
     }
 
-    if (state.settled) finish(match, session, player, state);
+    // Settled, but not finished: the dealer's cards go up and stay up for a
+    // moment. `tick` closes it.
+    if (state.settled && state.revealUntilTick === null) {
+      state.revealUntilTick =
+        match.tick +
+        Math.round(
+          param("party.blackjackReveal", PARTY.BLACKJACK_REVEAL_SECONDS) * TICK.RATE,
+        );
+    }
     return { ok: true };
   },
 
   tick(match, session, player) {
-    // Nothing to do per tick; the session's cap ends an abandoned hand and
-    // `forceFinish` settles it.
-    void match;
-    void session;
-    void player;
+    // The only thing this does is end the reveal. An abandoned hand is ended by
+    // the session's cap, and `forceFinish` settles that one.
+    const me = session.players[player.id];
+    if (!me || me.done) return;
+    const state = me.data.game as unknown as BlackjackState | undefined;
+    if (!state?.settled || state.revealUntilTick === null) return;
+    if (match.tick < state.revealUntilTick) return;
+    finish(match, session, player, state);
   },
 
   bot(match, session, player) {
