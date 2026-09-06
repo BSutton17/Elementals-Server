@@ -372,7 +372,15 @@ export const PARTY = {
 
   /** Gold Party: ten seconds of rain, and what each coin is worth. */
   GOLD_PARTY_SECONDS: 10,
-  COINS_PER_SECOND: 4,
+  /**
+   * How many coins enter the sky each second.
+   *
+   * Cut by three quarters from 4. At four a second the shower was a wall of
+   * coins: with no panel to contain it any more it falls across the whole
+   * battlefield, where that many is less a treat than a screenful of buttons
+   * over the match. Fewer coins also makes each one worth chasing.
+   */
+  COINS_PER_SECOND: 1,
   COIN_BRONZE: 25,
   COIN_SILVER: 50,
   COIN_GOLD: 100,

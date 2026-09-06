@@ -43,6 +43,20 @@ import {
 export interface AbilityPrices {
   /** Effective cast cost at the player's current upgrade tier. */
   cast: number;
+  /**
+   * Whether this ability is bought, and what tier it is at.
+   *
+   * ⚠️ SENT RATHER THAN WORKED OUT ON THE CLIENT, BECAUSE THE CLIENT CANNOT.
+   * Both answers go through `mirrorSlot` during a Kingdom Swap — a borrowed
+   * ability is levelled by the matching slot of the player's OWN kingdom, and
+   * unlocked by the loan itself. The raw `unlocked`/`upgrades` maps on the wire
+   * are keyed by the player's own ability ids, so a client reading them
+   * directly gets `false` and `0` for every borrowed ability and draws five
+   * locked buttons.
+   */
+  unlocked: boolean;
+  /** 0 while locked; 1 once bought; +1 per upgrade tier after that. */
+  level: number;
   /** Price to buy this ability, or null once it is unlocked. */
   unlock: number | null;
   /** Price of the next upgrade tier, or null while locked or fully upgraded. */
@@ -81,6 +95,9 @@ export function abilityPrices(p: PlayerState): Record<string, AbilityPrices> {
       cast: resolved.cost ?? 0,
       // Mirrors `unlockOrUpgradeAbility`: the explicit unlock price when set,
       // otherwise half the cast cost, then the player's perk discount.
+      unlocked,
+      // The bar counts a bought ability as level 1 and stacks tiers on top.
+      level: unlocked ? level + 1 : 0,
       unlock: unlocked ? null : abilityUnlockCost(p, def),
       upgrade:
         unlocked && nextTier ? abilityUpgradeCost(p, def, nextTier) : null,

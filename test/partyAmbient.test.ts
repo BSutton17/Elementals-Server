@@ -243,7 +243,20 @@ test("a borrowed kit arrives unlocked, even owning nothing yourself", () => {
     // `unlock` is the PRICE to buy it, and null once it is bought — so null
     // here is the client being told there is nothing left to pay.
     assert.equal(bar[ability.id]?.unlock, null, `${ability.id} went to the client locked`);
+    assert.equal(bar[ability.id]?.unlocked, true, `${ability.id} was flagged locked`);
+    assert.equal(bar[ability.id]?.level, 1, `${ability.id} arrived at level 0`);
     assert.equal(swapGrantsUnlock(me, ability.id), true, `${ability.id} was refused`);
+  }
+
+  // ⚠️ AND THE PLAYER'S OWN ABILITIES ARE NOT IN IT, WHICH IS THE HALF THAT
+  // FROZE THE BAR. The table is keyed by the BORROWED kingdom's ids; a client
+  // that renders its own kingdom's five finds none of them here, so every card
+  // draws unpriced and refuses to cast or unlock — a dead ability bar for the
+  // whole swap. `BattlefieldView` renders `abilityKingdomId ?? kingdomId` for
+  // exactly this reason.
+  for (const own of abilitiesForKingdom(me.kingdomId)) {
+    if (borrowed.some((b) => b.id === own.id)) continue;
+    assert.equal(bar[own.id], undefined, `${own.id} was priced during a swap`);
   }
 
   // …and it is the LOAN that unlocks them, not a purchase: nothing was written
