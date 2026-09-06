@@ -164,149 +164,14 @@ test("Haunted is never rolled when there is nobody to raise", () => {
   assert.equal(startParty(match, "haunted"), null, "it started with no dead");
 });
 
-// --- kingdom swap ------------------------------------------------------------
-
-test("a swap changes the kit and nothing else", () => {
-  const match = table(["fire", "water", "earth"], () => 0.2);
-  const players = match.gameState!.getPlayers();
-  const before = players.map((p) => ({
-    kingdomId: p.kingdomId,
-    hp: p.castle.hp,
-    gold: p.economy.currency,
-    citizens: p.economy.citizens,
-  }));
-
-  startParty(match, "kingdomSwap");
-
-  for (const [i, p] of players.entries()) {
-    // ⚠️ THE IDENTITY IS UNTOUCHED. `kingdomId` drives the castle's colour, the
-    // roster, the scoreboard and the win screen; only the ability layer sees
-    // the borrowed kingdom.
-    assert.equal(p.kingdomId, before[i]!.kingdomId, "the kingdom itself changed");
-    assert.equal(p.castle.hp, before[i]!.hp);
-    assert.equal(p.economy.currency, before[i]!.gold);
-    assert.equal(p.economy.citizens, before[i]!.citizens);
-    assert.notEqual(kitKingdomOf(p), p.kingdomId, "nobody actually swapped");
-  }
-});
-
-test("a borrowed ability is unlocked by the slot you already paid for", () => {
-  // ⚠️ WITHOUT SLOT MIRRORING A BORROWED KIT IS A LOCKED KIT: unlocks are per
-  // ability id, and nobody owns anything in somebody else's list.
-  const match = table(["fire", "water"], () => 0.2);
-  const me = match.gameState!.getPlayer("p0")!;
-  const mine = abilitiesForKingdom(me.kingdomId);
-  unlockOrUpgradeAbility(match, me, mine[1]!.id); // buy my own slot two
-
-  startParty(match, "kingdomSwap");
-  const borrowedKingdom = kitKingdomOf(me);
-  assert.notEqual(borrowedKingdom, me.kingdomId);
-
-  const borrowed = abilitiesForKingdom(borrowedKingdom);
-  selectTarget(match, me, "p1");
-  assert.equal(
-    activateAbility(match, me, borrowed[1]!, { targetId: "p1" }).ok,
-    true,
-    "the mirrored slot would not cast",
-  );
-
-  // ⚠️ THE UNLOCK GATE ITSELF LIVES IN THE CAST HANDLER, NOT IN THE ENGINE, so
-  // it is checked where it actually is: what the handler reads is the MIRRORED
-  // id, and that is the whole mechanism.
-  for (const [slot, ability] of borrowed.entries()) {
-    assert.equal(mirrorSlot(me, ability.id), mine[slot]!.id, `slot ${slot} mirrored wrong`);
-  }
-  assert.equal(me.unlocked[mirrorSlot(me, borrowed[1]!.id)], true, "the bought slot read locked");
-  assert.notEqual(
-    me.unlocked[mirrorSlot(me, borrowed[4]!.id)],
-    true,
-    "a slot nobody bought read unlocked",
-  );
-});
-
-test("a borrowed kit arrives unlocked, even owning nothing yourself", () => {
-  // ⚠️ THE BUG THIS EXISTS FOR MADE THE SWAP UNPLAYABLE. Unlocks are per
-  // ability id, so a borrowed ability counted as bought only if the SAME SLOT
-  // of your own kingdom had been — and early in a match none of them have. A
-  // player was handed five buttons, every one locked, with no way to unlock
-  // them either, and stood there for the full thirty seconds.
-  const match = table(["fire", "water"], () => 0.2);
-  const me = match.gameState!.getPlayer("p0")!;
-  // Deliberately buys NOTHING first: this is the state the bug lived in.
-  assert.equal(Object.keys(me.unlocked).length, 0, "the fixture starts owning something");
-
-  startParty(match, "kingdomSwap");
-  const borrowed = abilitiesForKingdom(kitKingdomOf(me));
-
-  const bar = abilityPrices(me);
-  for (const ability of borrowed) {
-    // `unlock` is the PRICE to buy it, and null once it is bought — so null
-    // here is the client being told there is nothing left to pay.
-    assert.equal(bar[ability.id]?.unlock, null, `${ability.id} went to the client locked`);
-    assert.equal(bar[ability.id]?.unlocked, true, `${ability.id} was flagged locked`);
-    assert.equal(bar[ability.id]?.level, 1, `${ability.id} arrived at level 0`);
-    assert.equal(swapGrantsUnlock(me, ability.id), true, `${ability.id} was refused`);
-  }
-
-  // ⚠️ AND THE PLAYER'S OWN ABILITIES ARE NOT IN IT, WHICH IS THE HALF THAT
-  // FROZE THE BAR. The table is keyed by the BORROWED kingdom's ids; a client
-  // that renders its own kingdom's five finds none of them here, so every card
-  // draws unpriced and refuses to cast or unlock — a dead ability bar for the
-  // whole swap. `BattlefieldView` renders `abilityKingdomId ?? kingdomId` for
-  // exactly this reason.
-  for (const own of abilitiesForKingdom(me.kingdomId)) {
-    if (borrowed.some((b) => b.id === own.id)) continue;
-    assert.equal(bar[own.id], undefined, `${own.id} was priced during a swap`);
-  }
-
-  // …and it is the LOAN that unlocks them, not a purchase: nothing was written
-  // into the player's own record, so the swap ending takes the kit back whole.
-  assert.equal(Object.keys(me.unlocked).length, 0, "the loan wrote to the purchase record");
-});
-
-test("upgrading a borrowed ability buys the slot you keep", () => {
-  // Reading and writing used to disagree: the level was read off the mirrored
-  // slot and written under the BORROWED id, so the tier went somewhere nothing
-  // reads and vanished along with the swap. Paid for, then gone.
-  const match = table(["fire", "water"], () => 0.2);
-  const me = match.gameState!.getPlayer("p0")!;
-  const mine = abilitiesForKingdom(me.kingdomId);
-
-  startParty(match, "kingdomSwap");
-  const borrowed = abilitiesForKingdom(kitKingdomOf(me));
-  const slot = 1;
-  const result = unlockOrUpgradeAbility(match, me, borrowed[slot]!.id);
-  assert.equal(result.ok, true, "the upgrade was refused");
-
-  assert.equal(me.upgrades[mine[slot]!.id], 1, "the tier did not land on the kept slot");
-  assert.equal(me.upgrades[borrowed[slot]!.id], undefined, "it was filed under the loan");
-
-  runTicks(match, PARTY.SWAP_SECONDS * TICK.RATE + 2);
-  assert.equal(getUpgradeLevel(me, mine[slot]!.id), 1, "the tier did not survive the swap");
-});
-
-test("your own kit is out while you hold somebody else's", () => {
-  const match = table(["fire", "water"], () => 0.2);
-  const me = match.gameState!.getPlayer("p0")!;
-  const mine = abilitiesForKingdom(me.kingdomId);
-  unlockOrUpgradeAbility(match, me, mine[0]!.id);
-
-  startParty(match, "kingdomSwap");
-  selectTarget(match, me, "p1");
-  const own = activateAbility(match, me, mine[0]!, { targetId: "p1" });
-  assert.equal(own.ok, false, "they cast from both kits at once");
-  assert.equal(own.error, "NOT_ACTIVATABLE");
-});
-
-test("the kit comes back when the swap ends", () => {
-  const match = table(["fire", "water"], () => 0.2);
-  const me = match.gameState!.getPlayer("p0")!;
-  startParty(match, "kingdomSwap");
-  assert.notEqual(kitKingdomOf(me), me.kingdomId);
-
-  runTicks(match, PARTY.SWAP_SECONDS * TICK.RATE + 2);
-  assert.equal(kitKingdomOf(me), me.kingdomId, "they kept the borrowed kit");
-});
+// --- kingdom swap -------------------------------------------------------------
+//
+// ⚠️ RETIRED, SO ITS TESTS ARE GONE WITH IT. Kingdom Swap is no longer in
+// PARTY_GAMES: `startParty` refuses the id, so every test here would have been
+// asserting against a session that never starts — and a test that passes because
+// nothing happened is worse than no test. The module and its slot-mirroring
+// plumbing are still in the engine, inert, for whenever the mode comes back;
+// the tests come back with it.
 
 // --- gold party --------------------------------------------------------------
 
@@ -412,15 +277,41 @@ test("each kingdom gets its own mess", () => {
   assert.notEqual(first, second);
 });
 
-test("a mess is always somewhere on the screen", () => {
+test("the mess covers the whole screen, with no gap to see through", () => {
+  // ⚠️ COVERAGE IS THE GAME NOW. Seven scattered blobs left most of the screen
+  // clean, so cleaning was tapping seven targets. Every tile has to be filled
+  // at the start and every part of the screen has to be inside one, or there
+  // are pinholes — and a screen of pinholes reads as a rendering fault.
   let seed = 7;
   const rng = () => {
     seed = (seed * 48271) % 2147483647;
     return seed / 2147483647;
   };
-  for (const splat of buildMess(rng, 200)) {
+  const columns = 6;
+  const rows = 10;
+  const mess = buildMess(rng, columns, rows);
+  assert.equal(mess.length, columns * rows, "the grid has holes in it");
+  assert.equal(new Set(mess.map((s) => s.id)).size, mess.length, "two tiles share an id");
+
+  for (const splat of mess) {
     assert.ok(splat.x > 0 && splat.x < 1, `x ${splat.x}`);
     assert.ok(splat.y > 0 && splat.y < 1, `y ${splat.y}`);
     assert.ok(splat.r > 0 && splat.r < 0.2, `r ${splat.r}`);
+  }
+
+  // Sampled across the screen: every point is inside some tile. The test is in
+  // the same stretched space the client draws in — `r` is a fraction of the
+  // WIDTH and the vertical radius is 0.78 of that against the HEIGHT.
+  for (let gx = 0; gx <= 20; gx++) {
+    for (let gy = 0; gy <= 20; gy++) {
+      const px = gx / 20;
+      const py = gy / 20;
+      const covered = mess.some((s) => {
+        const dx = (px - s.x) / s.r;
+        const dy = (py - s.y) / (s.r * 0.78);
+        return dx * dx + dy * dy <= 1;
+      });
+      assert.ok(covered, `nothing covers ${px.toFixed(2)}, ${py.toFixed(2)}`);
+    }
   }
 });

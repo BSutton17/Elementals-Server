@@ -16,7 +16,9 @@ import { BOMB_ATTACK_GAME, settleBombAttack, bombIsLive } from "./bombAttack.js"
 import { KINGDOM_THIEF_GAME, settleKingdomThief } from "./kingdomThief.js";
 import { PICK_A_CHEST_GAME } from "./pickAChest.js";
 import { DONT_MOVE_GAME } from "./dontMove.js";
-import { KINGDOM_SWAP_GAME, tickKingdomSwaps } from "./kingdomSwap.js";
+// `KINGDOM_SWAP_GAME` is deliberately not imported — see PARTY_GAMES below.
+// `tickKingdomSwaps` still runs, and is a no-op with nothing swapped.
+import { tickKingdomSwaps } from "./kingdomSwap.js";
 import { HAUNTED_GAME, hasGhostsToRaise, tickGhosts } from "./haunted.js";
 import { GOLD_PARTY_GAME } from "./goldParty.js";
 import { CLEAN_UP_GAME } from "./cleanUp.js";
@@ -67,6 +69,23 @@ export { buildMess } from "./cleanUp.js";
  * shot at for playing along is not a party.
  */
 
+/**
+ * The minigames that can actually happen.
+ *
+ * ⚠️ KINGDOM SWAP IS DELIBERATELY NOT IN THIS LIST. It is retired: lending a
+ * player another kingdom's kit turned out to be more disruption than party, and
+ * it is the only game that reaches into the ability layer to do its job. Being
+ * absent here is the whole retirement — the roll cannot pick it, the debug
+ * launcher cannot list it, and `partyGame("kingdomSwap")` returns undefined.
+ *
+ * The module and its plumbing (`kitKingdomOf`, `mirrorSlot`, `swapGrantsUnlock`)
+ * are left in place on purpose. They thread through the cast, purchase and sync
+ * paths of EVERY kingdom, and with nothing setting `abilityKingdomId` they are
+ * all identity functions — inert. Tearing them out would be a fifteen-site edit
+ * across the hottest code in the engine to delete behaviour that is already
+ * unreachable, and it would have to be undone to bring the mode back. Put
+ * KINGDOM_SWAP_GAME back in this array and it works again.
+ */
 export const PARTY_GAMES: readonly PartyGame[] = [
   MAZE_GAME,
   SPOT_THE_DIFFERENCE_GAME,
@@ -80,7 +99,6 @@ export const PARTY_GAMES: readonly PartyGame[] = [
   KINGDOM_THIEF_GAME,
   PICK_A_CHEST_GAME,
   DONT_MOVE_GAME,
-  KINGDOM_SWAP_GAME,
   HAUNTED_GAME,
   GOLD_PARTY_GAME,
   CLEAN_UP_GAME,

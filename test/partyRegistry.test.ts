@@ -11,11 +11,11 @@ import type { MatchPlayer } from "../src/match/types.js";
 
 // The registry, swept.
 //
-// ⚠️ THIS IS THE TEST THAT REPLACES CLICKING SIXTEEN BUTTONS. Every other party
+// ⚠️ THIS REPLACES CLICKING THROUGH THE WHOLE LIST BY HAND. Every other party
 // test asks whether one minigame plays correctly; this one asks whether each of
 // them starts, runs to its own end and clears without anybody watching — which
 // is the failure the debug launcher was built to hunt, and the failure most
-// likely to be introduced by adding the seventeenth.
+// likely to be introduced by adding the next one.
 //
 // It deliberately knows almost nothing about any individual game. A game that
 // needs special handling to survive this file is a game that will need special
@@ -56,8 +56,14 @@ function arrange(match: Match, gameId: string): void {
   victim.castle.hp = 0;
 }
 
-test("the registry is the sixteen, each named once", () => {
-  assert.equal(PARTY_GAMES.length, 16);
+test("the registry is what can actually happen, each named once", () => {
+  // Fifteen, not sixteen: Kingdom Swap is retired and deliberately absent, and
+  // this count is what makes that a decision rather than a slip.
+  assert.equal(PARTY_GAMES.length, 15);
+  assert.ok(
+    !PARTY_GAMES.some((g) => g.id === "kingdomSwap"),
+    "kingdomSwap is back in the rotation",
+  );
   const ids = PARTY_GAMES.map((g) => g.id);
   assert.equal(new Set(ids).size, ids.length, "two games share an id");
   for (const game of PARTY_GAMES) {

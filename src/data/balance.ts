@@ -392,7 +392,19 @@ export const PARTY = {
    * because it takes nothing: no damage, no gold, no penalty for ignoring it.
    */
   CLEAN_UP_SECONDS: 20,
-  MESS_SPLATS: 7,
+  /**
+   * The mess is a grid, and it covers the whole screen.
+   *
+   * ⚠️ SEVEN SCATTERED BLOBS WAS A DIFFERENT GAME. Most of the screen stayed
+   * clean, so "cleaning" meant tapping seven targets and was over in a second.
+   * A tile per patch of screen means a swipe clears a band and what is left is
+   * the shape of where you have not been.
+   *
+   * Sixty tiles is the balance: enough that a single flick does not clear the
+   * lot, few enough that twenty seconds is comfortably sufficient.
+   */
+  MESS_COLUMNS: 6,
+  MESS_ROWS: 10,
 
   /**
    * The barrier games (Kingdom Thief, Pick a Chest): how long the table has to
@@ -428,7 +440,17 @@ export const PARTY = {
   /** Pick a Chest: the good one, the poor one, and the trap. */
   CHEST_BIG: 500,
   CHEST_SMALL: 150,
-  CHEST_TRAP: 2000,
+  /**
+   * What the trap takes, as a SHARE of the purse rather than a flat number.
+   *
+   * ⚠️ A FLAT 2,000 WAS TWO DIFFERENT GAMES DEPENDING ON WHEN IT LANDED. Early
+   * on it was everything a player had and then some — a bill they could not pay,
+   * paid off out of production for the next minute. Late, with a full treasury,
+   * it was small change and the trap stopped being frightening at all. A share
+   * costs the same at any point in the match, and can never exceed the purse, so
+   * it never becomes debt.
+   */
+  CHEST_TRAP_SHARE: 0.5,
 
   /**
    * Reaction: the wait before the button turns, and what coming last costs.

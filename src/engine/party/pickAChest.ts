@@ -127,18 +127,15 @@ function openChest(
     return;
   }
 
-  // The trap takes gold, not health — and a purse that cannot cover it is not
-  // pushed below zero. The shortfall becomes production debt, exactly as a
-  // Blackjack loss does, so there is one rule in the game for "you owe more
-  // than you have" rather than two.
-  const cost = param("party.chestTrap", PARTY.CHEST_TRAP);
+  // The trap takes gold, not health, and takes a SHARE of it — so it costs the
+  // same whenever it lands, and can never exceed what the player has. That is
+  // why there is no debt here as there is in Blackjack: half a purse always
+  // fits inside the purse.
   const purse = getBalance(player);
-  const paid = Math.min(purse, cost);
-  player.economy.currency = roundMoney(purse - paid);
-  const owed = cost - paid;
-  if (owed > 0) {
-    player.economy.productionDebt = roundMoney((player.economy.productionDebt ?? 0) + owed);
-    me.data.owed = owed;
-  }
+  const taken = roundMoney(purse * param("party.chestTrapShare", PARTY.CHEST_TRAP_SHARE));
+  player.economy.currency = roundMoney(purse - taken);
+  // Sent so the client can name the number rather than a constant it would
+  // otherwise have to know — and the number is different for every player.
+  me.data.taken = taken;
   me.outcome = "lost";
 }

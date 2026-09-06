@@ -6,9 +6,16 @@ import type { PartyActionResult, PartyGame, PartySetup } from "./types.js";
 /**
  * Clean up the mess.
  *
- * Something is spilled across your screen. Wipe it away with a finger or the
- * mouse. It costs nothing but visibility, and it is gone in twenty seconds
- * whatever you do.
+ * The whole screen is covered, and it clears only where you actually wipe. It
+ * costs nothing but visibility, and it is gone in twenty seconds whatever you
+ * do.
+ *
+ * ⚠️ A GRID THAT COVERS EVERYTHING, NOT A HANDFUL OF BLOBS. Seven blobs
+ * scattered over a phone left most of the screen clean, so "cleaning" was
+ * really tapping seven targets — whack-a-mole, and over in a second. The mess is
+ * now a tile per patch of screen, every tile filled at the start, and a swipe
+ * clears the tiles it passes over. What is left is the shape of where you have
+ * not been, which is what makes it feel like wiping something.
  *
  * ⚠️ THE SPLATS ARE PLACED HERE AND WIPED HERE. The client could perfectly well
  * own a purely cosmetic mess — but then a bot could not "clean" one, the
@@ -32,19 +39,38 @@ export interface Splat {
   rotation: number;
 }
 
-export function buildMess(rng: () => number, count: number): Splat[] {
+/**
+ * One tile per patch of screen, covering all of it.
+ *
+ * The jitter is what stops it reading as a grid: each tile's centre wanders
+ * inside its own cell and its radius varies, so the edges between neighbours
+ * are ragged. They are drawn through a goo filter on the client, which melts
+ * overlapping tiles into one continuous spill — so what the player sees is a
+ * covered screen, and what they clear is a tile at a time.
+ *
+ * ⚠️ THE RADIUS MUST OVERSHOOT THE CELL. A tile exactly the size of its cell
+ * leaves pinholes at every corner as soon as the centres are jittered, and a
+ * screen of pinholes looks like a rendering fault rather than a mess.
+ */
+export function buildMess(rng: () => number, columns: number, rows: number): Splat[] {
   const splats: Splat[] = [];
-  for (let i = 0; i < count; i++) {
-    splats.push({
-      id: i,
-      x: 0.08 + rng() * 0.84,
-      y: 0.12 + rng() * 0.76,
-      // Big enough to be in the way, not so big that two of them black out the
-      // screen: this is meant to obscure, not to blind.
-      r: 0.07 + rng() * 0.09,
-      shape: Math.floor(rng() * 4),
-      rotation: rng() * 360,
-    });
+  const cellW = 1 / columns;
+  const cellH = 1 / rows;
+  // Half a cell across the diagonal, plus a third again for the jitter and the
+  // ragged edge. Expressed against the WIDTH because that is what the client
+  // measures `r` in.
+  const reach = Math.hypot(cellW, cellH) * 0.5 * 1.35;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      splats.push({
+        id: row * columns + col,
+        x: (col + 0.5) * cellW + (rng() - 0.5) * cellW * 0.35,
+        y: (row + 0.5) * cellH + (rng() - 0.5) * cellH * 0.35,
+        r: reach * (0.85 + rng() * 0.3),
+        shape: Math.floor(rng() * 4),
+        rotation: rng() * 360,
+      });
+    }
   }
   return splats;
 }
@@ -66,7 +92,11 @@ export const CLEAN_UP_GAME: PartyGame = {
       // A mess each. A shared one would mean everybody's screen is dirty in the
       // same places, and cleaning would look synchronised.
       perPlayer[player.id] = {
-        splats: buildMess(match.rng, param("party.messSplats", PARTY.MESS_SPLATS)),
+        splats: buildMess(
+          match.rng,
+          param("party.messColumns", PARTY.MESS_COLUMNS),
+          param("party.messRows", PARTY.MESS_ROWS),
+        ),
         wiped: [],
       };
     }
@@ -78,12 +108,29 @@ export const CLEAN_UP_GAME: PartyGame = {
     const me = session.players[player.id];
     if (!me || me.done) return { ok: false, error: "All clean" };
 
-    const id = typeof action.splatId === "number" ? Math.floor(action.splatId) : -1;
-    const splats = me.data.splats as Splat[];
-    if (!splats.some((s) => s.id === id)) return { ok: false, error: "No such mess" };
+    // ⚠️ A SWIPE CLEARS MANY TILES AT ONCE, SO THE ACTION CARRIES A LIST. One
+    // id per tile would be one round trip per tile: a single flick across a
+    // phone crosses a dozen, and at twenty of those a second the socket would
+    // be carrying more wiping than game. `splatId` is still accepted because a
+    // single tap is still one tile.
+    const ids =
+      Array.isArray(action.ids)
+        ? (action.ids as unknown[]).filter((v): v is number => typeof v === "number")
+        : typeof action.splatId === "number"
+          ? [action.splatId]
+          : [];
+    if (ids.length === 0) return { ok: false, error: "Nothing wiped" };
 
+    const splats = me.data.splats as Splat[];
     const wiped = me.data.wiped as number[];
-    if (!wiped.includes(id)) wiped.push(id);
+    let any = false;
+    for (const raw of ids) {
+      const id = Math.floor(raw);
+      if (!splats.some((s) => s.id === id)) continue;
+      if (!wiped.includes(id)) wiped.push(id);
+      any = true;
+    }
+    if (!any) return { ok: false, error: "No such mess" };
 
     // Cleaning it ALL just ends it early — the reward for scrubbing is getting
     // your screen back, which is reward enough.

@@ -189,21 +189,26 @@ test("each kingdom gets its own shuffle, and it never travels", () => {
   }
 });
 
-test("opening pays, or bills — and a bill bigger than the purse becomes debt", () => {
-  const match = table();
-  startParty(match, "pickAChest");
-  const session = match.gameState!.party!;
-  const me = match.gameState!.getPlayer("p0")!;
-  me.economy.currency = 100; // far less than the trap costs
+test("the trap takes half the purse, whatever the purse happens to be", () => {
+  // ⚠️ A SHARE, SO IT NEVER BECOMES A DEBT. The flat bill it replaced was
+  // more than a new player owned — charged against production for the next
+  // minute — and pocket change to anyone with a real treasury: the same card
+  // was a disaster or a shrug depending only on when it was drawn.
+  for (const purse of [100, 4_000]) {
+    const match = table();
+    startParty(match, "pickAChest");
+    const session = match.gameState!.party!;
+    const me = match.gameState!.getPlayer("p0")!;
+    me.economy.currency = purse;
 
-  // Open whichever chest holds the trap for this player.
-  const chests = session.players.p0!.data.chests as string[];
-  const trapIndex = chests.indexOf("trap");
-  actOnParty(match, me, { type: "open", index: trapIndex });
+    const chests = session.players.p0!.data.chests as string[];
+    actOnParty(match, me, { type: "open", index: chests.indexOf("trap") });
 
-  assert.equal(me.economy.currency, 0, "the purse went negative");
-  assert.equal(me.economy.productionDebt, PARTY.CHEST_TRAP - 100);
-  assert.equal(session.players.p0!.outcome, "lost");
+    assert.equal(me.economy.currency, purse / 2, `a purse of ${purse} paid wrongly`);
+    assert.equal(session.players.p0!.data.taken, purse / 2);
+    assert.equal(me.economy.productionDebt ?? 0, 0, "a share of a purse became debt");
+    assert.equal(session.players.p0!.outcome, "lost");
+  }
 });
 
 test("the big chest pays the most, the small one pays something", () => {
