@@ -15,7 +15,7 @@ import type {
 /**
  * Escape the maze.
  *
- * Five seconds to drag from the box in the top-right corner to the exit. Timed
+ * Fifteen seconds to drag from the box in the top-right corner to the exit. Timed
  * rather than blocking: it ends for the whole table at once, so nobody is left
  * staring at a maze while the match moves on without them.
  *
