@@ -31,6 +31,10 @@ export const DONT_MOVE_GAME: PartyGame = {
   stopsProduction: false,
   // Six seconds of stillness is the game; freezing the match around it is not.
   holdsAttacks: false,
+  // ...but the AI does sit it out. A bot cannot be asked to keep still, so
+  // left alone it spends the six seconds buying and attacking while every
+  // human at the table is being penalised for touching anything.
+  botsSitStill: true,
 
   setup(_match, players) {
     const perPlayer: PartySetup["perPlayer"] = {};

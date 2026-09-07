@@ -1,7 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import type { GameLoopManager } from "../engine/GameLoopManager.js";
 import type { MatchManager } from "../match/MatchManager.js";
-import type { BotDifficulty, MatchPlayer } from "../match/types.js";
+import type { BotDifficulty, MatchPhase, MatchPlayer } from "../match/types.js";
 import type { ReconnectionManager } from "./ReconnectionManager.js";
 import { fail, ok, respond } from "./ack.js";
 import { broadcastLobbyUpdate, removePlayerFromMatch } from "./lobbyRoom.js";
@@ -119,6 +119,30 @@ export function randomPerks(kingdomId: string): PerkId[] {
     [pool[i], pool[j]] = [pool[j]!, pool[i]!];
   }
   return pool.slice(0, perksAllowedFor(kingdomId));
+}
+
+/**
+ * Whether a player may walk out of a room in this phase.
+ *
+ * ⚠️ AN ENDED MATCH IS LEAVEABLE, AND REFUSING IT STRANDED THE SOCKET. This was
+ * `phase === "lobby"`, which is right for a match in progress — you do not walk
+ * out of a live game through this event, that is what disconnecting and the
+ * reconnection grace are for — but a FINISHED one has nothing left to abandon,
+ * and "Return to Menu" on the result screen is exactly this call.
+ *
+ * What made it more than a wrong error message: the refusal returned WITHOUT
+ * clearing `socket.data.roomCode`. The client cleared its own state and went
+ * back to the menu, the socket stayed bound to the dead room, and every
+ * subsequent Create or Join was refused with "Already in a room" until the page
+ * was reloaded. A refused leave must never leave the two sides disagreeing
+ * about where the player is.
+ *
+ * Exported as its own predicate because the handler lives behind a live socket
+ * server in a child process, where a finished match is impractical to arrange —
+ * so the rule is tested here, where it can be stated exactly.
+ */
+export function canLeaveInPhase(phase: MatchPhase): boolean {
+  return phase === "lobby" || phase === "ended";
 }
 
 export interface LobbyDeps {
@@ -881,10 +905,10 @@ export function registerLobbyHandlers(
       respond(ack, ok({ left: false }));
       return;
     }
-    if (match.phase !== "lobby") {
+    if (!canLeaveInPhase(match.phase)) {
       respond(
         ack,
-        fail("INVALID_PHASE", "Cannot leave after the match has started"),
+        fail("INVALID_PHASE", "Cannot leave while the match is running"),
       );
       return;
     }

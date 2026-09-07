@@ -7,7 +7,8 @@ import { BotRunner } from "../src/ai/botRunner.js";
 import { modelsAvailable } from "../src/ai/modelStore.js";
 import { spawnVolcano } from "../src/engine/volcano.js";
 import { VOLCANO_TARGET_ID } from "../src/match/GameState.js";
-import { TICK } from "../src/data/balance.js";
+import { startParty } from "../src/engine/party/index.js";
+import { PARTY, TICK } from "../src/data/balance.js";
 import type { MatchPlayer } from "../src/match/types.js";
 
 /**
@@ -239,3 +240,99 @@ test("Magma is never pulled onto its own volcano", (t) => {
     );
   }
 });
+
+/**
+ * Don't Move asks every human to touch nothing for six seconds and bills them
+ * five thousand health if they do. A bot has no hands to hold still, so left to
+ * itself it spent those six seconds buying and attacking a table that was
+ * obeying the rules — the one game whose entire content is "do not act" was the
+ * one game where the AI acted freely.
+ */
+test("the AI sits out Don't Move, like everybody else", (t) => {
+  if (!modelsAvailable()) return t.skip("no trained models on disk");
+  const match = arena([
+    ["fire", false],
+    ["water", true],
+    ["nature", true],
+    ["ice", true],
+  ]);
+  match.partyModeEnabled = true;
+  const runner = new BotRunner(match);
+  runner.start();
+
+  // Past the opening truce first, so the bots are demonstrably willing to act —
+  // otherwise this test would pass on a match where nothing happens anyway.
+  for (let tick = 1; tick <= 20 * TICK.RATE; tick++) {
+    runner.tick(tick);
+    tickMatch(match, tick);
+  }
+  const acting = bots(match).some((b) => b.target !== null);
+  assert.ok(acting, "the bots never engaged, so this proves nothing");
+
+  const before = bots(match).map((b) => ({
+    id: b.id,
+    gold: b.economy.currency,
+    citizens: b.economy.citizens,
+    shield: b.castle.shield,
+  }));
+
+  startParty(match, "dontMove");
+  const start = match.tick;
+  for (let tick = start + 1; tick <= start + PARTY.DONT_MOVE_SECONDS * TICK.RATE; tick++) {
+    runner.tick(tick);
+    tickMatch(match, tick);
+  }
+
+  for (const was of before) {
+    const now = match.gameState!.getPlayer(was.id)!;
+    // Gold RISES — production is deliberately left running through Don't Move —
+    // so what is asserted is that nothing was SPENT: no purchase, no cast.
+    assert.ok(
+      now.economy.currency >= was.gold,
+      `${was.id} spent gold during Don't Move`,
+    );
+    assert.equal(now.economy.citizens, was.citizens, `${was.id} bought citizens`);
+    assert.ok(now.castle.shield <= was.shield, `${was.id} bought a shield`);
+  }
+});
+
+test("...and goes straight back to playing when it ends", (t) => {
+  // A freeze that never lifts would be a far worse bug than the one it fixes,
+  // and it would look identical for the first six seconds.
+  if (!modelsAvailable()) return t.skip("no trained models on disk");
+  const match = arena([
+    ["fire", false],
+    ["water", true],
+    ["nature", true],
+    ["ice", true],
+  ]);
+  match.partyModeEnabled = true;
+  const runner = new BotRunner(match);
+  runner.start();
+  for (let tick = 1; tick <= 20 * TICK.RATE; tick++) {
+    runner.tick(tick);
+    tickMatch(match, tick);
+  }
+
+  startParty(match, "dontMove");
+  // Run it out completely, past the result-banner linger, so the session clears.
+  const budget = (PARTY.DONT_MOVE_SECONDS + PARTY.RESULT_SECONDS + 3) * TICK.RATE;
+  for (let i = 0; i < budget; i++) {
+    runner.tick(match.tick + 1);
+    tickMatch(match, match.tick + 1);
+  }
+  assert.equal(match.gameState!.party, null, "the session never cleared");
+
+  const before = bots(match).map((b) => b.economy.currency);
+  for (let i = 0; i < 15 * TICK.RATE; i++) {
+    runner.tick(match.tick + 1);
+    tickMatch(match, match.tick + 1);
+  }
+  const after = bots(match).map((b) => b.economy.currency);
+  // Somebody spent something: the AI is playing again.
+  assert.ok(
+    after.some((gold, i) => gold < before[i]!) ||
+      bots(match).some((b) => b.economy.citizens > 0),
+    "the AI never resumed after Don't Move",
+  );
+})

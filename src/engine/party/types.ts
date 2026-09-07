@@ -143,6 +143,24 @@ export interface PartyGame {
   readonly holdsAttacks?: boolean;
 
   /**
+   * Whether the AI must sit out this game entirely.
+   *
+   * ⚠️ FOR DON'T MOVE, AND IT IS A FAIRNESS RULE RATHER THAN A COSMETIC ONE.
+   * That game asks every human to touch nothing for six seconds and bills them
+   * five thousand health if they so much as drag the mouse. The bots meanwhile
+   * carried on buying shields and casting attacks, because a bot has no hands to
+   * hold still and nothing was stopping it — so the one game whose whole content
+   * is "do not act" handed the AI six uncontested seconds against a table that
+   * was obeying the rules.
+   *
+   * Distinct from `holdsAttacks`, which suspends attacking for EVERYONE while a
+   * game is played heads-down. Don't Move deliberately does not do that: the
+   * match carries on around you, and that is the tension. This says only that
+   * the seats which cannot be asked to sit still are made to.
+   */
+  readonly botsSitStill?: boolean;
+
+  /**
    * Whether this game can run at all right now.
    *
    * ⚠️ CHECKED BEFORE THE ROLL PICKS IT, NOT AFTER. Haunted needs somebody to

@@ -861,3 +861,66 @@ test("switching away from Kitsune gives back the perk its passive granted", asyn
     host.close();
   }
 });
+
+/**
+ * Leaving a FINISHED match.
+ *
+ * ⚠️ THE BUG THIS EXISTS FOR WAS A DESYNC, NOT AN ERROR MESSAGE. `lobby:leave`
+ * refused anything that was not the lobby phase — including a match that had
+ * already ended — and returned WITHOUT clearing the socket's room. "Return to
+ * Menu" on the result screen is exactly that call, so the client went back to
+ * the menu believing it had left while the socket stayed bound to the dead
+ * room. Every Create or Join after that answered "Already in a room" until the
+ * player reloaded the page.
+ *
+ * The phase rule is asserted directly: the handler lives behind a live server
+ * in a child process, where arranging a finished match means playing one to the
+ * death over sockets — slow, and flaky for reasons that have nothing to do with
+ * this rule.
+ */
+test("a finished match can be left; a running one cannot", async () => {
+  const { canLeaveInPhase } = await import("../src/net/lobbyHandlers.js");
+
+  assert.equal(canLeaveInPhase("lobby"), true, "nobody could leave a lobby");
+  assert.equal(canLeaveInPhase("ended"), true, "a finished match trapped its players");
+  // The other two are a match in progress, and walking out of one is not this
+  // event's job — disconnecting and the reconnection grace handle that.
+  assert.equal(canLeaveInPhase("active"), false, "a live match could be walked out of");
+  assert.equal(canLeaveInPhase("starting"), false, "a starting match could be walked out of");
+});
+
+test("leaving frees the socket to create a new room straight away", async () => {
+  // The other half of the same bug: whatever the phase, a socket that has left
+  // must be able to start again without reconnecting.
+  const player = connect();
+  try {
+    await waitConnected(player);
+    const first = await player.emitWithAck("lobby:create", { name: "Alice" });
+    assert.equal(first.ok, true);
+
+    const left = await player.emitWithAck("lobby:leave", {});
+    assert.equal(left.data.left, true);
+
+    const second = await player.emitWithAck("lobby:create", { name: "Alice" });
+    assert.equal(second.ok, true, JSON.stringify(second.error ?? {}));
+    assert.notEqual(second.data.roomCode, first.data.roomCode);
+
+    // …and joining someone else's room works too, which is the path the report
+    // named alongside creating.
+    const other = connect();
+    try {
+      await waitConnected(other);
+      const theirs = await other.emitWithAck("lobby:create", { name: "Bob" });
+      await player.emitWithAck("lobby:leave", {});
+      const joined = await player.emitWithAck("lobby:join", {
+        name: "Alice",
+        roomCode: theirs.data.roomCode,
+      });
+      assert.equal(joined.ok, true, JSON.stringify(joined.error ?? {}))
+    } finally {
+      other.close()
+    }
+  } finally {
+    player.close()
+  }
+})

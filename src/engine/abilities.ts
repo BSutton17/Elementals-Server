@@ -2415,6 +2415,7 @@ function applyEffect(
           card: card.label,
           suit: card.suit,
           damage: cardAmount,
+          targetId: recipient.id,
         });
       }
       const drawn = resolveDamage(caster, recipient, cardAmount, {

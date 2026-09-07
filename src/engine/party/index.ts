@@ -242,6 +242,18 @@ export function partyBlocksCentrepieces(match: Match): boolean {
 }
 
 /**
+ * True while the AI must do nothing at all.
+ *
+ * Don't Move only — see `botsSitStill`. Read by the bot runner, which is the one
+ * place bot decisions are made, so there is no path around it.
+ */
+export function partyFreezesBots(match: Match): boolean {
+  const session = match.gameState?.party;
+  if (!session || session.resolvedTick !== null) return false;
+  return partyGame(session.gameId)?.botsSitStill === true;
+}
+
+/**
  * True while the table may not choose targets at all.
  *
  * Bomb Attack only: clicking a castle passes the bomb, and a click that both

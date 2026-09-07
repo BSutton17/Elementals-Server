@@ -459,6 +459,17 @@ export type GameplayEvent =
        *  rider the card leaves behind, and which pip the reveal shows. */
       suit: string | null;
       damage: number;
+      /**
+       * Who the card was played at.
+       *
+       * ⚠️ SENT RATHER THAN INFERRED, AND THE REVEAL IS SCOPED BY IT. The
+       * client used to work the victim out from the caster's CURRENT target,
+       * which is a different question: a target can move between the cast and
+       * the animation, and then the card flies at the wrong castle. It also
+       * gave the client no way to tell whether this draw was any of its
+       * business — so every kingdom at the table watched every Joker card.
+       */
+      targetId: string;
     }
   /** Joker gambled on Lucky Draw. `outcome` names what came up, or is null
    *  when the roll missed and nothing happened at all. */

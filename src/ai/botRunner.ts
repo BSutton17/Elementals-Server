@@ -1,4 +1,5 @@
 import type { Match } from "../match/Match.js";
+import { partyFreezesBots } from "../engine/party/index.js";
 import type { BotDifficulty } from "../match/types.js";
 import { NetworkController } from "./controller.js";
 import { loadModel } from "./modelStore.js";
@@ -83,6 +84,13 @@ export class BotRunner {
    */
   tick(tick: number): void {
     if (!this.started || this.match.phase !== "active") return;
+    // ⚠️ DON'T MOVE MEANS THE BOTS TOO. That minigame bills a human five
+    // thousand health for touching anything for six seconds; a bot has no hands
+    // to hold still, so without this it spends those six seconds buying shields
+    // and attacking a table that is obeying the rules. Gated here rather than
+    // inside each controller because this is the one place bot decisions are
+    // made, so there is no path around it.
+    if (partyFreezesBots(this.match)) return;
 
     for (const [id, controller] of this.controllers) {
       const state = this.match.gameState?.getPlayer(id);
