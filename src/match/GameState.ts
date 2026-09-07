@@ -1,5 +1,5 @@
 import type { StatusEffectDefinition } from "../engine/status.js";
-import type { PartySession } from "../engine/party/types.js";
+import type { PartyGameId, PartySession } from "../engine/party/types.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPlayer } from "./types.js";
 import {
@@ -304,6 +304,20 @@ export class GameState {
    * the whole point is that it remembers how long the drought has run.
    */
   partyClock: { ticksUntilRoll: number; intervalSeconds: number } | null = null;
+
+  /**
+   * The minigames that have already turned up this cycle.
+   *
+   * ⚠️ A BAG, NOT A DIE. Picking uniformly every time means a maze twice in
+   * three minutes while four other games never appear at all — which reads as
+   * the rotation being broken rather than as luck. A game goes in here when it
+   * appears and is not eligible again until the bag is empty.
+   *
+   * Emptied when nothing eligible is left to pick, which also stops Haunted
+   * deadlocking the cycle: it is only playable with somebody to raise, so a
+   * match where nobody dies would otherwise hold one slot open forever.
+   */
+  partyHistory: PartyGameId[] = [];
 
   monsterSpawn: MonsterSpawnState | null = null;
 

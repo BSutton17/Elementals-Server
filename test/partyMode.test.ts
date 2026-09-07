@@ -22,6 +22,7 @@ import {
   resolveRound,
   settleMoney,
   eligibleCastles,
+  PARTY_GAMES,
 } from "../src/engine/party/index.js";
 import { PARTY, TICK } from "../src/data/balance.js";
 import type { MatchPlayer } from "../src/match/types.js";
@@ -61,6 +62,20 @@ function table(
 const runTicks = (match: Match, count: number) => {
   for (let i = 0; i < count; i++) tickMatch(match, match.tick + 1);
 };
+
+/**
+ * A seeded stream, for the tests that want varied rolls rather than a fixed one.
+ *
+ * ⚠️ NOT `Math.random`. A test that rolls dice on every run is a test that fails
+ * on some of them, and the failure lands on whoever changed something else that
+ * day — four separate files in this suite had that shape, and each one cost a
+ * debugging session before it was recognised.
+ */
+let seed = 0x2545f491;
+function rand(): number {
+  seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x1b873593) >>> 0;
+  return seed / 0x100000000;
+}
 
 // --- the clock ---------------------------------------------------------------
 
@@ -493,7 +508,14 @@ test("bots play, so a table of them still finishes", () => {
   // ⚠️ WITHOUT THIS, PARTY MODE IS A BOT CULL. Most tables have bots in them; a
   // bot that cannot play a minigame either stalls the session to its cap or
   // loses every one of them.
-  const match = table(["fire", "water", "earth"], Math.random, ["p1", "p2"]);
+  //
+  // ⚠️ SEEDED, AND WITH THE ROLL TURNED OFF. This ran on `Math.random` with the
+  // clock live, so it was two coin tosses: the bots' picking varied every run,
+  // and once the roll interval came down to twenty seconds a NEW session could
+  // start inside the final wait and fail the "abandoned session closed"
+  // assertion. Neither has anything to do with whether bots can play a lock.
+  const match = table(["fire", "water", "earth"], rand, ["p1", "p2"]);
+  match.partyModeEnabled = false;
   startParty(match, "lockpick");
   runTicks(match, 25 * TICK.RATE);
 
@@ -640,4 +662,89 @@ test("a table of one is left at the full interval, not wound down to the floor",
     match.gameState!.partyClock!.intervalSeconds,
     PARTY.ROLL_INTERVAL_SECONDS,
   );
+})
+
+// --- the rotation ------------------------------------------------------------
+
+/**
+ * A minigame does not come back until every other one has had its turn.
+ *
+ * ⚠️ THE FAILURE THIS PREVENTS IS NOT UNFAIRNESS, IT IS LOOKING BROKEN. Picking
+ * uniformly, a fifteen-game rotation will happily show the maze twice in three
+ * minutes while four games never appear at all — and a table that sees the same
+ * maze twice concludes the rotation is stuck, not that they were unlucky.
+ */
+
+/** Rolls the clock forward until a game starts, then clears it, `n` times. */
+function drawGames(match: Match, n: number): string[] {
+  const drawn: string[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let t = 0; t < 300 * TICK.RATE && match.gameState!.party === null; t++) {
+      tickMatch(match, match.tick + 1);
+    }
+    const session = match.gameState!.party;
+    if (!session) break;
+    drawn.push(session.gameId);
+    // Clear it by hand rather than playing it out: this is about what the roll
+    // CHOOSES, and running fifteen games to completion would take the test
+    // through every minigame's rules as well.
+    match.gameState!.party = null;
+  }
+  return drawn;
+}
+
+test("every minigame has its turn before any of them repeats", () => {
+  // rng 0 always passes the chance and always takes index 0 of whatever is
+  // offered — so with no rotation this would draw the SAME game fifteen times,
+  // which is exactly the shape of the bug.
+  const match = table(["fire", "water", "earth"], () => 0);
+  const drawn = drawGames(match, 12);
+
+  assert.equal(drawn.length, 12, `only ${drawn.length} games were drawn`);
+  assert.equal(
+    new Set(drawn).size,
+    drawn.length,
+    `a game repeated inside one cycle: ${drawn.join(", ")}`,
+  );
+});
+
+test("the bag refills once everything playable has been drawn", () => {
+  // Fourteen games can run (Haunted cannot — nobody is dead), so the fifteenth
+  // draw has to start a new cycle rather than finding nothing and stalling.
+  const match = table(["fire", "water", "earth"], () => 0);
+  const drawn = drawGames(match, 20);
+  assert.ok(drawn.length >= 16, `the rotation stalled after ${drawn.length} games`);
+
+  const playable = PARTY_GAMES.filter((g) => g.canStart?.(match) !== false).length;
+  const firstCycle = drawn.slice(0, playable);
+  assert.equal(new Set(firstCycle).size, playable, "the first cycle repeated a game");
+  // …and the cycle after it is a fresh set rather than a stall on one game.
+  const secondCycle = drawn.slice(playable, playable * 2);
+  assert.ok(new Set(secondCycle).size > 1, "the second cycle stuck on one game");
+});
+
+test("a game nobody can play never holds the rotation open", () => {
+  // ⚠️ THE DEADLOCK THIS AVOIDS. Haunted needs somebody to raise, so in a match
+  // where nobody dies it can never be drawn. A bag that waited for EVERY game
+  // to have its turn would hold that slot open forever and leave the other
+  // fourteen unreachable for the rest of the match.
+  const match = table(["fire", "water", "earth"], () => 0);
+  const drawn = drawGames(match, 18);
+  assert.ok(
+    !drawn.includes("haunted"),
+    "Haunted was drawn with nobody dead, which canStart should forbid",
+  );
+  assert.ok(drawn.length >= 16, "the rotation stalled waiting for a game that cannot run");
+});
+
+test("starting one by hand still spends its turn", () => {
+  // The rotation is recorded where a minigame APPEARS, not at the roll, so
+  // anything started another way cannot quietly follow itself.
+  const match = table(["fire", "water", "earth"], () => 0);
+  startParty(match, "maze");
+  assert.deepEqual(match.gameState!.partyHistory, ["maze"]);
+  match.gameState!.party = null;
+
+  const drawn = drawGames(match, 1);
+  assert.notEqual(drawn[0], "maze", "the maze followed itself");
 })

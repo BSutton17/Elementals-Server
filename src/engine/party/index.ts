@@ -198,10 +198,37 @@ export function tickPartyClock(match: Match): void {
     reschedule(shorter());
     return;
   }
-  const game = pickPartyGame(playable, hauntable(match).length, match.rng);
+
+  const game = pickPartyGame(eligible(state, playable), hauntable(match).length, match.rng);
   startParty(match, game.id);
   // Landed. The drought is over, so the wait goes back to its full length.
   reschedule(full);
+}
+
+/**
+ * The playable games that have not had their turn yet.
+ *
+ * ⚠️ AN EMPTY BAG IS REFILLED HERE, AND IT HAS TO BE REFILLED ON *PLAYABLE*
+ * RATHER THAN ON EVERYTHING. Haunted only runs with somebody to raise, so in a
+ * match where nobody dies it can never be drawn — and a bag that waited for
+ * every game to have its turn would hold that one slot open forever, leaving
+ * the last fourteen games unreachable for the rest of the match. When nothing
+ * eligible is left the cycle simply starts again.
+ *
+ * ⚠️ THE GAME THAT JUST PLAYED CAN OPEN THE NEXT CYCLE. Once every other game
+ * has had its turn the constraint has been served, so the rule permits it. It
+ * needs the bag to empty on exactly the wrong draw, which is rare, and the
+ * alternative — carrying a grudge across the boundary — is a second rule to
+ * explain for a case nobody would notice.
+ */
+function eligible(
+  state: { partyHistory: PartyGameId[] },
+  playable: readonly PartyGame[],
+): readonly PartyGame[] {
+  const fresh = playable.filter((g) => !state.partyHistory.includes(g.id));
+  if (fresh.length > 0) return fresh;
+  state.partyHistory = [];
+  return playable;
 }
 
 /**
@@ -284,6 +311,11 @@ export function startParty(match: Match, gameId: PartyGameId): PartySession | nu
     };
   }
   state.party = session;
+  // ⚠️ RECORDED HERE, NOT AT THE ROLL, BECAUSE THIS IS WHERE A MINIGAME ACTUALLY
+  // APPEARS. Every route to the table funnels through this function, so putting
+  // it at the roll would mean anything started another way was invisible to the
+  // rotation and could follow itself immediately.
+  if (!state.partyHistory.includes(gameId)) state.partyHistory.push(gameId);
   state.events.emit({
     type: "partyStarted",
     tick: match.tick,
