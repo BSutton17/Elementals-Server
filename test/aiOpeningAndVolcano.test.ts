@@ -256,7 +256,11 @@ test("the AI sits out Don't Move, like everybody else", (t) => {
     ["nature", true],
     ["ice", true],
   ]);
-  match.partyModeEnabled = true;
+  // ⚠️ THE ROLL STAYS OFF; THE SESSION IS STARTED BY HAND. `startParty` does not
+  // consult `partyModeEnabled` — only the clock does — so leaving it off means
+  // no RANDOM minigame can land during the warm-up below and refuse the one this
+  // test is about. It did exactly that the moment the first roll moved to
+  // twenty seconds, which is also how long the warm-up runs.
   const runner = new BotRunner(match);
   runner.start();
 
@@ -306,7 +310,11 @@ test("...and goes straight back to playing when it ends", (t) => {
     ["nature", true],
     ["ice", true],
   ]);
-  match.partyModeEnabled = true;
+  // ⚠️ THE ROLL STAYS OFF; THE SESSION IS STARTED BY HAND. `startParty` does not
+  // consult `partyModeEnabled` — only the clock does — so leaving it off means
+  // no RANDOM minigame can land during the warm-up below and refuse the one this
+  // test is about. It did exactly that the moment the first roll moved to
+  // twenty seconds, which is also how long the warm-up runs.
   const runner = new BotRunner(match);
   runner.start();
   for (let tick = 1; tick <= 20 * TICK.RATE; tick++) {

@@ -5,7 +5,7 @@ import type { BotDifficulty, MatchPhase, MatchPlayer } from "../match/types.js";
 import type { ReconnectionManager } from "./ReconnectionManager.js";
 import { fail, ok, respond } from "./ack.js";
 import { broadcastLobbyUpdate, removePlayerFromMatch } from "./lobbyRoom.js";
-import { ensureSessionId } from "./sessionHandlers.js";
+import { applySyncRate, ensureSessionId } from "./sessionHandlers.js";
 import { buildMatchSnapshot, stampCastlePaint } from "../match/snapshot.js";
 import { createMatchConfig } from "../match/matchConfig.js";
 import { isKingdomId, KINGDOM_IDS } from "../data/kingdoms.js";
@@ -264,6 +264,7 @@ export function registerLobbyHandlers(
       match.addPlayer(player);
       socket.data.playerId = player.id;
       socket.data.roomCode = match.roomCode;
+      applySyncRate(socket, match.roomCode);
       void socket.join(match.roomCode);
 
       socket.to(match.roomCode).emit("lobby:playerJoined", { player });
@@ -338,6 +339,7 @@ export function registerLobbyHandlers(
 
     socket.data.playerId = player.id;
     socket.data.roomCode = match.roomCode;
+    applySyncRate(socket, match.roomCode);
     void socket.join(match.roomCode);
 
     logger.info("Match created", {
@@ -421,6 +423,7 @@ export function registerLobbyHandlers(
 
       socket.data.playerId = player.id;
       socket.data.roomCode = match.roomCode;
+      applySyncRate(socket, match.roomCode);
       void socket.join(match.roomCode);
 
       logger.info("Player joined match", {
@@ -968,6 +971,7 @@ export function registerLobbyHandlers(
       socket.data.sessionId = sessionId;
       socket.data.playerId = player.id;
       socket.data.roomCode = roomCode;
+      applySyncRate(socket, roomCode);
       void socket.join(roomCode);
 
       logger.info("Player reconnected", {

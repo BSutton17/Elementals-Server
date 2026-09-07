@@ -31,9 +31,26 @@ const player = (id: string, kingdomId: string): MatchPlayer => ({
   connected: true,
 });
 
+/**
+ * One seeded stream for the whole file.
+ *
+ * ⚠️ THE DAMAGE CALLS HERE ALREADY PASS THEIR OWN `rng`, AND THAT WAS NOT
+ * ENOUGH. The MATCH's stream was still `Math.random`, so every chance-based
+ * passive in the room rolled differently on every run — and "A Gust of Envy"
+ * asserts that Air is UNTOUCHED, which a stray proc quietly falsifies. It failed
+ * the full suite while passing three times out of three on its own, which is the
+ * worst shape a test can have: it looks like the change you just made broke
+ * something unrelated.
+ */
+let seed = 0x6d2b79f5;
+function rand(): number {
+  seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x1b873593) >>> 0;
+  return seed / 0x100000000;
+}
+
 /** Starts a match with one player per kingdom id given, in order (p0, p1, …). */
 function skies(kingdoms: string[]): { match: Match; players: PlayerState[] } {
-  const match = new Match("1234");
+  const match = new Match("1234", { rng: rand });
   kingdoms.forEach((k, i) => match.addPlayer(player(`p${i}`, k)));
   match.hostId = "p0";
   match.start(createMatchConfig(match));

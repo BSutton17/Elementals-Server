@@ -17,6 +17,7 @@ import {
   hasGhostsToRaise,
   kitKingdomOf,
   mirrorSlot,
+  pickPartyGame,
   swapGrantsUnlock,
   buildShower,
   buildMess,
@@ -24,6 +25,7 @@ import {
 import { abilityPrices } from "../src/net/gameSync.js";
 import { PARTY, TICK } from "../src/data/balance.js";
 import type { MatchPlayer, BotDifficulty } from "../src/match/types.js";
+import type { PartyGame } from "../src/engine/party/types.js";
 
 // Party Mode, batch four: the ambient games.
 //
@@ -315,3 +317,85 @@ test("the mess covers the whole screen, with no gap to see through", () => {
     }
   }
 });
+
+// --- which game a successful roll lands on -----------------------------------
+
+/**
+ * Haunted gets likelier the fuller the graveyard.
+ *
+ * ⚠️ IT DECIDES WHICH GAME, NEVER WHETHER ONE HAPPENS. The `living / 10` roll
+ * has already passed by the time the pick runs, so a table full of ghosts sees
+ * Haunted more often without seeing Party Mode more often. Those are separate
+ * dials, and rolling them together would turn a bad run of luck into a minigame
+ * every few seconds.
+ */
+
+/** A stub game list: Haunted plus `n` others, which is all the pick reads. */
+function choices(others: number) {
+  const list = [{ id: "haunted" }] as unknown as PartyGame[];
+  for (let i = 0; i < others; i++) list.push({ id: `other${i}` } as unknown as PartyGame);
+  return list;
+}
+
+/** Feeds the pick a fixed sequence of rolls. */
+const rolls = (...values: number[]) => {
+  let i = 0;
+  return () => values[Math.min(i++, values.length - 1)]!;
+};
+
+test("each ghost adds twelve points to Haunted's share", () => {
+  const games = choices(14);
+  for (const ghosts of [1, 2, 3, 5]) {
+    const chance = ghosts * PARTY.HAUNTED_CHANCE_PER_GHOST;
+    // A roll just under the line takes Haunted…
+    assert.equal(
+      pickPartyGame(games, ghosts, rolls(chance - 0.001, 0)).id,
+      "haunted",
+      `${ghosts} ghosts did not reach ${Math.round(chance * 100)}%`,
+    );
+    // …and a roll just over it does not.
+    assert.notEqual(
+      pickPartyGame(games, ghosts, rolls(chance + 0.001, 0)).id,
+      "haunted",
+      `${ghosts} ghosts took Haunted past its share`,
+    );
+  }
+});
+
+test("with nobody dead it is picked like anything else", () => {
+  // Haunted cannot be in `playable` with an empty graveyard — `canStart` sees
+  // to that — but the weighting must not invent a special case if it ever is.
+  const games = choices(14);
+  assert.notEqual(pickPartyGame(games, 0, rolls(0.5)).id, "haunted");
+});
+
+test("a graveyard never makes Haunted a certainty on its own", () => {
+  // Nine ghosts is past 100%, and the game only seats seven — but arithmetic
+  // that runs past one is arithmetic waiting to run past something else.
+  const games = choices(14);
+  assert.equal(pickPartyGame(games, 9, rolls(0.999)).id, "haunted");
+  assert.equal(pickPartyGame(games, 0, rolls(0.999)).id, "other13");
+});
+
+test("it still runs when it is the only thing that can", () => {
+  // Every other game refused; the pick must not divide by an empty list.
+  assert.equal(pickPartyGame(choices(0), 1, rolls(0.99)).id, "haunted");
+});
+
+test("the other games stay evenly spread between them", () => {
+  // The weighting takes from the pool as a whole, not from one unlucky game.
+  const games = choices(4);
+  const seen = new Map<string, number>();
+  let i = 0;
+  const stream = () => {
+    // Always miss Haunted, then walk the others in turn.
+    i += 1;
+    return i % 2 === 1 ? 0.99 : ((i / 2) % 4) / 4;
+  };
+  for (let n = 0; n < 40; n++) {
+    const id = pickPartyGame(games, 1, stream).id;
+    seen.set(id, (seen.get(id) ?? 0) + 1);
+  }
+  assert.equal(seen.get("haunted"), undefined, "Haunted won a roll it should have missed");
+  assert.equal(seen.size, 4, `the other games were not all reachable: ${[...seen.keys()]}`);
+})

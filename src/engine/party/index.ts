@@ -19,7 +19,7 @@ import { DONT_MOVE_GAME } from "./dontMove.js";
 // `KINGDOM_SWAP_GAME` is deliberately not imported — see PARTY_GAMES below.
 // `tickKingdomSwaps` still runs, and is a no-op with nothing swapped.
 import { tickKingdomSwaps } from "./kingdomSwap.js";
-import { HAUNTED_GAME, hasGhostsToRaise, tickGhosts } from "./haunted.js";
+import { HAUNTED_GAME, hasGhostsToRaise, hauntable, tickGhosts } from "./haunted.js";
 import { GOLD_PARTY_GAME } from "./goldParty.js";
 import { CLEAN_UP_GAME } from "./cleanUp.js";
 import type {
@@ -135,11 +135,14 @@ export function tickPartyClock(match: Match): void {
   // announcement.
   if (state.party !== null) return;
 
+  const full = param("party.rollIntervalSeconds", PARTY.ROLL_INTERVAL_SECONDS);
+
   if (state.partyClock === null) {
     state.partyClock = {
       ticksUntilRoll: Math.round(
         param("party.firstRollSeconds", PARTY.FIRST_ROLL_SECONDS) * TICK.RATE,
       ),
+      intervalSeconds: full,
     };
   }
   const clock = state.partyClock;
@@ -150,22 +153,93 @@ export function tickPartyClock(match: Match): void {
 
   clock.ticksUntilRoll -= 1;
   if (clock.ticksUntilRoll > 0) return;
-  clock.ticksUntilRoll = Math.round(
-    param("party.rollIntervalSeconds", PARTY.ROLL_INTERVAL_SECONDS) * TICK.RATE,
-  );
+
+  /**
+   * ⚠️ EVERY PATH OUT OF HERE MUST SET THE CLOCK. It has just reached zero, and
+   * a return that forgets to reschedule leaves it there — which is not "no
+   * minigame", it is a roll every single tick, twenty a second, for the rest of
+   * the match.
+   */
+  const reschedule = (seconds: number): void => {
+    clock.intervalSeconds = seconds;
+    clock.ticksUntilRoll = Math.max(1, Math.round(seconds * TICK.RATE));
+  };
+
+  /** The next wait after a roll that came to nothing: three seconds closer. */
+  const shorter = (): number =>
+    Math.max(
+      param("party.rollMinIntervalSeconds", PARTY.ROLL_MIN_INTERVAL_SECONDS),
+      clock.intervalSeconds - param("party.rollBackoffSeconds", PARTY.ROLL_BACKOFF_SECONDS),
+    );
 
   const living = contenders(match).length;
-  if (living < 2) return; // a party of one is not a party
+  if (living < 2) {
+    // A party of one is not a party. Left at the full interval rather than
+    // backed off: there is nothing to grow more likely toward, and winding the
+    // clock down to its floor would spend the rest of a finished match rolling
+    // five times a minute for a game that cannot start.
+    reschedule(full);
+    return;
+  }
+
   const divisor = Math.max(1, param("party.chanceDivisor", PARTY.CHANCE_DIVISOR));
-  if (match.rng() >= living / divisor) return;
+  if (match.rng() >= living / divisor) {
+    reschedule(shorter());
+    return;
+  }
 
   // Only from the games that CAN run: Haunted with nobody dead is a banner
   // announcing nothing, and it would still hold the next roll for its whole
   // duration.
   const playable = PARTY_GAMES.filter((g) => g.canStart?.(match) !== false);
-  if (playable.length === 0) return;
-  const game = playable[Math.floor(match.rng() * playable.length)]!;
+  if (playable.length === 0) {
+    // The chance came good and there was nothing to show for it, which from the
+    // table's side is indistinguishable from a miss — so it counts as one.
+    reschedule(shorter());
+    return;
+  }
+  const game = pickPartyGame(playable, hauntable(match).length, match.rng);
   startParty(match, game.id);
+  // Landed. The drought is over, so the wait goes back to its full length.
+  reschedule(full);
+}
+
+/**
+ * Which minigame a successful roll lands on.
+ *
+ * Uniform across everything playable, except that Haunted is weighted by how
+ * many kingdoms are waiting to be raised: each ghost adds
+ * `HAUNTED_CHANCE_PER_GHOST` to the chance it is the one chosen.
+ *
+ * ⚠️ THIS DECIDES WHICH GAME, NEVER WHETHER ONE HAPPENS. The `living / 10` roll
+ * has already passed by the time this is called, so a graveyard makes Haunted
+ * likelier without making Party Mode itself any more frequent — those are
+ * separate dials and conflating them would let a bad run of luck turn into a
+ * minigame every few seconds.
+ *
+ * Exported so the weighting can be tested as arithmetic rather than inferred
+ * from thousands of ticks of a live match.
+ */
+export function pickPartyGame(
+  playable: readonly PartyGame[],
+  ghosts: number,
+  rng: () => number,
+): PartyGame {
+  const haunted = playable.find((g) => g.id === "haunted");
+  const others = playable.filter((g) => g.id !== "haunted");
+
+  // Haunted is only ever in `playable` when there is somebody to raise, so
+  // `ghosts` is at least one whenever this branch is live. `others` being empty
+  // would mean Haunted is the only thing that can run, and it should then run.
+  if (haunted && ghosts > 0) {
+    const chance = Math.min(
+      1,
+      ghosts * param("party.hauntedChancePerGhost", PARTY.HAUNTED_CHANCE_PER_GHOST),
+    );
+    if (others.length === 0 || rng() < chance) return haunted;
+    return others[Math.floor(rng() * others.length)]!;
+  }
+  return playable[Math.floor(rng() * playable.length)]!;
 }
 
 /**

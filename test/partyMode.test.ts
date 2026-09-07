@@ -555,3 +555,89 @@ test("a monster will not spawn into the gap either", async () => {
   assert.equal(partyBlocksCentrepieces(match), true);
   assert.equal(match.gameState!.monster, null, "a monster landed mid-minigame");
 });
+
+// --- the shrinking wait ------------------------------------------------------
+
+/**
+ * A roll that misses brings the next one three seconds closer, and landing a
+ * game puts the wait back to its full length.
+ *
+ * ⚠️ THE RISK IN THIS IS NOT THE ARITHMETIC, IT IS THE CLOCK REACHING ZERO AND
+ * STAYING THERE. Every path out of the roll has to reschedule; one that forgets
+ * does not mean "no minigame", it means a roll on every tick — twenty a second,
+ * for the rest of the match. The floor exists for the same reason: without it
+ * the backoff walks straight past zero.
+ */
+
+test("a miss brings the next roll three seconds closer, down to a floor", () => {
+  // rng 0.99 never passes `living / 10`, so every roll misses.
+  const match = table(["fire", "water", "earth"], () => 0.99);
+  // One tick, so the clock exists but has not yet rolled.
+  runTicks(match, 1);
+  assert.equal(
+    match.gameState!.partyClock!.intervalSeconds,
+    PARTY.ROLL_INTERVAL_SECONDS,
+    "a match did not start out on the full interval",
+  );
+
+  // Out to the first roll, which misses — so the wait it leaves behind is
+  // already the shortened one.
+  runTicks(match, PARTY.FIRST_ROLL_SECONDS * TICK.RATE);
+  const clock = match.gameState!.partyClock!;
+  const seen: number[] = [clock.intervalSeconds];
+  for (let i = 0; i < 8; i++) {
+    runTicks(match, clock.intervalSeconds * TICK.RATE);
+    seen.push(clock.intervalSeconds);
+  }
+
+  // 20 → 17 → 14 → 11 → …, exactly as asked for.
+  assert.equal(seen[0], 17, `the wait after one miss was ${seen[0]}`);
+  assert.equal(seen[1], 14);
+  assert.equal(seen[2], 11);
+  assert.equal(seen[3], 8);
+  // …and it stops where the floor is rather than walking past zero.
+  assert.ok(
+    seen.every((s) => s >= PARTY.ROLL_MIN_INTERVAL_SECONDS),
+    `the wait went below the floor: ${seen.join(" → ")}`,
+  );
+  assert.equal(seen.at(-1), PARTY.ROLL_MIN_INTERVAL_SECONDS, "it never reached the floor");
+});
+
+test("the clock never reaches zero and stays there", () => {
+  // ⚠️ THE FAILURE THIS GUARDS IS SILENT AND CATASTROPHIC: a path out of the
+  // roll that forgets to reschedule leaves the countdown at zero, which rolls
+  // twenty times a second forever.
+  const match = table(["fire", "water", "earth"], () => 0.99);
+  for (let i = 0; i < 200 * TICK.RATE; i++) {
+    tickMatch(match, match.tick + 1);
+    const clock = match.gameState!.partyClock;
+    if (clock) {
+      assert.ok(clock.ticksUntilRoll > 0, `the clock sat at ${clock.ticksUntilRoll}`);
+    }
+  }
+});
+
+test("landing a game puts the wait back to its full length", () => {
+  // rng 0 always passes the chance.
+  const match = table(["fire", "water", "earth"], () => 0);
+  runTicks(match, PARTY.FIRST_ROLL_SECONDS * TICK.RATE);
+  assert.notEqual(match.gameState!.party, null, "nothing started on a certain roll");
+  assert.equal(
+    match.gameState!.partyClock!.intervalSeconds,
+    PARTY.ROLL_INTERVAL_SECONDS,
+    "the wait was not reset after a game landed",
+  );
+});
+
+test("a table of one is left at the full interval, not wound down to the floor", () => {
+  // Nothing can start, so there is nothing for a shrinking wait to grow more
+  // likely toward — and winding it to the floor would roll five times a minute
+  // for the rest of a finished match.
+  const match = table(["fire", "water"], () => 0.99);
+  match.gameState!.getPlayer("p1")!.eliminated = true;
+  runTicks(match, (PARTY.FIRST_ROLL_SECONDS + PARTY.ROLL_INTERVAL_SECONDS * 4) * TICK.RATE);
+  assert.equal(
+    match.gameState!.partyClock!.intervalSeconds,
+    PARTY.ROLL_INTERVAL_SECONDS,
+  );
+})

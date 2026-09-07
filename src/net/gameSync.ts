@@ -14,7 +14,7 @@ import {
 import { abilityUpgradeCost, resolveAbility } from "../engine/abilities.js";
 import { abilitiesForKingdom } from "../data/kingdomAbilities.js";
 import { standingCentrepiece } from "../engine/centrepiece.js";
-import { SHIELD } from "../data/balance.js";
+import { SHIELD, TICK } from "../data/balance.js";
 import { param } from "../engine/parameters.js";
 import { partyForWire } from "./partySync.js";
 import {
@@ -116,11 +116,58 @@ export function abilityPrices(p: PlayerState): Record<string, AbilityPrices> {
   return prices;
 }
 
+/**
+ * The room a socket joins to be sent state half as often.
+ *
+ * A second room rather than a per-socket loop: Socket.IO serialises the payload
+ * once per emit, so `to(room).except(slow)` plus an occasional `to(slow)` costs
+ * two serialisations however many players are in the match, where emitting to
+ * each socket individually would cost one each.
+ */
+export const slowRoom = (roomCode: string): string => `${roomCode}:slow`;
+
+/** The room every FULL-rate socket in a match sits in. */
+export const fastRoom = (roomCode: string): string => `${roomCode}:fast`;
+
+/**
+ * Whether the half-rate clients get this one.
+ *
+ * ⚠️ A MINIGAME IS ALWAYS SENT AT FULL RATE, TO EVERYBODY. Reaction Test is
+ * scored from the tick a press ARRIVES against the tick the button turned
+ * green; a player told about green 200ms late has a 200ms worse reaction time
+ * through no fault of their own. Bomb Attack and the barrier games are the same
+ * shape. Saving battery must never cost somebody the game, so the setting stops
+ * applying for exactly as long as a session is live.
+ */
+export function slowClientsGetThis(state: {
+  tick: number;
+  party: { resolvedTick: number | null } | null;
+}): boolean {
+  if (state.party && !state.party.resolvedTick) return true;
+  // Every other sync. `syncEveryTicks` is the cadence the loop already uses, so
+  // this halves it rather than landing on an unrelated rhythm.
+  return Math.floor(state.tick / TICK.SYNC_EVERY_TICKS) % 2 === 0;
+}
+
 export function broadcastGameState(io: Server, match: Match): void {
   const state = match.gameState;
   if (!state) return;
 
-  io.to(match.roomCode).emit("state:sync", {
+  // ⚠️ ADDRESSED AS "EVERYONE" OR "THE FAST ONES", NEVER AS "EVERYONE EXCEPT".
+  // `except()` would be the obvious way to write this, and it fails badly: a
+  // socket that somehow never joined a rate room would be excluded from
+  // nothing, which is fine — but every test double in the suite provides a
+  // plain `io.to().emit()`, and three of them broke on the missing method.
+  //
+  // Phrased this way the emitter only ever needs `to().emit()`, and the failure
+  // mode inverts: a socket that missed its rate room still receives the syncs
+  // sent to the whole room, so the worst case is half rate rather than a
+  // battlefield that never updates.
+  const audience = slowClientsGetThis(state)
+    ? io.to(match.roomCode)
+    : io.to(fastRoom(match.roomCode));
+
+  audience.emit("state:sync", {
     tick: state.tick,
     serverTime: Date.now(),
     players: state.getPlayers().map((p) => ({

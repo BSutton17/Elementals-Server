@@ -295,7 +295,15 @@ export class GameState {
    * Armed lazily like the monster's, so a parameter override set after the
    * match starts still lands on the first interval.
    */
-  partyClock: { ticksUntilRoll: number } | null = null;
+  /**
+   * The party roll's countdown, and how long the current wait is.
+   *
+   * `intervalSeconds` is carried because it SHRINKS: each roll that misses its
+   * chance brings the next one three seconds closer, and landing a game puts it
+   * back to the full interval. Held on the clock rather than recomputed, since
+   * the whole point is that it remembers how long the drought has run.
+   */
+  partyClock: { ticksUntilRoll: number; intervalSeconds: number } | null = null;
 
   monsterSpawn: MonsterSpawnState | null = null;
 

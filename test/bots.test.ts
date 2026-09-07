@@ -20,10 +20,31 @@ import { KINGDOM_IDS, type KingdomId } from "../src/data/kingdoms.js";
  * pinning on its own. If the two ever diverge this test still describes what
  * the behaviour must be.
  */
+/**
+ * One seeded stream for the whole file.
+ *
+ * ⚠️ THIS FILE USED TO RUN ON `Math.random` AND FAILED ROUGHLY ONE RUN IN
+ * THREE. "A mixed human + bot match runs without the human acting" asks whether
+ * ANY bot cast anything in two minutes, and against an unseeded engine that is
+ * a coin toss dressed as an assertion: the same code passed twice and failed
+ * once in three consecutive runs, which cost three separate debugging sessions
+ * chasing a change that had nothing to do with it.
+ *
+ * Seeded, the draw still VARIES between calls — which is what
+ * "bots draw different perk loadouts" is about — but it varies the same way
+ * every run, so a failure here means the AI changed rather than that the dice
+ * did.
+ */
+let seed = 0x9e3779b9;
+function rand(): number {
+  seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x1b873593) >>> 0;
+  return seed / 0x100000000;
+}
+
 function randomPerksForTest(kingdomId: KingdomId): string[] {
   const pool = [...PERK_IDS];
   for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [pool[i], pool[j]] = [pool[j]!, pool[i]!];
   }
   return pool.slice(0, perksAllowedFor(kingdomId));
@@ -69,7 +90,10 @@ function humanPlayer(kingdomId: KingdomId): MatchPlayer {
 }
 
 function startedMatch(players: MatchPlayer[]): Match {
-  const match = new Match(`ROOM${seq}`);
+  // Seeded for the same reason the perk draw is — see `rand`. The bots' own
+  // streams were already deterministic (`BotRunner` seeds per seat from the room
+  // code), so the engine's roll was the last thing making this file a lottery.
+  const match = new Match(`ROOM${seq}`, { rng: rand });
   for (const p of players) match.addPlayer(p);
   // ⚠️ NO PARTY MODE IN THE AI TESTS. These assert that the trained networks
   // fight — that a bot buys, aims and casts. Party Mode HOLDS ATTACKS from the

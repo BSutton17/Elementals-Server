@@ -299,12 +299,56 @@ export const SHIELD = {
  * set here rather than inside the games, so a balance pass is one file.
  */
 export const PARTY = {
-  /** How long into a match the first roll happens. */
-  FIRST_ROLL_SECONDS: 25,
-  /** Seconds between rolls after that. */
-  ROLL_INTERVAL_SECONDS: 25,
+  /**
+   * How long into a match the first roll happens.
+   *
+   * Kept level with the interval below rather than left at its old 25: the
+   * cadence is one idea to a player ("a minigame might turn up every twenty
+   * seconds"), and an opening wait five seconds longer than every wait after it
+   * is a seam nobody asked for and nobody would notice as deliberate.
+   */
+  FIRST_ROLL_SECONDS: 20,
+  /** Seconds between rolls after that, when the last one landed a game. */
+  ROLL_INTERVAL_SECONDS: 20,
+  /**
+   * How much sooner the next roll comes after one that failed its chance.
+   *
+   * ⚠️ THE WAIT SHORTENS UNTIL SOMETHING HAPPENS, THEN RESETS. A flat interval
+   * with a `living / 10` chance means a small table can go minutes without a
+   * minigame purely on the dice — two kingdoms roll one-in-five, so a quiet
+   * quarter of an hour is an ordinary run of luck rather than a bug. Backing the
+   * clock off by three seconds each time it misses turns a long drought into a
+   * rising likelihood, without ever making a party feel guaranteed.
+   *
+   * 20 → 17 → 14 → … and straight back to 20 the moment a game starts.
+   */
+  ROLL_BACKOFF_SECONDS: 3,
+  /**
+   * How short the wait is ever allowed to get.
+   *
+   * ⚠️ WITHOUT THIS THE BACKOFF WALKS PAST ZERO AND THE CLOCK ROLLS EVERY
+   * TICK — twenty chances a second, and a table buried in minigames. Five
+   * seconds is the floor: at the worst case (two kingdoms, one-in-five) that is
+   * still a game every twenty-five seconds on average, which is where the
+   * cadence started before any of this.
+   */
+  ROLL_MIN_INTERVAL_SECONDS: 5,
   /** Chance per roll is `living kingdoms / this`. */
   CHANCE_DIVISOR: 10,
+  /**
+   * How much each dead kingdom tilts a successful roll towards Haunted.
+   *
+   * ⚠️ THE ONE MINIGAME WHOSE POINT GROWS WITH THE GRAVEYARD. Haunted hands the
+   * dead a few seconds back on the field, so it means almost nothing with one
+   * ghost and a great deal with five — but picked uniformly from fifteen games
+   * it turned up about one time in fifteen no matter how many people were
+   * waiting to play again. Twelve points per ghost: one dead is a nudge, a
+   * half-empty table is better than even odds.
+   *
+   * Applied only once the roll has ALREADY passed its `living / 10` chance —
+   * this decides WHICH game, never WHETHER one happens.
+   */
+  HAUNTED_CHANCE_PER_GHOST: 0.12,
   /** How long a result banner stays up before the session clears. */
   RESULT_SECONDS: 4,
 
