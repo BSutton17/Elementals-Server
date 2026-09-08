@@ -48,6 +48,7 @@ test("neither optional mode runs until somebody asks for it", () => {
     const match = table(visibility);
     assert.equal(match.monstersEnabled, false, `monsters were on in a ${visibility} room`);
     assert.equal(match.partyModeEnabled, false, `party mode was on in a ${visibility} room`);
+    assert.equal(match.copyCatEnabled, false, `copy cat was on in a ${visibility} room`);
   }
 });
 
@@ -79,7 +80,7 @@ test("the same room with them on gets one on the first roll", () => {
   assert.notEqual(match.gameState!.monster, null, "no monster with the rule on");
 });
 
-test("all three rules ride along in the lobby payload", () => {
+test("every rule rides along in the lobby payload", () => {
   // The lobby draws the switches from the broadcast rather than remembering
   // what it sent, so a refused change snaps back instead of lying about the
   // room. Asserted with one of them ON: three `false`s would pass just as well
@@ -89,5 +90,6 @@ test("all three rules ride along in the lobby payload", () => {
   const serialized = match.serialize();
   assert.equal(serialized.monstersEnabled, false);
   assert.equal(serialized.partyModeEnabled, true);
+  assert.equal(serialized.copyCatEnabled, false);
   assert.equal(serialized.eliminatedSeeAllHealth, false);
 });

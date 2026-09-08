@@ -630,13 +630,14 @@ export function registerLobbyHandlers(
    * change what players can see out from under them.
    */
   /**
-   * The room's optional rules — all three of them admin-only.
+   * The room's optional rules — every one of them admin-only.
    *
    * ⚠️ ADMIN, NOT HOST, AND CHECKED HERE. Anyone can be a host: you create a
    * room and you are one. These switches change what a match IS — one hands
    * dead players the whole board, one decides whether a shared emergency shows
-   * up at all, one replaces stretches of the war with minigames — so while they
-   * are being tuned they belong to the account
+   * up at all, one replaces stretches of the war with minigames, one puts the
+   * whole table in the same kingdom — so while they are being tuned they belong
+   * to the account
    * that owns the game rather than to whoever happened to click Create Room.
    * The lobby hides the panel from everybody else, and that is presentation;
    * this is the check.
@@ -648,6 +649,8 @@ export function registerLobbyHandlers(
         eliminatedSeeAllHealth?: unknown;
         monstersEnabled?: unknown;
         partyModeEnabled?: unknown;
+        copyCatEnabled?: unknown;
+        elementalEnabled?: unknown;
       },
       ack: unknown,
     ) => {
@@ -690,7 +693,15 @@ export function registerLobbyHandlers(
       const vision = payload?.eliminatedSeeAllHealth;
       const monsters = payload?.monstersEnabled;
       const party = payload?.partyModeEnabled;
-      if (vision === undefined && monsters === undefined && party === undefined) {
+      const copyCat = payload?.copyCatEnabled;
+      const elemental = payload?.elementalEnabled;
+      if (
+        vision === undefined &&
+        monsters === undefined &&
+        party === undefined &&
+        copyCat === undefined &&
+        elemental === undefined
+      ) {
         respond(ack, fail("INVALID_INPUT", "Nothing to change"));
         return;
       }
@@ -706,10 +717,20 @@ export function registerLobbyHandlers(
         respond(ack, fail("INVALID_INPUT", "partyModeEnabled must be a boolean"));
         return;
       }
+      if (copyCat !== undefined && typeof copyCat !== "boolean") {
+        respond(ack, fail("INVALID_INPUT", "copyCatEnabled must be a boolean"));
+        return;
+      }
+      if (elemental !== undefined && typeof elemental !== "boolean") {
+        respond(ack, fail("INVALID_INPUT", "elementalEnabled must be a boolean"));
+        return;
+      }
 
       if (vision !== undefined) match.eliminatedSeeAllHealth = vision;
       if (monsters !== undefined) match.monstersEnabled = monsters;
       if (party !== undefined) match.partyModeEnabled = party;
+      if (copyCat !== undefined) match.copyCatEnabled = copyCat;
+      if (elemental !== undefined) match.elementalEnabled = elemental;
       broadcastLobbyUpdate(io, match);
       respond(
         ack,
@@ -717,6 +738,8 @@ export function registerLobbyHandlers(
           eliminatedSeeAllHealth: match.eliminatedSeeAllHealth,
           monstersEnabled: match.monstersEnabled,
           partyModeEnabled: match.partyModeEnabled,
+          copyCatEnabled: match.copyCatEnabled,
+          elementalEnabled: match.elementalEnabled,
         }),
       );
     },

@@ -5,6 +5,7 @@ import { KINGDOM_IDS } from "../src/data/kingdoms.js";
 import {
   Cmaes,
   CandidateCache,
+  boundsFor,
   buildSchema,
   candidateHash,
   coerce,
@@ -75,11 +76,18 @@ test("bounds are ordered even for negative bases", () => {
     assert.ok(p.min <= p.max, `${p.id}: inverted bounds`);
     assert.ok(p.base >= p.min && p.base <= p.max, `${p.id}: base outside its own bounds`);
   }
-  // Ice's status-duration passive is negative; a naive base*0.6 / base*1.4
-  // would invert it.
-  const ice = schema.parameters.find((p) => p.id === "passive.ice.0.pct");
-  assert.ok(ice && ice.base < 0, "expected a negative base to exercise this");
-  assert.ok(ice.min < ice.base && ice.base < ice.max);
+  // ⚠️ THE NEGATIVE CASE IS EXERCISED DIRECTLY, NOT THROUGH WHICHEVER PARAMETER
+  // HAPPENS TO BE NEGATIVE TODAY. This used to reach for Ice's status-duration
+  // modifier — the only negative base in the schema — and when that passive was
+  // removed the test did not start failing loudly, it simply stopped testing
+  // anything about negatives. `boundsFor` is the logic under test, so it is
+  // called with a negative base and asked directly.
+  const negative = boundsFor("passive.example.0.pct", -0.5);
+  assert.ok(negative.min <= negative.max, "a negative base produced inverted bounds");
+  assert.ok(negative.min <= -0.5 && -0.5 <= negative.max, "the base fell outside its bounds");
+  // Strictly inside, not merely within: a spread that collapsed to the base
+  // would satisfy the ordering above while giving the search nowhere to go.
+  assert.ok(negative.min < -0.5 && -0.5 < negative.max, "a negative base got no search room");
 });
 
 test("probability parameters stay within [0,1]", () => {
@@ -377,8 +385,13 @@ test("widened bounds are still sane game states", () => {
     if (!/chance$/i.test(p.id)) continue;
     assert.ok(p.min >= 0 && p.max <= 1, `${p.id} escaped [0,1] after widening`);
   }
-  // Ice was deliberately left at the default spread: it pinned at a bound too,
-  // but its direction of benefit is not explainable from the baseline.
-  const ice = byId.get("passive.ice.0.pct")!;
-  assert.ok(Math.abs((ice.min - ice.base) / ice.base) < 0.45, "ice should not have been widened");
+  // And a parameter NOT in the widening map keeps the default spread — the
+  // widening is a short, evidence-backed list, not a general loosening.
+  const untouched = searchable(schema).find(
+    (p) => p.id !== "shield.cost" && p.id !== "castle.repairAmount" && p.base > 0,
+  )!;
+  assert.ok(
+    Math.abs((untouched.min - untouched.base) / untouched.base) < 0.45,
+    `${untouched.id} was widened without being on the list`,
+  );
 });

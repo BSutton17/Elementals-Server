@@ -1,4 +1,5 @@
-import { COMBAT } from "../data/balance.js";
+import { COMBAT, ELEMENTAL } from "../data/balance.js";
+import { hasAdvantage } from "../data/elementalCycle.js";
 import { param } from "./parameters.js";
 import { computeStat } from "./modifiers.js";
 import {
@@ -180,6 +181,38 @@ export interface ResolvedDamage extends DamageResult {
  * The result is the final incoming damage, ready for shield/HP application
  * (`applyDamage` in combat.ts). Pure aside from the RNG.
  */
+/**
+ * "Elemental's Elementaled", the attacking half: more damage into the kingdom
+ * you are strong against.
+ *
+ * ⚠️ READ OFF THE PLAYERS, NOT OFF A FLAG PASSED IN. The rule covers every
+ * attack, and this function is called from half a dozen places; a parameter
+ * would have to be remembered at each of them, and the seventh call site added
+ * next month would silently opt out. `elementalEnabled` is stamped onto every
+ * seat when the match starts, so it travels with the attacker.
+ */
+function elementalAttackMultiplier(attacker: PlayerState, defender: PlayerState): number {
+  if (!attacker.elementalEnabled) return 1;
+  return hasAdvantage(attacker.kingdomId, defender.kingdomId)
+    ? 1 + param("elemental.edgePct", ELEMENTAL.EDGE_PCT)
+    : 1;
+}
+
+/**
+ * The defending half: less damage from the kingdom you are strong against.
+ *
+ * Note whose advantage is being asked about — the DEFENDER's. Being strong
+ * against someone means both hitting them harder and shrugging off what they
+ * throw back, which is one relationship producing two effects rather than two
+ * separate rules.
+ */
+function elementalDefenceMultiplier(attacker: PlayerState, defender: PlayerState): number {
+  if (!defender.elementalEnabled) return 1;
+  return hasAdvantage(defender.kingdomId, attacker.kingdomId)
+    ? 1 - param("elemental.edgePct", ELEMENTAL.EDGE_PCT)
+    : 1;
+}
+
 export function resolveDamage(
   attacker: PlayerState,
   defender: PlayerState,
@@ -201,6 +234,10 @@ export function resolveDamage(
       perkDamageMultiplier(attacker) *
       // Magma's "Hot ash": aiming at Magma is what makes Magma hit you harder.
       targeterDamageMultiplier(attacker, defender) *
+      // "Elemental's Elementaled": a favourable matchup hits harder. Multiplied
+      // in with everything else rather than replacing any of it, so it stacks
+      // with perks, passives and ability modifiers alike.
+      elementalAttackMultiplier(attacker, defender) *
       besieged *
       attackerScaling,
   );
@@ -258,6 +295,10 @@ export function resolveDamage(
         elementalDamageMultiplier(defender, options.element) *
         // "Extra Guards" cuts every hit, whatever its element or source.
         perkDamageTakenMultiplier(defender) *
+        // "Elemental's Elementaled": the kingdom you are strong against also
+        // hurts you less. The other half of the same relationship, applied on
+        // the defender's side of the pipeline where reductions belong.
+        elementalDefenceMultiplier(attacker, defender) *
         defenderScaling,
     ),
   );

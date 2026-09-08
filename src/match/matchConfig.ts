@@ -29,6 +29,20 @@ export interface MatchConfig {
   rageFull: number;
   /** What a full Ancient Memory meter is worth (Kitsune's "Swift Tails"). */
   memoryFull: number;
+  /**
+   * "Elemental's Elementaled": whether kingdom matchups modify damage.
+   *
+   * ⚠️ CARRIED ON THE CONFIG SO IT REACHES THE DAMAGE PIPELINE AT ALL. The rule
+   * says EVERY attack, and `resolveDamage` is handed two players and an options
+   * bag — never the match. Threading a flag through the half-dozen call sites
+   * would have worked until somebody added a seventh and the mode quietly
+   * stopped applying to one ability. Stamped onto each PlayerState at creation
+   * instead, so it arrives with the attacker and cannot be forgotten.
+   *
+   * Optional because `MatchConfig` is hand-built in tests and by callers that
+   * predate the rule; absent means off, which is the default anyway.
+   */
+  elementalEnabled?: boolean;
 }
 
 /** Builds the config snapshot for a match from the current balance values. */
@@ -44,5 +58,6 @@ export function createMatchConfig(match: Match): MatchConfig {
     playerCount: match.getPlayers().length,
     rageFull: DARK.RAGE_FULL,
     memoryFull: KITSUNE.MEMORY_FULL,
+    elementalEnabled: match.elementalEnabled,
   };
 }

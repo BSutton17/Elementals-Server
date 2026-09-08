@@ -121,6 +121,8 @@ test("serializes to a plain client-facing view", () => {
     // monsters disabled should not be promising the table a boss fight.
     monstersEnabled: false,
     partyModeEnabled: false,
+    copyCatEnabled: false,
+    elementalEnabled: false,
     // Rooms are private unless matchmaking made them, and only a public room
     // ever counts down to its own start.
     visibility: "private",

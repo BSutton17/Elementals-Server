@@ -233,7 +233,13 @@ export const KINGDOM_PASSIVES: Record<KingdomId, KingdomPassive[]> = {
     { type: "attackAftershock", chance: 0.25, pct: 0.5 },
   ],
   ice: [
-    { type: "statusDurationReduction", statusId: "burn", pct: -0.50 },
+    // ⚠️ ICE NO LONGER BURNS FOR LONGER. It carried
+    // `statusDurationReduction burn -0.50`, a NEGATIVE reduction — Burn lasted
+    // half again as long on Ice, which was its "weak to fire" written as a
+    // status duration rather than as a damage number. Matchups are their own
+    // rule now ("Elemental's Elementaled"), and leaving this in would have
+    // charged Ice for the same weakness twice, only one of which is visible to
+    // the player.
     { type: "onHitStatus", chance: 0.10, durationTicks: FROZEN_DURATION, status: FROZEN_STATUS },
     { type: "retaliation", chance: 0.15, durationTicks: 5 * TICK.RATE, status: FROSTBITE_STATUS },
   ],

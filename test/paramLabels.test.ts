@@ -42,8 +42,13 @@ test("passives are named by their engine primitive, not a raw field", () => {
   // passive.water.0 is { type: 'incomePerCitizen', amount: 0.0675 }.
   assert.equal(describeParameter("passive.water.0.amount"), "Water Income Per Citizen");
   // A field that adds information is appended.
+  // ⚠️ INDEX 1, NOT 2 — ICE LOST A PASSIVE AND EVERY LATER INDEX MOVED UP. Its
+  // Burn-duration modifier used to sit at 0, so retaliation was 2; the modifier
+  // is gone (matchups are their own rule now) and retaliation is 1. This is the
+  // hazard of addressing passives positionally: nothing about the old
+  // `passive.ice.2` looked wrong, it simply stopped naming anything.
   assert.equal(
-    describeParameter("passive.ice.2.chance"),
+    describeParameter("passive.ice.1.chance"),
     "Ice Retaliation Chance",
   );
 });

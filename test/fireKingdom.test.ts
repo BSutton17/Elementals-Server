@@ -283,16 +283,18 @@ test("Fireball is a plain attack and does not apply Burn", () => {
   assert.ok(!getStatus(b, "burn"));
 });
 
-test("Ice players suffer 1.5x longer Burn durations", () => {
+test("Ice burns for exactly as long as anybody else", () => {
+  // ⚠️ ICE USED TO BURN FOR 1.5× AS LONG, AND NO LONGER DOES. That was its
+  // "weak to fire", written as a negative status-duration modifier. Kingdom
+  // matchups are their own rule now ("Elemental's Elementaled"), and leaving
+  // this in would have charged Ice for the same weakness twice — once visibly,
+  // once not.
   const { match, a, b } = activeMatch("fire", "ice");
 
-  // Firenado applies Burn for 100 ticks (5 seconds); Ice player b should take
-  // it for 100 × 1.5 = 150. (Scorching Sun ignites rather than burning now, so
-  // it is no longer the ability that demonstrates this.)
   activateAbility(match, a, FIRENADO, { targetId: "b", forceCrit: false });
   const burn = getStatus(b, "burn");
   assert.ok(burn);
-  assert.equal(burn.remainingTicks, 150);
+  assert.equal(burn.remainingTicks, 100, "Ice is still taking a longer Burn");
 });
 
 // --- [#113] Heat Wave & [#114] Blazing Determination --------------------------------

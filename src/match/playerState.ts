@@ -393,6 +393,15 @@ export interface PlayerState {
   name: string;
   kingdomId: KingdomId;
   /**
+   * Whether this match is running "Elemental's Elementaled".
+   *
+   * ⚠️ ON THE PLAYER SO THE DAMAGE PIPELINE CAN SEE IT. `resolveDamage` gets an
+   * attacker, a defender and an options bag — never the match — and the rule
+   * says EVERY attack. Copied from the config when the seat is built, so it
+   * arrives with the players and no call site can leave it out.
+   */
+  elementalEnabled?: boolean;
+  /**
    * The two perks chosen in the lobby — flat, always-on bonuses that stack with
    * this kingdom's passives and abilities rather than replacing them. Read by
    * `engine/perks.ts`; fixed for the whole match.
@@ -651,6 +660,7 @@ export function createPlayerState(
     id: input.id,
     name: input.name,
     kingdomId: input.kingdomId,
+    elementalEnabled: config.elementalEnabled === true,
     perks,
     castle: {
       hp: startingHp,

@@ -70,7 +70,17 @@ const CURATED: Omit<SchemaParameter, "base" | "min" | "max">[] = [
   p("passive.air.1.pct", "kingdomPower", "Air attack-redirect chance"),
   p("passive.earth.1.pct", "kingdomPower", "Earth shield-on-damage share"),
   p("passive.electricity.0.pct", "kingdomPower", "Electricity cooldown reduction"),
-  p("passive.ice.0.pct", "kingdomPower", "Ice status-duration modifier"),
+  // ⚠️ ICE HAS NO TUNABLE PASSIVE HERE ANY MORE. `passive.ice.0.pct` was its
+  // Burn-duration modifier, removed when kingdom matchups became their own rule
+  // ("Elemental's Elementaled") — charging Ice for the same weakness twice was
+  // the thing being fixed.
+  //
+  // ⚠️ AND NOTE HOW THIS FAILED, BECAUSE THE NEXT ONE MIGHT NOT. Passives are
+  // addressed here BY INDEX, so deleting one silently re-points every later
+  // index at a different passive. This was caught only because the new index 0
+  // has no `pct` at all; had the removed passive been index 1, `passive.ice.1`
+  // would now quietly tune the wrong thing and every score would still look
+  // plausible. Re-read the kingdom's list before touching an index here.
   p("passive.nature.0.pct", "kingdomPower", "Nature thorns share"),
   p("passive.time.0.pct", "kingdomPower", "Time's periodic passive share"),
   p("passive.space.1.pct", "kingdomPower", "Space passive share"),
@@ -133,10 +143,6 @@ const WIDENED: Record<string, { spread: number; reason: string }> = {
   // HP castle are still ordinary game states.
   "shield.cost": { spread: 0.6, reason: "pinned at MIN; consistent with the repair lever" },
   "castle.repairAmount": { spread: 0.6, reason: "pinned at MAX; consistent with the shield lever" },
-  // passive.ice.0.pct is deliberately NOT widened. It also pinned at MIN, but it
-  // is a negative status-duration modifier whose direction of benefit is not
-  // obvious from the baseline, and Ice is mid-table rather than an outlier. No
-  // evidence, no widening.
 };
 
 /** Default search room around a base value. */

@@ -1,5 +1,6 @@
 import { MATCH } from "../data/balance.js";
-import { hasFullPerkSelection } from "../data/perks.js";
+import { KINGDOM_IDS } from "../data/kingdoms.js";
+import { hasFullPerkSelection, perksAllowedFor } from "../data/perks.js";
 import { createGameState, type GameState } from "./GameState.js";
 import type { MatchConfig } from "./matchConfig.js";
 import type { MatchPhase, MatchPlayer, MatchVisibility } from "./types.js";
@@ -65,6 +66,31 @@ export class Match {
   partyModeEnabled = false;
 
   /**
+   * Admin setting: everybody plays the SAME kingdom, drawn at the starting gun.
+   *
+   * ⚠️ CHOSEN AT START, NOT IN THE LOBBY, AND THAT IS THE JOKE. Players pick as
+   * normal, ready up as normal, and find out what they are all playing when the
+   * match begins — so nobody can plan around the draw, and the kingdom that
+   * turns up is nobody's pick in particular.
+   *
+   * Off by default and never in matchmaking, like the other two: a stranger
+   * queued for a free-for-all did not agree to spend it as somebody else's
+   * kingdom.
+   */
+  copyCatEnabled = false;
+
+  /**
+   * Admin setting: "Elemental's Elementaled" — kingdom matchups modify damage.
+   *
+   * Each kingdom is strong against exactly one other and weak to exactly one
+   * other (see `data/elementalCycle.ts`). Holding the advantage is worth ten
+   * per cent more damage dealt AND ten per cent less taken, so a favourable
+   * matchup is worth about a fifth of the exchange — a reason to pick your
+   * fights rather than a draw that decides them.
+   */
+  elementalEnabled = false;
+
+  /**
    * How this room is entered.
    *
    * "private" is the original behaviour: someone creates a room, shares the
@@ -117,15 +143,14 @@ export class Match {
     this.createdAt = Date.now();
     this.maxPlayers = options.maxPlayers ?? MATCH.MAX_PLAYERS;
     this.visibility = options.visibility ?? "private";
-    // ⚠️ SET FROM THE VISIBILITY, ONCE, AT CONSTRUCTION. Both optional rules are
-    // off in matchmade rooms: a stranger queued for a free-for-all, not for a
-    // shared emergency, and not to hand whoever dies first a view of the whole
-    // board. Enforcing it here as well as in the socket handler means a public
-    // room is never briefly monster-enabled between being created and being
-    // configured.
-    // Both stay off until somebody asks for them.
+    // ⚠️ OFF AT CONSTRUCTION, EVERY ONE OF THEM. Each optional rule changes what
+    // a match IS, and a stranger dropped into matchmaking agreed to none of
+    // them. Set here as well as refused in the socket handler, so a room is
+    // never briefly monster-enabled between being created and configured.
     this.monstersEnabled = false;
     this.partyModeEnabled = false;
+    this.copyCatEnabled = false;
+    this.elementalEnabled = false;
     this.rng = options.rng ?? Math.random;
   }
 
@@ -216,11 +241,41 @@ export class Match {
    * later systems (economy, abilities, …).
    */
   start(config: MatchConfig): void {
+    // ⚠️ BEFORE THE GAME STATE IS BUILT. `createGameState` reads each seat's
+    // kingdom to build its castle, abilities and passives, so the draw has to
+    // have landed on the seats by now — afterwards would leave the roster
+    // saying one thing and the battlefield another.
+    if (this.copyCatEnabled) this.dealOneKingdomToEveryone();
     this.phase = "active";
     this.config = config;
     this.startedAt = Date.now();
     this.tick = 0;
     this.gameState = createGameState(this.getPlayers(), config);
+  }
+
+  /**
+   * Copy Cat: draws one kingdom and gives it to the whole table.
+   *
+   * ⚠️ PERKS ARE TRIMMED, NOT TOPPED UP. The allowance is per kingdom — Kitsune's
+   * "Three tailed fox" grants one more than everyone else — so a draw can leave
+   * a seat holding more perks than its new kingdom entitles it to, and that is
+   * an advantage nobody chose to give them. Extras are dropped.
+   *
+   * The other direction is left alone: a table that all becomes Kitsune has an
+   * allowance of three, and a player who picked two keeps two. Handing them a
+   * third would mean the game choosing a perk on their behalf, which is a worse
+   * surprise than having one fewer.
+   */
+  private dealOneKingdomToEveryone(): void {
+    const kingdom = KINGDOM_IDS[Math.floor(this.rng() * KINGDOM_IDS.length)]!;
+    for (const player of this.getPlayers()) {
+      if (player.spectator) continue; // no castle, no kingdom
+      player.kingdomId = kingdom;
+      const allowed = perksAllowedFor(kingdom);
+      if ((player.perks?.length ?? 0) > allowed) {
+        player.perks = player.perks!.slice(0, allowed);
+      }
+    }
   }
 
   /** Ends the match with the given winner (null = draw). */
@@ -273,6 +328,8 @@ export class Match {
     eliminatedSeeAllHealth: boolean;
     monstersEnabled: boolean;
     partyModeEnabled: boolean;
+    copyCatEnabled: boolean;
+    elementalEnabled: boolean;
     visibility: MatchVisibility;
     startsAt: number | null;
     tick: number;
@@ -291,6 +348,8 @@ export class Match {
       eliminatedSeeAllHealth: this.eliminatedSeeAllHealth,
       monstersEnabled: this.monstersEnabled,
       partyModeEnabled: this.partyModeEnabled,
+      copyCatEnabled: this.copyCatEnabled,
+      elementalEnabled: this.elementalEnabled,
       visibility: this.visibility,
       startsAt: this.startsAt,
       tick: this.tick,

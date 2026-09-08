@@ -53,6 +53,22 @@ export const ECONOMY = {
 } as const;
 
 /** Combat defaults shared by all abilities unless overridden by ability data. */
+/**
+ * "Elemental's Elementaled": the room rule where matchups matter.
+ *
+ * A kingdom deals this much more to the one it is strong against, and takes
+ * this much less from it. Both sides of one relationship, so a favourable
+ * matchup is worth roughly a fifth in the exchange without ever deciding it —
+ * the point is a nudge that rewards reading the board, not a rock-paper-scissors
+ * game where the draw picks the winner.
+ *
+ * Multiplied alongside perks and ability modifiers rather than replacing them,
+ * so it stacks with everything.
+ */
+export const ELEMENTAL = {
+  EDGE_PCT: 0.10,
+} as const;
+
 export const COMBAT = {
   /** Base chance (0–1) for an attack to critically strike. */
   BASE_CRIT_CHANCE: 0.05,
