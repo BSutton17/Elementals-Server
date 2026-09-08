@@ -46,7 +46,12 @@ import {
 } from "./volcano.js";
 import { damageMonster, monsterIsAlive, applyMonsterStatus } from "./monster.js";
 import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
-import { spawnCaprice, capriceIsActive, capriceProtects } from "./caprice.js";
+import {
+  spawnCaprice,
+  capriceIsActive,
+  capriceProtects,
+  capriceScrambles,
+} from "./caprice.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
 import { partyBlocksCentrepieces, partySuppressesAttacks } from "./party/index.js";
 import { isGhostAt } from "./party/haunted.js";
@@ -973,14 +978,26 @@ function activateAbilityInner(
     case "singleEnemy": {
       // Multi-target casts (Air's "Embrace of Winds", Epic 8): honored only
       // for attacks from kingdoms with the multiTargetAttacks passive.
+      // ⚠️ CAPRICE OVERRULES AN EXPLICIT TARGET LIST, AND HAD TO LEARN TO.
+      // Insects' butterfly takes the table's aim away by refusing
+      // `selectTarget` and scrambling `player.target` on a timer — which works
+      // for every kingdom that AIMS through the server, and did nothing at all
+      // to the two that do not. Air and Love keep their selection on the client
+      // and send it with the cast, so they sailed through a scramble picking
+      // their own targets while everybody else was being thrown around.
+      //
+      // Dropped rather than rejected: the cast still happens, it simply lands
+      // where the butterfly says. Refusing it outright would make Caprice a
+      // silence rather than a scramble, and only for those two kingdoms.
+      const scrambled = capriceScrambles(match, caster);
       const requestedIds =
-        options.targetIds && options.targetIds.length > 0
+        !scrambled && options.targetIds && options.targetIds.length > 0
           ? ability.kind === "attack" && canMultiTargetAttacks(caster)
             ? // Embrace of Winds cap: at most maxTargets kingdoms (3 base, 5
               // upgraded) may be struck by one cast.
               [...new Set(options.targetIds)].slice(0, multiTargetLimit(caster))
             : [options.targetIds[0]!]
-          : [options.targetId ?? caster.target];
+          : [(scrambled ? caster.target : options.targetId) ?? caster.target];
 
       // Swinging at something in the middle of the field — the volcano, the
       // monster. It is not a kingdom, so it skips the parts of the pipeline

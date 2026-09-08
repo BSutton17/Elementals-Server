@@ -11,6 +11,7 @@ import {
 import { getCooldown } from "../engine/cooldowns.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "../engine/centrepiece.js";
 import { capriceScrambles, capriceProtects } from "../engine/caprice.js";
+import { isGhostAt } from "../engine/party/index.js";
 import { isTargetingBlocked } from "../engine/status.js";
 import { chargingMeterSpec } from "../engine/passives.js";
 import { computeStat } from "../engine/modifiers.js";
@@ -140,6 +141,16 @@ export interface KitSlotKnowledge {
 export interface SelfKnowledge {
   readonly id: string;
   readonly kingdomId: KingdomId;
+  /**
+   * Haunted has this seat raised: eliminated, castle at zero, and playing.
+   *
+   * ⚠️ READ BY THE ACTION MASK, AND DELIBERATELY NOT ENCODED. `observation.ts`
+   * writes fixed indices from named fields, so this adds nothing to the
+   * fifty-seven inputs the trained networks were fitted against — adding one
+   * would invalidate every model on disk. The mask is a legality question, not
+   * an observation.
+   */
+  readonly ghost: boolean;
   readonly hp: number;
   readonly maxHp: number;
   readonly shield: number;
@@ -723,6 +734,7 @@ export function knowledgeFor(
     self: {
       id: player.id,
       kingdomId: player.kingdomId,
+      ghost: isGhostAt(player, match.tick),
       hp: player.castle.hp,
       maxHp: player.castle.maxHp,
       shield: player.castle.shield,

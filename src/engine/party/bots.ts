@@ -88,11 +88,17 @@ export const BOMB_PASS_MS: Record<BotDifficulty, [number, number]> = {
   hard: [320, 450],
 };
 
-/** Clicks per second in Button Mash. A hard bot is a fast human, not a script. */
+/**
+ * Clicks per second in Button Mash. A hard bot is a fast human, not a script.
+ *
+ * Every range dropped by two, both ends, so the whole field slowed rather than
+ * the spread narrowing: a person on a phone was losing this to bots that tapped
+ * faster than a thumb reasonably can.
+ */
 export const MASH_CPS: Record<BotDifficulty, [number, number]> = {
-  easy: [4, 7],
-  medium: [6, 10],
-  hard: [8, 12],
+  easy: [2, 5],
+  medium: [4, 8],
+  hard: [6, 10],
 };
 
 /**

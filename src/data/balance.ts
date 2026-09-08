@@ -365,8 +365,21 @@ export const PARTY = {
    * this decides WHICH game, never WHETHER one happens.
    */
   HAUNTED_CHANCE_PER_GHOST: 0.12,
-  /** How long a result banner stays up before the session clears. */
-  RESULT_SECONDS: 4,
+  /**
+   * How long a finished minigame stays on screen before the session clears.
+   *
+   * ⚠️ THIS IS THE VERDICT'S WHOLE LIFE, NOT JUST THE BANNER'S. The panel keeps
+   * drawing the game while the session lingers, which is when "Correct" or
+   * "Wrong — it was ▲" is on screen: at four seconds a player who had just been
+   * told the answer barely had time to read which symbol it was. Raised by the
+   * 1.25s that was asked for.
+   *
+   * ⚠️ THE CLIENT HOLDS THIS NUMBER TOO (`RESULT_MS` in `PartyBanner`). It has
+   * to, because the banner fades itself out rather than waiting to be
+   * unmounted — so the two must move together or the line will vanish while the
+   * verdict under it is still up.
+   */
+  RESULT_SECONDS: 5.25,
 
   /** Maze: a 10x10 grid, fifteen seconds, gold for getting out. */
   MAZE_SIZE: 10,

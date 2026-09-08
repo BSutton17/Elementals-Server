@@ -65,8 +65,16 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
   // Waiting is unconditional, and is what guarantees a non-empty mask.
   mask[WAIT] = 1;
 
-  // An eliminated seat, or one in a finished match, may only wait.
-  if (self.hp <= 0) return mask;
+  // ⚠️ AN ELIMINATED SEAT MAY ONLY WAIT — UNLESS HAUNTED HAS RAISED IT. This is
+  // the THIRD "skip the dead" gate a ghost has to pass, after the bot runner and
+  // the controller, and it is the one that actually silenced them: a ghost's
+  // castle is at zero HP by definition, so the mask offered it nothing but
+  // `WAIT`. It picked a target and then stood there, which is exactly how it was
+  // reported — the dead rose and did nothing.
+  //
+  // The mask only says what is worth OFFERING. The engine remains the authority
+  // and refuses a ghost's illegal move exactly as it would a player's.
+  if (self.hp <= 0 && !self.ghost) return mask;
 
   const enemies = orderEnemies(knowledge);
   // A single-enemy cast resolves against the CURRENT selection, so without one

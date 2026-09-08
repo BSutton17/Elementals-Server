@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Match } from "../src/match/Match.js";
+import { abilitiesForKingdom } from "../src/data/kingdomAbilities.js";
 import { createMatchConfig } from "../src/match/matchConfig.js";
 import { activateAbility } from "../src/engine/abilities.js";
 import { unlockOrUpgradeAbility } from "../src/engine/purchases.js";
@@ -606,3 +607,80 @@ test("Caprice keeps re-rolling for as long as it is up", () => {
   }
   assert.ok(seen.size > 1, "the scramble never moved anyone after the first roll");
 });
+
+/**
+ * ⚠️ CAPRICE DID NOTHING TO AIR AND LOVE, AND FOR A STRUCTURAL REASON. The
+ * butterfly takes the table's aim away by refusing `selectTarget` and
+ * scrambling `player.target` on a timer — which covers every kingdom that aims
+ * THROUGH the server, and neither of the two that do not. Air and Love keep
+ * their selection on the client and send it with the cast, so they sailed
+ * through a scramble picking their own targets while everybody else was thrown
+ * around. Reported as "Caprice is not working on Love".
+ */
+test("Caprice overrules a multi-select kingdom's own target list", () => {
+  const match = new Match("1234");
+  match.addPlayer(matchPlayer("bug", "insects"));
+  match.addPlayer(matchPlayer("air", "air"));
+  match.addPlayer(matchPlayer("c", "fire"));
+  match.addPlayer(matchPlayer("d", "water"));
+  match.hostId = "bug";
+  match.start(createMatchConfig(match));
+  const state = match.gameState!;
+  const bug = state.getPlayer("bug")!;
+  const air = state.getPlayer("air")!;
+  earn(bug, 1_000_000);
+  earn(air, 1_000_000);
+
+  const basic = abilitiesForKingdom("air").find((x) => x.kind === "attack")!;
+  assert.equal(unlockOrUpgradeAbility(match, air, basic.id).ok, true);
+  assert.equal(unlockOrUpgradeAbility(match, bug, CAPRICE.id).ok, true);
+  assert.equal(activateAbility(match, bug, CAPRICE, { forceCrit: false }).ok, true);
+
+  // The scramble has pointed Air somewhere of the butterfly's choosing.
+  const chosen = air.target;
+  assert.ok(chosen, "the scramble left Air with no target");
+
+  // Air now casts with an EXPLICIT list — the thing it does that nobody else
+  // does — naming somebody the butterfly did not pick.
+  const defiant = ["c", "d"].filter((id) => id !== chosen);
+  const before = new Map(state.getPlayers().map((p) => [p.id, p.castle.hp + p.castle.shield]));
+  const fired = activateAbility(match, air, basic, {
+    targetIds: defiant,
+    forceCrit: false,
+  });
+  assert.equal(fired.ok, true, "the cast itself should still happen");
+
+  // It landed on the butterfly's pick, not on the list Air sent.
+  const hurt = state
+    .getPlayers()
+    .filter((p) => p.castle.hp + p.castle.shield < (before.get(p.id) ?? 0))
+    .map((p) => p.id);
+  assert.deepEqual(hurt, [chosen], `the cast hit ${hurt.join(", ")} instead of ${chosen}`);
+});
+
+test("...and an ordinary cast is untouched once the butterfly is gone", () => {
+  // The override must lift with the scramble, or Air could never aim again.
+  const match = new Match("1234");
+  match.addPlayer(matchPlayer("bug", "insects"));
+  match.addPlayer(matchPlayer("air", "air"));
+  match.addPlayer(matchPlayer("c", "fire"));
+  match.hostId = "bug";
+  match.start(createMatchConfig(match));
+  const state = match.gameState!;
+  const air = state.getPlayer("air")!;
+  earn(air, 1_000_000);
+
+  const basic = abilitiesForKingdom("air").find((x) => x.kind === "attack")!;
+  unlockOrUpgradeAbility(match, air, basic.id);
+  const target = state.getPlayer("c")!;
+  const before = target.castle.hp + target.castle.shield;
+
+  assert.equal(
+    activateAbility(match, air, basic, { targetIds: ["c"], forceCrit: false }).ok,
+    true,
+  );
+  assert.ok(
+    target.castle.hp + target.castle.shield < before,
+    "Air could not hit its own choice with no butterfly out",
+  );
+})

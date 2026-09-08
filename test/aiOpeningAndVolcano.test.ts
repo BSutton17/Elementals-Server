@@ -382,18 +382,31 @@ test("a bot ghost actually plays while Haunted is running", (t) => {
   assert.ok(startParty(match, "haunted"), "Haunted refused to start with a corpse to raise");
   assert.equal(isGhost(match, dead.id), true, "the dead bot was not raised");
 
-  // ⚠️ THE ASSERTION IS "IT TOOK A TARGET", AND NOTHING ELSE WILL DO. The first
-  // version of this test also accepted the ghost's GOLD changing — which proved
-  // nothing, because Haunted lends a ghost 45 citizens and their income lands on
-  // the very next tick. It passed with the bug deliberately put back. Picking a
-  // target is a decision only the controller makes.
-  for (let i = 0; i < PARTY.HAUNTED_SECONDS * TICK.RATE; i++) {
+  // ⚠️ THE ASSERTION IS THAT IT SPENT GOLD, WHICH MEANS IT ACTED. Two weaker
+  // versions of this came first and both were wrong:
+  //
+  //   - "its gold CHANGED" passed on income alone. Haunted lends a ghost 45
+  //     citizens and their earnings land on the next tick, so it passed with the
+  //     bug deliberately put back.
+  //   - "it took a TARGET" passed while the ghost still cast nothing. Aiming
+  //     survived the bug; acting did not, and acting is what was reported.
+  //
+  // Income only ever adds, so a DROP between two ticks is unambiguous: the only
+  // way gold goes down is that the controller bought or cast something.
+  dead.economy.currency = 50_000; // enough that nothing is refused for price
+  let spent = false;
+  for (let i = 0; i < PARTY.HAUNTED_SECONDS * TICK.RATE && !spent; i++) {
+    const before = dead.economy.currency;
     runner.tick(match.tick + 1);
     tickMatch(match, match.tick + 1);
-    if (dead.target !== null) break;
+    if (dead.economy.currency < before) spent = true;
   }
 
-  assert.notEqual(dead.target, null, "the ghost stood still for the entire haunting");
+  // Spending IS the evidence, and the loop stops at the first sign of it — so
+  // there is deliberately no second assertion about having taken a target: the
+  // ghost may well buy before it aims, and failing it for the order it chose
+  // would be testing the policy's taste rather than whether it may act at all.
+  assert.ok(spent, "the ghost never cast or bought anything for the whole haunting");
 });
 
 test("...and goes back to being dead when the haunting ends", () => {
