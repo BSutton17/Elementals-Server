@@ -10,12 +10,14 @@ import {
   type AbilityDefinition,
 } from "../src/engine/abilities.js";
 import { earn } from "../src/engine/money.js";
-import { getStatus, processStatusTicks } from "../src/engine/status.js";
+import { applyStatus, getStatus, processStatusTicks } from "../src/engine/status.js";
 import { withParameterSet } from "../src/engine/parameters.js";
 import { listParameters } from "../src/engine/parameterCatalog.js";
 import { recalcIncome } from "../src/engine/economy.js";
 import { buyCitizen, repairCastle, buyShield } from "../src/engine/purchases.js";
+import { TICK } from "../src/data/balance.js";
 import {
+  POISON_STATUS_TOXIC,
   SLUDGE,
   ACID_RAIN,
   GASTRO_ACID,
@@ -225,7 +227,7 @@ test("Poison Apple: the next kingdom to attack Nature is immediately Poisoned", 
 
 // --- Toxic Gas ----------------------------------------------------------------------
 
-test("Toxic Gas poisons every enemy through shields and blocks citizen/repair purchases", () => {
+test("Toxic Gas poisons every enemy and blocks citizen/repair purchases", () => {
   const { match, players } = garden(["nature", "fire", "water"]);
   const [a, b, c] = players;
 
@@ -240,16 +242,59 @@ test("Toxic Gas poisons every enemy through shields and blocks citizen/repair pu
     assert.equal(repairCastle(match, p).error, "PURCHASES_BLOCKED");
   }
 
-  // Shields are still purchasable — and the poison ignores them anyway.
+  // ⚠️ SHIELDS ARE STILL PURCHASABLE, AND NOW THEY ACTUALLY DO SOMETHING. This
+  // poison used to pierce them, which quietly made a shield worthless against
+  // Nature's ultimate and handed a second kingdom the trick that is Magma's
+  // alone ("Hotter fire" — read off the inflicter, so every DoT MAGMA lands
+  // pierces, and nothing else does).
   assert.equal(buyShield(match, b).ok, true);
   const shieldAfterBuy = b.castle.shield;
+  assert.ok(shieldAfterBuy > 0, "the fixture bought no shield");
   const hpBefore = b.castle.hp;
   processStatusTicks(match.gameState!);
-  assert.equal(b.castle.hp, hpBefore - 5); // straight to HP
-  assert.equal(b.castle.shield, shieldAfterBuy); // shield untouched
+  assert.equal(b.castle.hp, hpBefore, "the poison went past the shield to HP");
+  assert.equal(b.castle.shield, shieldAfterBuy - 5, "the shield did not absorb it");
 
   // Nature itself is unaffected.
   assert.equal(buyCitizen(match, a).ok, true);
+});
+
+/**
+ * ⚠️ PIERCING A SHIELD IS MAGMA'S, AND ONLY MAGMA'S.
+ *
+ * The engine has exactly two ways a damage-over-tick can skip armour: a flag on
+ * the status definition, and Magma's "Hotter fire" passive read off whoever
+ * inflicted it. Nature's toxic poison used to set the flag, which quietly gave a
+ * second kingdom Magma's whole trick and made a shield worthless against
+ * Nature's ultimate.
+ *
+ * This pins BOTH ENDS, because a change that fixed one and broke the other
+ * would look completely correct from either side alone.
+ */
+test("the same poison pierces for Magma and does not for anybody else", () => {
+  const { match, players } = garden(["nature", "fire", "magma"]);
+  const [nature, victim, magma] = players;
+
+  const shieldOf = (inflicter: PlayerState): { hp: number; shield: number } => {
+    victim.statuses.length = 0;
+    victim.castle.shield = 0;
+    assert.equal(buyShield(match, victim).ok, true);
+    applyStatus(victim, POISON_STATUS_TOXIC, {
+      sourceId: inflicter.id,
+      durationTicks: 10 * TICK.RATE,
+    });
+    const before = { hp: victim.castle.hp, shield: victim.castle.shield };
+    processStatusTicks(match.gameState!);
+    return { hp: before.hp - victim.castle.hp, shield: before.shield - victim.castle.shield };
+  };
+
+  const fromNature = shieldOf(nature);
+  assert.equal(fromNature.hp, 0, "Nature's poison reached HP through a shield");
+  assert.ok(fromNature.shield > 0, "the shield absorbed nothing");
+
+  const fromMagma = shieldOf(magma);
+  assert.ok(fromMagma.hp > 0, "Hotter fire stopped piercing — that is Magma's passive");
+  assert.equal(fromMagma.shield, 0, "Magma's DoT spent the shield instead of piercing it");
 });
 
 // --- Nature Ability Upgrades ----------------------------------------------------------

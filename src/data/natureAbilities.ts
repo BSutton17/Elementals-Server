@@ -47,12 +47,23 @@ export const POISON_STATUS_STRONG: StatusEffectDefinition = {
   ],
 };
 
-/** Toxic Poison (Toxic Gas): strong, ramping, and it ignores all shields. */
+/**
+ * Toxic Poison (Toxic Gas): strong and ramping, and it goes through a shield
+ * like anything else does.
+ *
+ * ⚠️ IT USED TO PIERCE SHIELDS, AND THAT WAS THE WRONG KINGDOM'S TRICK.
+ * Ignoring armour is Magma's, and Magma earns it through a passive — "Hotter
+ * fire", read off whoever inflicted the DoT (see `status.ts`), so every burn
+ * Magma lands pierces and nothing else does. A second kingdom holding the same
+ * property by declaring a flag in its data made that passive stop being
+ * Magma's, and made buying a shield against Nature's ultimate pointless.
+ *
+ * The ramp is what makes this poison strong. It does not need the armour
+ * exemption too.
+ */
 export const POISON_STATUS_TOXIC: StatusEffectDefinition = {
   ...POISON_STATUS,
-  tickEffects: [
-    { type: "damage", amount: 5, perStack: true, ignoreShields: true, ...POISON_RAMP },
-  ],
+  tickEffects: [{ type: "damage", amount: 5, perStack: true, ...POISON_RAMP }],
 };
 
 /** Corroded: Poison on the bearer deals +25% damage, and future Poison
@@ -311,8 +322,9 @@ export const POISON_APPLE: AbilityDefinition = {
   ],
 };
 
-/** Toxic Gas: ultimate — Poison every opposing kingdom (shield-piercing) and
- *  bar them from buying citizens or repairing while it lasts. */
+/** Toxic Gas: ultimate — Poison every opposing kingdom and bar them from
+ *  buying citizens or repairing while it lasts. The poison respects shields;
+ *  piercing them is Magma's, via "Hotter fire". */
 export const TOXIC_GAS: AbilityDefinition = {
   id: "toxicGas",
   name: "Toxic Gas",
