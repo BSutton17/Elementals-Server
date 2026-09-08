@@ -138,6 +138,7 @@ export function legalActions(knowledge: PlayerKnowledge, mask: ActionMask): Acti
       ability.meterReady &&
       !ability.statusBlocked &&
       !ability.centrepieceBlocked &&
+      !ability.promptBlocked &&
       // Abilities demanding a second target or a declared choice cannot be
       // ⚠️ NO LONGER A BLANKET REFUSAL. The action space used to be unable to
       // describe a second target or a declared choice, so any ability needing

@@ -350,3 +350,36 @@ for (const record of result.records) {
   console.log(record.winnerKingdom, record.endedAtTick);
 }
 ```
+
+## 9. Command-line entry points
+
+```bash
+npm run sim -- ffa --matches 70 --seed nightly   # balance read (seats rotated)
+npm run sim -- diagnose --matches 30             # top balance concerns
+npm run sim -- matrix --matches-per-pair 10      # 1v1 round robin
+npm run sim -- optimize --params castle.repairCost   # tune ONE lever
+npm run sim -- params                            # every tunable + where it lives
+npm run sim -- history                           # past runs
+npm run sim                                      # full help
+```
+
+A candidate from `optimize` is **emitted for review, never auto-applied**.
+
+### Checking that a long search resumes
+
+`npm run sim:verify-resume` is an end-to-end proof that an interrupted search
+picks up where it stopped. The unit tests cover the checkpoint *file*; this
+covers the **loop** — counters, cache restoration, best-candidate carry-over,
+and above all that the CMA-ES state resumes mid-run rather than quietly
+restarting from scratch. It takes minutes, so it is a hand-run diagnostic rather
+than part of `npm test`; run it after touching checkpointing.
+
+### Exporting the standalone training repo
+
+```bash
+node simulation/tools/exportRepo.mjs --out ../../Simulation
+```
+
+⚠️ This copies **outward only**. The exported repo carries a vendored copy of
+the engine and of `src/ai/`; nothing ever syncs changes back. See
+[../src/ai/README.md](../src/ai/README.md).

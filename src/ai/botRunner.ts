@@ -1,5 +1,5 @@
 import type { Match } from "../match/Match.js";
-import { isGhost, partyFreezesBots } from "../engine/party/index.js";
+import { isGhost, partyFreezesBots, partyOccupiesBot } from "../engine/party/index.js";
 import type { BotDifficulty } from "../match/types.js";
 import { NetworkController } from "./controller.js";
 import { loadModel } from "./modelStore.js";
@@ -95,6 +95,15 @@ export class BotRunner {
     for (const [id, controller] of this.controllers) {
       const state = this.match.gameState?.getPlayer(id);
       if (!state) continue;
+      // ⚠️ A BOT PLAYING A MINIGAME IS BUSY PLAYING IT. Every heads-down game —
+      // the maze above all — takes a human's eyes off the board completely,
+      // while the bots carried on buying, repairing and casting throughout. The
+      // maze even rolls each bot a plausible solve time already; it just had no
+      // bearing on anything except the minigame's own result. Now it does: this
+      // seat sits out until it has finished, which is what "solving the maze"
+      // is supposed to cost. Per seat, so a bot that finishes early is back in
+      // the fight immediately, exactly like the human who finished early.
+      if (partyOccupiesBot(this.match, id)) continue;
       // ⚠️ A GHOST IS ELIMINATED AND MUST STILL PLAY. Haunted raises the dead
       // for a few seconds, and the design keeps `eliminated` TRUE the whole
       // time — that is what stops a ghost winning the match and what makes it

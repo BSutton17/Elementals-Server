@@ -12,22 +12,67 @@ intents and renders what this server reports.
 
 ```bash
 npm install
+npm run dev        # tsx watch src/index.ts — the one you want
 npm run build      # tsc -> dist/
-npm run dev        # nodemon dist/index.js
 npm start          # node dist/index.js (production)
+npm run dev:dist   # build, then nodemon dist/ — only to debug the built output
 ```
 
 ```bash
 npm test           # node:test suites in test/
-npm run typecheck  # tsc --noEmit
+npm run typecheck  # tsc --noEmit  (src)
+npm run typecheck:test   # tsc -p tsconfig.test.json  (src + test together)
 ```
 
-Listens on `PORT` (default **3001**). Outside development, set `CLIENT_ORIGIN`
-to the client's origin or cross-origin clients are blocked. `RECONNECT_GRACE_MS`
-overrides how long a dropped player keeps their seat (default 60 s).
+> ⚠️ **Run `npm test`, never a bare `npx tsx --test`.** Only the npm script
+> passes `--env-file=.env.test`; without it the suite inherits your `.env` and
+> writes to the **live** database. See [test/README.md](test/README.md).
 
 > **Standing rule:** run the build **and** the tests for every repo a change
 > touches before calling that change done.
+
+### Environment
+
+Listens on `PORT` (default **3001**). Nothing below is required to boot — with
+an empty environment the server runs as a guest-only game on localhost.
+
+| Variable | Effect |
+|----------|--------|
+| `PORT` / `HOST` | Where to listen (default `3001`) |
+| `CLIENT_ORIGIN` | The client's origin. **Outside dev, cross-origin clients are blocked without it** |
+| `DATABASE_URL` | Postgres/Supabase. Absent ⇒ persistence no-ops, the game still runs |
+| `JWT_SECRET` | Signs session tokens |
+| `GOOGLE_CLIENT_ID` | Google sign-in |
+| `ADMIN_EMAILS` | Comma-separated admin accounts |
+| `EPHEMERAL_ACCOUNTS` | Guest accounts expire and get pruned |
+| `RECONNECT_GRACE_MS` | How long a dropped player keeps their seat (default 60 s) |
+| `ELEMENTALS_AI_MODEL_DIR` | Where to find the bot models (default `models/`) |
+| `LOG_LEVEL`, `NODE_ENV` | Logging and mode |
+| `ALLOW_TEST_DB` | Lets a test touch a real database. **Leave it unset** |
+
+### Database
+
+```bash
+npm run db:generate   # schema.ts -> a new SQL migration
+npm run db:migrate    # apply pending migrations (build first; needs .env)
+npm run db:studio     # browse the data
+```
+
+Coins are a **ledger**, not a balance column — the recipe for granting a player
+coins by hand is in [src/db/README.md](src/db/README.md).
+
+### Bots and balance
+
+```bash
+npm run sim -- ffa --matches 70        # free-for-all balance read
+npm run sim -- params                  # every tunable and where it lives
+npm run sim -- optimize --params <id>  # tune ONE lever, emits a candidate
+```
+
+Candidates are **never auto-applied**. The loop is FFA → diagnose → optimize one
+lever → FFA; change one thing at a time. Full guide in
+[simulation/README.md](simulation/README.md), bot models and training in
+[src/ai/README.md](src/ai/README.md).
 
 ## Layout
 
@@ -38,6 +83,7 @@ overrides how long a dropped player keeps their seat (default 60 s).
 | `src/engine/` | Tick loop, combat pipeline, effect primitives, statuses, economy, perks, targeting — plus the per-kingdom subsystems |
 | `src/data/` | All content and tunables: kingdoms, abilities, perks, `balance.ts` |
 | `src/ai/` | The bot subsystem (observation/action encoding, controller, difficulty) |
+| `src/db/` | Postgres via Drizzle: accounts, coins, quests, match history |
 | `simulation/` | Headless balance-simulation harness (internal tool, not shipped) |
 | `test/` | `node:test` suites |
 

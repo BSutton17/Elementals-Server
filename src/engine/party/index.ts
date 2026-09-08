@@ -360,6 +360,49 @@ export function partyFreezesBots(match: Match): boolean {
 }
 
 /**
+ * True while an ability that demands an ANSWER FROM ITS VICTIM may not be cast.
+ *
+ * ⚠️ THIS OUTLASTS THE ATTACK HOLD, AND THAT IS THE WHOLE POINT. Attacks come
+ * back the moment one kingdom finishes — the table can defend itself again — but
+ * Roulette and Slot Machine do not merely hurt somebody: they park a prompt in
+ * front of them and FREEZE THEIR INCOME until they answer it. Cast at a player
+ * who is still nose-down in a maze, that is a bill they cannot pay for reasons
+ * they cannot see, and the first finisher gets to hand it to everybody who is
+ * slower than them.
+ *
+ * So this holds for the whole session, for any game played heads-down
+ * (`holdsAttacks !== false`). An ambient game — weather, a mess on the screen —
+ * never stopped anyone from clicking a wheel, and does not block one.
+ */
+export function partyBlocksVictimPrompts(match: Match): boolean {
+  const session = match.gameState?.party;
+  if (!session || session.resolvedTick !== null) return false;
+  return partyGame(session.gameId)?.holdsAttacks !== false;
+}
+
+/**
+ * True while THIS bot is still playing the minigame, and so has no attention to
+ * spare for the war.
+ *
+ * ⚠️ PER SEAT, NOT PER TABLE — the difference from `partyFreezesBots`. A human
+ * looking at a maze physically cannot buy a shield; a bot was under no such
+ * handicap, so it spent the maze shopping while the table solved. The maze's
+ * own `bot()` already rolls a plausible solve time, so the honest reading of
+ * "busy" is simply: until this seat has finished, it does nothing else.
+ *
+ * Only for heads-down games. An ambient one takes no attention, so it takes no
+ * actions away either. A seat with no entry in the session — an eliminated
+ * player, someone who joined mid-game — is not playing, so it is not busy.
+ */
+export function partyOccupiesBot(match: Match, playerId: string): boolean {
+  const session = match.gameState?.party;
+  if (!session || session.resolvedTick !== null) return false;
+  if (partyGame(session.gameId)?.holdsAttacks === false) return false;
+  const me = session.players[playerId];
+  return me !== undefined && !me.done;
+}
+
+/**
  * True while the table may not choose targets at all.
  *
  * Bomb Attack only: clicking a castle passes the bomb, and a click that both

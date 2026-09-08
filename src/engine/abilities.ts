@@ -53,7 +53,11 @@ import {
   capriceScrambles,
 } from "./caprice.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "./centrepiece.js";
-import { partyBlocksCentrepieces, partySuppressesAttacks } from "./party/index.js";
+import {
+  partyBlocksCentrepieces,
+  partyBlocksVictimPrompts,
+  partySuppressesAttacks,
+} from "./party/index.js";
 import { isGhostAt } from "./party/haunted.js";
 import { canUseAbility, kitKingdomOf, mirrorSlot } from "./party/kingdomSwap.js";
 import { getActiveParameterSet, param } from "./parameters.js";
@@ -470,6 +474,30 @@ export interface AbilityDefinition {
 }
 
 /**
+ * Effect types that hand the recipient something they must ANSWER before their
+ * economy restarts: Joker's Roulette (call a colour) and Slot Machine (pull the
+ * lever). Both park a prompt and set `incomePerTick` to zero until it is dealt
+ * with.
+ *
+ * Kept as effect types rather than ability ids so an upgrade path, a reskin, or
+ * another kingdom borrowing the primitive is covered automatically — the same
+ * reasoning as `centrepieceSpawnedBy`.
+ */
+const VICTIM_PROMPT_EFFECTS = new Set(["roulette", "slotMachine"]);
+
+/**
+ * The prompt `ability` would open in front of its victim, or null if it opens
+ * none. See `partyBlocksVictimPrompts`.
+ */
+export function victimPromptOpenedBy(ability: AbilityDefinition): string | null {
+  for (const effect of ability.effects) {
+    if (VICTIM_PROMPT_EFFECTS.has(effect.type)) return effect.type;
+  }
+  return null;
+}
+
+
+/**
  * The id of a player's kingdom's BASIC attack — slot 1 of its kit, by the
  * convention every kingdom's ability list follows (basic, medium, heavy,
  * utility, ultimate). Used by locks that spare it (Dark's Never-ending
@@ -836,6 +864,19 @@ function activateAbilityInner(
   // saw cast. Read off the ability's EFFECTS, like every other centrepiece
   // rule, so a new one is covered without declaring itself.
   if (centrepieceSpawnedBy(ability) !== null && partyBlocksCentrepieces(match)) {
+    return { ok: false, error: "PARTY_IN_PROGRESS" };
+  }
+
+  // ⚠️ AND NOTHING HANDS A PROMPT TO SOMEBODY WHO IS LOOKING AT A MINIGAME.
+  // Roulette and Slot Machine do not just deal damage — they freeze the
+  // victim's income until the victim answers them. A player still in the maze
+  // cannot answer, so the cast is a penalty with no move available against it.
+  // Held for the WHOLE session rather than until the first finisher, because
+  // the unfairness starts exactly when the fast player is free and the slow one
+  // is not. Read off the EFFECTS, like the centrepiece rule above, so a reskin
+  // or a second kingdom borrowing the primitive is covered without declaring
+  // itself.
+  if (victimPromptOpenedBy(ability) !== null && partyBlocksVictimPrompts(match)) {
     return { ok: false, error: "PARTY_IN_PROGRESS" };
   }
 

@@ -10,6 +10,8 @@ import {
 } from "../engine/abilities.js";
 import { getCooldown } from "../engine/cooldowns.js";
 import { centrepieceSpawnedBy, standingCentrepiece } from "../engine/centrepiece.js";
+import { partyBlocksVictimPrompts } from "../engine/party/index.js";
+import { victimPromptOpenedBy } from "../engine/abilities.js";
 import { capriceScrambles, capriceProtects } from "../engine/caprice.js";
 import { isGhostAt } from "../engine/party/index.js";
 import { isTargetingBlocked } from "../engine/status.js";
@@ -90,6 +92,12 @@ export interface KitSlotKnowledge {
   readonly meterReady: boolean;
   readonly statusBlocked: boolean;
   readonly centrepieceBlocked: boolean;
+  /**
+   * Held back because it would hand a prompt to somebody still playing a
+   * minigame — Roulette, Slot Machine. A mask, never an encoded input: see
+   * `legality.ts` and the note in this folder's README.
+   */
+  readonly promptBlocked: boolean;
   /**
    * What this ability needs pointed at before the engine will resolve it.
    *
@@ -582,6 +590,7 @@ export function knowledgeFor(
   const attacksBlocked = player.statuses.some((s) => s.blocksAttacks);
   const basicOnly = player.statuses.some((s) => s.basicAttacksOnly);
   const centrepiece = standingCentrepiece(match) !== null;
+  const victimPrompts = partyBlocksVictimPrompts(match);
 
   // Whether this kingdom's attacks may strike several kingdoms at once, and
   // the same condition the engine applies. Computed once per call rather than
@@ -664,6 +673,7 @@ export function knowledgeFor(
       meterReady: meterReady(player, resolved),
       statusBlocked,
       centrepieceBlocked: centrepieceSpawnedBy(resolved) !== null && centrepiece,
+      promptBlocked: victimPromptOpenedBy(resolved) !== null && victimPrompts,
       targetRequirement:
         resolved.targeting.mode === "singleEnemy"
           ? "selected"
