@@ -161,3 +161,59 @@ test("a matchmade room never turns it on by itself", () => {
   const publicRoom = new Match("PUB", { visibility: "public" });
   assert.equal(publicRoom.copyCatEnabled, false);
 });
+
+// --- Copy Cat meets Party Mode -----------------------------------------------
+
+/**
+ * ⚠️ UNDER COPY CAT A KINGDOM NAME IDENTIFIES NOBODY. Every seat is the same
+ * kingdom, so "Fire was last to spot the difference" is a sentence about all
+ * seven players at once — it reads as a bug and tells the table nothing about
+ * who actually lost. Their own name is the only thing that separates them.
+ */
+test("a minigame result names the player, not the kingdom everyone shares", async () => {
+  const { labelOf } = await import("../src/engine/party/results.js");
+  const match = room([["fire", TWO], ["water", TWO]]);
+  match.start(createMatchConfig(match));
+
+  const me = match.gameState!.getPlayer("p0")!;
+  assert.equal(labelOf(match, me), me.name, "the result named the shared kingdom");
+});
+
+test("...and names the kingdom as usual when Copy Cat is off", async () => {
+  const { labelOf } = await import("../src/engine/party/results.js");
+  const match = room([["fire", TWO], ["water", TWO]]);
+  match.copyCatEnabled = false;
+  match.start(createMatchConfig(match));
+
+  const me = match.gameState!.getPlayer("p0")!;
+  assert.equal(labelOf(match, me), "Fire");
+});
+
+test("every minigame that names somebody goes through the one funnel", async () => {
+  // ⚠️ THREE OF THEM USED TO REACH FOR `kingdomLabel` DIRECTLY. Bomb Attack,
+  // Button Mash and Spot the Difference each formatted their own result line,
+  // so a rule about what to call a player had to be remembered in four places.
+  // A missed one would keep announcing a kingdom six other people are playing.
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const dir = "src/engine/party";
+  const offenders: string[] = [];
+  // ⚠️ `kingdomSwap` IS EXEMPT, AND NOT BECAUSE IT IS RETIRED. Its
+  // `borrowedLabel` names the KIT a player is holding, not the player — "you
+  // now have Ice abilities" is the sentence, and "you now have Alice
+  // abilities" would be nonsense. The kingdom is exactly right there, which is
+  // the distinction this test is about: `labelOf` answers "who is this", and a
+  // kingdom name still answers "which kit is this".
+  const namesAKitNotAPlayer = new Set(["kingdomSwap.ts"]);
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".ts") || file === "results.ts") continue;
+    if (namesAKitNotAPlayer.has(file)) continue;
+    const src = readFileSync(`${dir}/${file}`, "utf8");
+    // Naming a player by their kingdom, rather than asking `labelOf`.
+    if (/kingdomLabel\(\s*\w+\.kingdomId/.test(src)) offenders.push(file);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.join(", ")} names a player by kingdom instead of calling labelOf`,
+  );
+});

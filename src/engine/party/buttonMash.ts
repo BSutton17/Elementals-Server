@@ -2,7 +2,7 @@ import { PARTY, TICK } from "../../data/balance.js";
 import { applyDamage } from "../combat.js";
 import { healCastle } from "../abilities.js";
 import { param } from "../parameters.js";
-import { kingdomLabel } from "./results.js";
+import { labelOf } from "./results.js";
 import { between, botDifficulty, MASH_CPS } from "./bots.js";
 import type { Match } from "../../match/Match.js";
 import type { PartyActionResult, PartyGame, PartySession, PartySetup } from "./types.js";
@@ -94,7 +94,7 @@ function rankByClicks(
       return {
         id,
         clicks: Math.floor((state.data.clicks as number) ?? 0),
-        label: player ? kingdomLabel(player.kingdomId) : "",
+        label: player ? labelOf(match, player) : "",
       };
     })
     .filter((entry) => entry.label !== "")

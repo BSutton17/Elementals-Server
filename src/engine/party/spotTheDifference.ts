@@ -2,6 +2,7 @@ import { PARTY } from "../../data/balance.js";
 import { COSMETICS } from "../../data/cosmetics.js";
 import { param } from "../parameters.js";
 import { botDifficulty, RETRY_SECONDS, successChance, ticksBetween } from "./bots.js";
+import { labelOf } from "./results.js";
 import type { PartyActionResult, PartyGame, PartySession, PartySetup } from "./types.js";
 
 /**
@@ -199,21 +200,18 @@ export const SPOT_THE_DIFFERENCE_GAME: PartyGame = {
   },
 
   result(match, session) {
-    // Named by kingdom, not by player: this is a game about kingdoms.
+    // Named by kingdom — except under Copy Cat, where every seat IS the same
+    // kingdom and only a player's own name tells the table who lost.
     const order = session.finishOrder;
     if (order.length < 2) return null;
     const lastId = order[order.length - 1]!;
     const player = match.gameState?.getPlayer(lastId);
     if (!player) return null;
-    const kingdom = kingdomLabel(player.kingdomId);
+    const kingdom = labelOf(match, player);
     return `${kingdom} was the last one to spot the difference`;
   },
 };
 
-/** Title-cased kingdom name for a result line. */
-export function kingdomLabel(kingdomId: string): string {
-  return kingdomId.charAt(0).toUpperCase() + kingdomId.slice(1);
-}
 
 export function spotSetupOf(session: PartySession): SpotSetup {
   return session.shared.spot as unknown as SpotSetup;

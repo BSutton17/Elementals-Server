@@ -1,5 +1,5 @@
 import type { Match } from "../match/Match.js";
-import { partyFreezesBots } from "../engine/party/index.js";
+import { isGhost, partyFreezesBots } from "../engine/party/index.js";
 import type { BotDifficulty } from "../match/types.js";
 import { NetworkController } from "./controller.js";
 import { loadModel } from "./modelStore.js";
@@ -94,7 +94,16 @@ export class BotRunner {
 
     for (const [id, controller] of this.controllers) {
       const state = this.match.gameState?.getPlayer(id);
-      if (!state || state.eliminated) continue;
+      if (!state) continue;
+      // ⚠️ A GHOST IS ELIMINATED AND MUST STILL PLAY. Haunted raises the dead
+      // for a few seconds, and the design keeps `eliminated` TRUE the whole
+      // time — that is what stops a ghost winning the match and what makes it
+      // untargetable and immune, all for free. The cost is that every "skip the
+      // dead" check in the codebase silently skips ghosts too, and this was one
+      // of them: in a lobby of bots, Haunted raised nobody who then did
+      // anything. The banner announced a haunting and the graveyard stood
+      // still.
+      if (state.eliminated && !isGhost(this.match, id)) continue;
       const rng = this.streams.get(id);
       if (!rng) continue;
       try {

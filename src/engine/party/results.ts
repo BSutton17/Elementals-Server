@@ -32,11 +32,28 @@ export function kingdomLabel(kingdomId: string): string {
   return kingdomId.charAt(0).toUpperCase() + kingdomId.slice(1);
 }
 
-/** The kingdom name for a player id, or null when they are gone. */
+/**
+ * What to call a player in a minigame's result line.
+ *
+ * ⚠️ UNDER COPY CAT, THE KINGDOM NAMES NOBODY. Every seat is the same kingdom,
+ * so "Fire was last to spot it" is a sentence about all seven players at once —
+ * it reads like a bug, and it tells the table nothing about who actually lost.
+ * Their own name is the only thing that distinguishes them, so it is used
+ * instead.
+ *
+ * Every result line goes through here, including the ones that used to reach
+ * for `kingdomLabel` directly, so no minigame can quietly keep announcing a
+ * kingdom that six other people are also playing.
+ */
+export function labelOf(match: Match, player: { name: string; kingdomId: string }): string {
+  return match.copyCatEnabled ? player.name : kingdomLabel(player.kingdomId);
+}
+
+/** The name for a player id, or null when they are gone. */
 export function labelFor(match: Match, playerId: string | null): string | null {
   if (!playerId) return null;
   const player = match.gameState?.getPlayer(playerId);
-  return player ? kingdomLabel(player.kingdomId) : null;
+  return player ? labelOf(match, player) : null;
 }
 
 /**

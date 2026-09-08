@@ -7,7 +7,7 @@ import { BotRunner } from "../src/ai/botRunner.js";
 import { modelsAvailable } from "../src/ai/modelStore.js";
 import { spawnVolcano } from "../src/engine/volcano.js";
 import { VOLCANO_TARGET_ID } from "../src/match/GameState.js";
-import { startParty } from "../src/engine/party/index.js";
+import { isGhost, startParty } from "../src/engine/party/index.js";
 import { PARTY, TICK } from "../src/data/balance.js";
 import type { MatchPlayer } from "../src/match/types.js";
 
@@ -343,4 +343,74 @@ test("...and goes straight back to playing when it ends", (t) => {
       bots(match).some((b) => b.economy.citizens > 0),
     "the AI never resumed after Don't Move",
   );
+})
+
+/**
+ * Haunted raises the dead — including the bots.
+ *
+ * ⚠️ REPORTED FROM A LOBBY OF NOTHING BUT BOTS: the banner announced a haunting
+ * and the graveyard stood still. The cause is the same design decision that
+ * makes ghosts work at all — `eliminated` stays TRUE while one is raised, which
+ * is what keeps `resolveWinner` correct and hands them immunity and
+ * untargetability for free. The cost is that EVERY "skip the dead" check skips
+ * ghosts too, and the AI had two of them: one in the runner, one in the
+ * controller. Fixing either alone looks right and changes nothing.
+ */
+test("a bot ghost actually plays while Haunted is running", (t) => {
+  if (!modelsAvailable()) return t.skip("no trained models on disk");
+  const match = arena([
+    ["fire", true],
+    ["water", true],
+    ["nature", true],
+    ["ice", true],
+  ]);
+  const runner = new BotRunner(match);
+  runner.start();
+
+  // Warm up past the opening truce so the bots are demonstrably willing to act.
+  for (let tick = 1; tick <= 20 * TICK.RATE; tick++) {
+    runner.tick(tick);
+    tickMatch(match, tick);
+  }
+
+  // Kill one off, then raise it.
+  const dead = match.gameState!.getPlayer("p3")!;
+  dead.eliminated = true;
+  dead.castle.hp = 0;
+  dead.target = null;
+
+  assert.ok(startParty(match, "haunted"), "Haunted refused to start with a corpse to raise");
+  assert.equal(isGhost(match, dead.id), true, "the dead bot was not raised");
+
+  // ⚠️ THE ASSERTION IS "IT TOOK A TARGET", AND NOTHING ELSE WILL DO. The first
+  // version of this test also accepted the ghost's GOLD changing — which proved
+  // nothing, because Haunted lends a ghost 45 citizens and their income lands on
+  // the very next tick. It passed with the bug deliberately put back. Picking a
+  // target is a decision only the controller makes.
+  for (let i = 0; i < PARTY.HAUNTED_SECONDS * TICK.RATE; i++) {
+    runner.tick(match.tick + 1);
+    tickMatch(match, match.tick + 1);
+    if (dead.target !== null) break;
+  }
+
+  assert.notEqual(dead.target, null, "the ghost stood still for the entire haunting");
+});
+
+test("...and goes back to being dead when the haunting ends", () => {
+  // A ghost that kept acting after its time would be worse than one that never
+  // acted: a kingdom that lost the match still fighting in it.
+  const match = arena([
+    ["fire", false],
+    ["water", true],
+  ]);
+  const dead = match.gameState!.getPlayer("p1")!;
+  dead.eliminated = true;
+  dead.castle.hp = 0;
+  startParty(match, "haunted");
+  assert.equal(isGhost(match, dead.id), true);
+
+  for (let i = 0; i < (PARTY.HAUNTED_SECONDS + 2) * TICK.RATE; i++) {
+    tickMatch(match, match.tick + 1);
+  }
+  assert.equal(isGhost(match, dead.id), false, "the ghost never went back to the grave");
 })

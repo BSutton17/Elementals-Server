@@ -1,7 +1,7 @@
 import { PARTY, TICK } from "../../data/balance.js";
 import { applyDamage } from "../combat.js";
 import { param } from "../parameters.js";
-import { kingdomLabel } from "./results.js";
+import { labelOf } from "./results.js";
 import { BOMB_PASS_MS, botDifficulty, ticksBetweenMs } from "./bots.js";
 import type { Match } from "../../match/Match.js";
 import type { PartyActionResult, PartyGame, PartySession, PartySetup } from "./types.js";
@@ -113,7 +113,7 @@ export const BOMB_ATTACK_GAME: PartyGame = {
     if (!loser) return null;
     const player = match.gameState?.getPlayer(loser);
     if (!player) return null;
-    return `${kingdomLabel(player.kingdomId)} has exploded`;
+    return `${labelOf(match, player)} has exploded`;
   },
 };
 

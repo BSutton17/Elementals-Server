@@ -8,6 +8,7 @@ import {
 import { selectTarget } from "../engine/targeting.js";
 import { volcanoIsLive } from "../engine/volcano.js";
 import { monsterIsAlive } from "../engine/monster.js";
+import { isGhost } from "../engine/party/index.js";
 import { MONSTER_TARGET_ID, VOLCANO_TARGET_ID } from "../match/GameState.js";
 import { dispelStatus } from "../engine/purchases.js";
 import { TICK } from "../data/balance.js";
@@ -374,7 +375,13 @@ export class NetworkController implements AIController {
   act(ctx: AIContext): void {
     const { match, player, tick } = ctx;
     if ((tick + this.phase) % this.period !== 0) return;
-    if (match.phase !== "active" || player.eliminated) return;
+    if (match.phase !== "active") return;
+    // ⚠️ THE SECOND "SKIP THE DEAD" GATE, AND A GHOST HAS TO PASS BOTH. Haunted
+    // keeps `eliminated` true while it raises somebody — that is what stops a
+    // ghost winning the match and what makes it untargetable — so every check
+    // like this one skips ghosts as a side effect. Fixing only the runner would
+    // have looked right and changed nothing.
+    if (player.eliminated && !isGhost(match, player.id)) return;
 
     // The observed-damage memory is fed from the gameplay event stream rather
     // than by diffing enemy state, because diffing enemy state would BE the
