@@ -333,12 +333,12 @@ export const PARTY = {
    * with a `living / 10` chance means a small table can go minutes without a
    * minigame purely on the dice — two kingdoms roll one-in-five, so a quiet
    * quarter of an hour is an ordinary run of luck rather than a bug. Backing the
-   * clock off by three seconds each time it misses turns a long drought into a
+   * clock off by five seconds each time it misses turns a long drought into a
    * rising likelihood, without ever making a party feel guaranteed.
    *
-   * 20 → 17 → 14 → … and straight back to 20 the moment a game starts.
+   * 20 → 15 → 10 → … and straight back to 20 the moment a game starts.
    */
-  ROLL_BACKOFF_SECONDS: 3,
+  ROLL_BACKOFF_SECONDS: 5,
   /**
    * How short the wait is ever allowed to get.
    *
